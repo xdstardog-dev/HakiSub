@@ -8,3 +8,4 @@
 - 保留模拟模式、浏览器 ASR、字幕时间规则、布局及清理行为。新增音频处理应接在上传前；会话状态不得跨成员共享。
 - 变更后执行 `npm test`、`npm run build`；新增通信与音频逻辑须有模拟测试。真实 API 和麦克风验收必须单独记录，不得用模拟成功代替。
 - 完成检查、网关、UI、测试时简短汇报进度与阻塞；维护 README、docs/ARCHITECTURE.md，任务结束追加 docs/DEVLOG.md 的实际修改和测试结果。
+- 多 AI 协作约定与 DeepSeek 的跨会话记忆见 docs/DEEPSEEK-MEMORY.md（仅 DeepSeek 与项目负责人维护，Codex 不编辑）。
