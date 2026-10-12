@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
-import { createBrowserAsr, type AsrState } from './browserAsr'
+import { createAsrSession, type AsrProvider } from './asrSession'
+import type { AsrState, AsrSession, CaptionCallbacks } from './captionEvents'
 import { createStressConversation } from './stressSimulation'
 import MemberCaptionGrid from './components/MemberCaptionGrid.vue'
 import { receiveCaption, expireCaptions, type Caption } from './captions'
@@ -27,22 +28,37 @@ const phrases = ['我觉得我们可以先聊聊周末的安排。', '附近新�
 const me = computed(() => members.value[0])
 const active = computed(() => members.value.filter(m => m.mic))
 const inputMode = ref<'simulation' | 'microphone'>('simulation')
+const asrProvider = ref<AsrProvider>('browser')
 const asrState = ref<AsrState>('idle')
 const asrMessage = ref('麦克风已关闭')
 const asrActive = computed(() => ['starting', 'listening', 'reconnecting'].includes(asrState.value))
-const asr = createBrowserAsr({
+const asrCallbacks: CaptionCallbacks = {
   onState(state, message) {
     asrState.value = state
     asrMessage.value = message
     if (inputMode.value === 'microphone' && me.value) me.value.mic = state === 'listening'
   },
-  onResult(id, text, state) {
-    if (inputMode.value === 'microphone' && joined.value && me.value) recognize(me.value.id, id, text, state)
+  onCaption({ memberId, utteranceId, text, state }) {
+    if (inputMode.value === 'microphone' && joined.value) recognize(memberId, utteranceId, text, state)
   },
-  onDiscard(id) {
-    captions.value = captions.value.filter(c => c.id !== id || c.state === 'final')
+  onDiscard(memberId, id) {
+    captions.value = captions.value.filter(c => c.memberId !== memberId || c.id !== id || c.state === 'final')
   },
-})
+}
+let currentAsrSession: AsrSession | undefined
+const asr = {
+  start() {
+    if (!me.value) return
+    currentAsrSession = createAsrSession(asrProvider.value, me.value.id, asrCallbacks)
+    currentAsrSession.start()
+  },
+  stop() { currentAsrSession?.stop(); currentAsrSession = undefined },
+}
+function changeAsrProvider(event: Event) {
+  asr.stop()
+  asrProvider.value = (event.target as HTMLSelectElement).value === 'doubao' ? 'doubao' : 'browser'
+  asrState.value = 'idle'; asrMessage.value = '麦克风已关闭'
+}
 function changeInputMode(event: Event) {
   asr.stop()
   pending = []; scenarioRunning.value = false; simulationStarted.value = null
@@ -188,7 +204,7 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
     <header v-if="!joined" class="header"><a class="brand" href="/"><span class="brand-icon">≋</span>实时字幕<span class="brand-en">LIVE CAPTIONS</span></a><a class="glasses-link" href="/glasses">▱ AR 预览 <span>↗</span></a></header>
     <main v-if="!joined" class="landing">
       <section class="intro"><div class="eyebrow"><span class="dot"></span> 多人字幕房间 · 交互演示</div><h1>多人<span>实时字幕</span></h1><p>按成员显示实时字幕，让每句话随时间自然消散。</p><div class="feature-tags"><span>◎ 最多 8 名成员</span><span>◷ 每句话独立渐隐</span><span>✦ 无字幕历史记录</span></div></section>
-      <section class="entry-card"><span class="small-label">房间设置</span><h2>创建或加入房间</h2><p>输入显示名称；加入房间需填写 6 位数字房间码。</p><div class="mode-tabs"><button :class="{ selected: mode === 'create' }" @click="mode = 'create'; error = ''">创建房间</button><button :class="{ selected: mode === 'join' }" @click="mode = 'join'; error = ''">加入房间</button></div><form @submit.prevent="enter"><label for="display-name">显示名称</label><input id="display-name" v-model="name" maxlength="20" placeholder="输入显示名称" autocomplete="nickname"/><template v-if="mode === 'join'"><label for="room-code">房间码</label><input id="room-code" v-model="code" maxlength="6" inputmode="numeric" placeholder="输入 6 位数字房间码"/></template><p v-if="error" class="error" role="alert">{{ error }}</p><button class="primary" type="submit">{{ mode === 'create' ? '创建房间' : '加入房间' }} <span>→</span></button></form><div class="privacy-note">♧ 字幕确认后显示 3、6 或 10 秒，再用 2 秒渐隐清除。</div><div class="demo-note"><span>DEMO</span> 支持模拟测试和单设备普通话识别，不同设备不互通。真实模式需授权麦克风，音频可能由浏览器发送至其语音服务。</div></section>
+      <section class="entry-card"><span class="small-label">房间设置</span><h2>创建或加入房间</h2><p>输入显示名称；加入房间需填写 6 位数字房间码。</p><div class="mode-tabs"><button :class="{ selected: mode === 'create' }" @click="mode = 'create'; error = ''">创建房间</button><button :class="{ selected: mode === 'join' }" @click="mode = 'join'; error = ''">加入房间</button></div><form @submit.prevent="enter"><label for="display-name">显示名称</label><input id="display-name" v-model="name" maxlength="20" placeholder="输入显示名称" autocomplete="nickname"/><template v-if="mode === 'join'"><label for="room-code">房间码</label><input id="room-code" v-model="code" maxlength="6" inputmode="numeric" placeholder="输入 6 位数字房间码"/></template><p v-if="error" class="error" role="alert">{{ error }}</p><button class="primary" type="submit">{{ mode === 'create' ? '创建房间' : '加入房间' }} <span>→</span></button></form><div class="privacy-note">♧ 字幕确认后显示 3、6 或 10 秒，再用 2 秒渐隐清除。</div><div class="demo-note"><span>DEMO</span> 支持模拟测试和单设备普通话识别，不同设备不互通。真实模式需授权麦克风，音频将交给所选的浏览器或豆包语音服务。</div></section>
     </main>
     <main v-else class="room-layout">
       <header class="room-topbar">
@@ -206,6 +222,13 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
           <option v-for="count in 8" :key="count" :value="count">{{ count }} 人</option>
         </select>
       </div>
+      <div v-if="inputMode === 'microphone'" class="room-demo-controls">
+        <label for="asr-provider">识别来源</label>
+        <select id="asr-provider" :value="asrProvider" @change="changeAsrProvider">
+          <option value="browser">浏览器 ASR</option>
+          <option value="doubao">豆包 ASR 2.0</option>
+        </select>
+      </div>
       <div v-if="inputMode === 'simulation'" class="room-demo-controls simulation-controls">
         <label for="scenario">模拟字幕</label>
         <select id="scenario" v-model="scenario" :disabled="scenarioRunning">
@@ -219,7 +242,7 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
         </select>
         <button @click="runSimulation" :disabled="scenarioRunning">{{ scenarioRunning ? '测试中' : '运行' }}</button>
       </div>
-      <p v-else class="room-grid-note">普通话 · 仅“我”接收真实语音 · 音频可能发送至浏览器语音服务</p>
+      <p v-else class="room-grid-note">普通话 · 仅“我”接收真实语音 · {{ asrProvider === 'doubao' ? '音频发送至豆包云端识别，按服务用量计费' : '音频可能发送至浏览器语音服务' }}</p>
       <label class="layout-experiment"><input v-model="adaptiveCards" type="checkbox" />{{ adaptiveCards ? '动态自适应布局（实验）' : '固定等分布局（原版）' }}</label>
       <section class="room-stage" aria-label="房间内容">
         <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :live-input="inputMode === 'microphone'" @toggle-mic="toggleMemberMic" />
@@ -228,7 +251,7 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
       <p v-if="inputMode === 'microphone'" class="room-grid-note" :class="{ error: asrState === 'error' }" role="status">{{ asrMessage }}</p>
       <p class="room-grid-note">{{ stressProgress || '确认后按字数显示 3 / 6 / 10 秒，再渐隐 2 秒 · 无历史回看' }}</p>
       <div class="room-bottom-bar">
-        <div><strong>{{ inputMode === 'simulation' ? '模拟测试' : '真实麦克风' }}</strong><small>{{ inputMode === 'simulation' ? '未采集音频' : '浏览器语音识别 · zh-CN' }}</small></div>
+        <div><strong>{{ inputMode === 'simulation' ? '模拟测试' : '真实麦克风' }}</strong><small>{{ inputMode === 'simulation' ? '未采集音频' : asrProvider === 'doubao' ? '豆包 ASR 2.0 · 普通话' : '浏览器语音识别 · zh-CN' }}</small></div>
         <button v-if="inputMode === 'microphone'" class="room-self-mic" :aria-pressed="asrActive" @click="toggleRealMic">{{ asrActive ? '关闭麦克风' : '开启麦克风' }}</button>
         <button v-else-if="me" class="room-self-mic" :aria-pressed="me.mic" @click="toggleMemberMic(me.id)">{{ me.mic ? '关闭我的麦克风' : '开启我的麦克风' }}</button>
       </div>

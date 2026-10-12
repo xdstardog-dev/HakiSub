@@ -1,4 +1,5 @@
-export type AsrState = 'idle' | 'starting' | 'listening' | 'reconnecting' | 'error'
+import type { AsrCallbacks } from './captionEvents'
+export type { AsrState } from './captionEvents'
 type RecognitionResult = { isFinal: boolean; 0: { transcript: string } }
 export type RecognitionEvent = { resultIndex: number; results: ArrayLike<RecognitionResult> }
 export interface RecognitionEngine {
@@ -17,11 +18,6 @@ export type AsrEnvironment = {
   isSecureContext: boolean
   SpeechRecognition?: new () => RecognitionEngine
   webkitSpeechRecognition?: new () => RecognitionEngine
-}
-type AsrCallbacks = {
-  onState: (state: AsrState, message: string) => void
-  onResult: (id: string, text: string, state: 'interim' | 'final') => void
-  onDiscard: (id: string) => void
 }
 const asrErrors: Record<string, string> = {
   'not-allowed': '麦克风授权被拒绝。请在浏览器网站设置中允许麦克风，再点击开启；内嵌预览请改用独立浏览器标签页。',

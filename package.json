@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "node server/index.mjs --dev",
+    "server": "node server/index.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
-    "test": "node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "test": "node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs && node tests/doubao.test.mjs && node tests/audio-capture.test.mjs",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.0",

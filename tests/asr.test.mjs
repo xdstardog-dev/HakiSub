@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import assert from 'node:assert/strict'
 import ts from 'typescript'
-const source = readFileSync(new URL('../src/browserAsr.ts', import.meta.url), 'utf8').replace(/^export /gm, '')
+const source = readFileSync(new URL('../src/browserAsr.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export type \{.*$/gm, '').replace(/^export /gm, '')
 const timers = new Map()
 let timerId = 0
 const context = vm.createContext({

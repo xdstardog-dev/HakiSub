@@ -7,7 +7,8 @@ import { ref, computed } from 'vue'
 const source = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const script = source('../src/App.vue').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
 const stressModel = source('../src/stressSimulation.ts').replace(/^export /gm, '')
-const asrModel = source('../src/browserAsr.ts').replace(/^export /gm, '')
+const asrModel = source('../src/browserAsr.ts').replace(/^import .*$/gm, '').replace(/^export type \{.*$/gm, '').replace(/^export /gm, '')
+const sessionModel = source('../src/asrSession.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const model = source('../src/captions.ts').replace(/^export /gm, '')
 let time = 1_800_000_000_000
 const timers = []
@@ -22,9 +23,13 @@ class FakeRecognition {
 const browserEvents = new Map(), documentEvents = new Map()
 const browser = { isSecureContext: true, SpeechRecognition: FakeRecognition, addEventListener: (name, fn) => browserEvents.set(name, fn), removeEventListener: name => browserEvents.delete(name) }
 const documentStub = { hidden: false, addEventListener: (name, fn) => documentEvents.set(name, fn), removeEventListener: name => documentEvents.delete(name) }
-const context = vm.createContext({ window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: { pathname: '/' }, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {} })
-const exported = 'globalThis.demo = {name,code,mode,joined,members,captions,inputMode,asrState,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,createStressConversation,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
-vm.runInContext(ts.transpile(asrModel + stressModel + model + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+let doubaoCallbacks, doubaoStopped = false
+const context = vm.createContext({ createDoubaoAsrClient: callbacks => {
+  doubaoCallbacks = callbacks
+  return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
+}, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: { pathname: '/' }, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {} })
+const exported = 'globalThis.demo = {name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,createStressConversation,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
+vm.runInContext(ts.transpile(asrModel + sessionModel + stressModel + model + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 const advance = ms => { time += ms; d.tick() }
 d.enter(); assert.equal(d.joined.value, false)
@@ -172,6 +177,21 @@ d.runSimulation(); assert.ok(d.captions.value.length > 0)
 d.changeInputMode({ target: { value: 'microphone' } }); d.toggleRealMic()
 const leavingEngine = FakeRecognition.instances.at(-1); d.leave()
 assert.equal(leavingEngine.aborted, true)
+d.enter(); d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
+assert.equal(d.asrProvider.value, 'doubao'); assert.equal(d.asrState.value, 'listening')
+doubaoCallbacks.onResult('sentence-0', '豆', 'interim')
+doubaoCallbacks.onResult('sentence-0', '豆包测试', 'interim')
+assert.equal(d.captions.value.length, 1); assert.equal(d.captions.value[0].finalizedAt, null)
+doubaoCallbacks.onResult('sentence-0', '豆包测试。', 'final')
+const doubaoId = d.captions.value[0].id
+assert.equal(d.captions.value[0].memberId, d.members.value[0].id)
+d.toggleRealMic(); assert.equal(doubaoStopped, true)
+d.toggleRealMic(); doubaoCallbacks.onResult('sentence-0', '第二次开启', 'final')
+assert.equal(d.captions.value.length, 2); assert.notEqual(d.captions.value[1].id, doubaoId)
+d.changeAsrProvider({ target: { value: 'browser' } }); assert.equal(doubaoStopped, true)
+assert.equal(d.captions.value.length, 2, '换来源保留已确认字幕的原生命周期')
+advance(12000); assert.equal(d.captions.value.length, 0)
+d.leave()
 cleanup(); assert.ok(timers.every(t => t.cleared))
 assert.equal(browserEvents.size, 0); assert.equal(documentEvents.size, 0)
 console.log('通过：真实识别接入现有生命周期、模式隔离、授权失败、隐藏/切换/离房关闭、字数边界、独立生命周期、渐隐中加入新句、Interim 原位更新与确认、重复 Final、成员隔离与静音、六种模拟、一分钟压力测试（81 句）、1～8 人切换、离房及卸载清理。')

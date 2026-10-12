@@ -1,3 +1,16 @@
 node_modules/
 dist/
 *.local
+
+# Local environment and private credentials
+.env
+.env.*
+!.env.example
+secrets/
+.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
