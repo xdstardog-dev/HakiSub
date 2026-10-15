@@ -1,0 +1,23 @@
+# 仅在 ICP 备案成功、DNS 和防火墙核验后启用。
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+	log {
+		format filter {
+			wrap json
+			# 运行错误可能携带请求对象，移除它以免记录成员令牌。
+			request delete
+		}
+	}
+}
+
+hakisub.xdstar.work {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory
+	}
+	# 同源代理网页、房间和 ASR；Caddy 自动处理 WebSocket Upgrade。
+	reverse_proxy 127.0.0.1:18787
+	# 不启用访问日志；不改写路径、Origin 或 session 参数。
+}

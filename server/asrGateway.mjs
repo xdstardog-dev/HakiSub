@@ -5,12 +5,15 @@ import { DOUBAO_URL, DOUBAO_RESOURCE_ID, createRecognitionRequest, createAudioPa
 import { createDoubaoResultMapper } from './doubaoResults.mjs'
 import { createApiSettingsHandler, allowedAppOrigins } from './apiSettings.mjs'
 import { createAsrDiagnostics } from './asrDiagnostics.mjs'
+import { createRoomGateway } from './roomGateway.mjs'
 
 export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url, options) => new WebSocket(url, options),
-  startupTimeoutMs = 15000, idleTimeoutMs = 10000, maxSessionMs = 15 * 60 * 1000, diagnostics = {}, serveWebsite } = {}) {
+  startupTimeoutMs = 15000, idleTimeoutMs = 10000, maxSessionMs = 15 * 60 * 1000, diagnostics = {}, serveWebsite, maxAsrSessions = 8,
+  allowedOrigins = allowedAppOrigins, allowLegacyAsr = true, enableSettings = true, maxRooms = 100 } = {}) {
+  const rooms = createRoomGateway({ maxRooms })
   const usageStartedAt = new Date().toISOString()
   let totalSubmittedPcmBytes = 0, latestStatistics
-  const settingsHandler = keyStore ? createApiSettingsHandler(keyStore, {
+  const settingsHandler = keyStore && enableSettings ? createApiSettingsHandler(keyStore, {
     isRecognizing: () => sockets.clients.size > 0,
     getUsage: () => ({ since: usageStartedAt, totalAudioSeconds: totalSubmittedPcmBytes / 32000,
       latest: latestStatistics?.snapshot() ?? null }),
@@ -26,11 +29,24 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 6400, perMessageDeflate: false })
   server.on('upgrade', (request, socket, head) => {
     // 本地网关只接受本项目预览页，避免任意网站调用本机的付费凭据。
-    const allowedOrigins = allowedAppOrigins
-    if (request.url !== '/api/asr' || !allowedOrigins.includes(request.headers.origin) || sockets.clients.size >= 1 || settingsHandler?.isBusy()) {
+    if (request.url === '/api/rooms' && allowedOrigins.includes(request.headers.origin)) { rooms.upgrade(request, socket, head); return }
+    let url
+    try { url = new URL(request.url, 'http://localhost') }
+    catch { socket.destroy(); return }
+    const token = url.searchParams.get('session')
+    const member = token ? rooms.findSession(token) : undefined
+    const legacyBusy = [...sockets.clients].some(client => !client.roomMember)
+    if (url.pathname !== '/api/asr' || !allowedOrigins.includes(request.headers.origin) || settingsHandler?.isBusy() ||
+      (token ? !member || !member.mic || member.asr || legacyBusy || sockets.clients.size >= maxAsrSessions : !allowLegacyAsr || sockets.clients.size >= 1)) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return
     }
-    sockets.handleUpgrade(request, socket, head, client => sockets.emit('connection', client))
+    sockets.handleUpgrade(request, socket, head, client => {
+      if (member) {
+        client.roomMember = member; member.asr = client
+        client.once('close', () => { if (member.asr === client) member.asr = undefined })
+      }
+      sockets.emit('connection', client)
+    })
   })
   sockets.on('connection', client => {
     const sessionApiKey = keyStore?.getKey() ?? apiKey
@@ -61,7 +77,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     const fail = message => { send({ type: 'error', message }); cleanup() }
     client.on('error', cleanup)
     client.on('close', cleanup)
-    if (!sessionApiKey.trim()) { fail('尚未配置豆包 API Key。请到主页的设置中填写并保存。'); return }
+    if (!sessionApiKey.trim()) { fail(enableSettings ? '尚未配置豆包 API Key。请到主页的设置中填写并保存。' : '尚未配置豆包 API Key，请联系管理员配置服务端环境。'); return }
     startupTimer = setTimeout(() => fail('连接豆包超时，请检查网络后手动重试。'), startupTimeoutMs)
     sessionTimer = setTimeout(() => fail('本次识别已达到 15 分钟上限，麦克风已关闭；需要继续时请手动开启。'), maxSessionMs)
     const refreshAudioTimeout = () => {
@@ -125,6 +141,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     })
   })
   return { server, close: async () => {
+    await rooms.close()
     for (const client of sockets.clients) client.terminate()
     await new Promise(resolve => sockets.close(resolve))
     if (server.listening) await new Promise(resolve => server.close(resolve))

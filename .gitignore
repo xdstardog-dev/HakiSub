@@ -1,5 +1,6 @@
 node_modules/
 dist/
+artifacts/
 public/vad/ort-wasm-*
 public/vad/ort.wasm.min.mjs
 *.local

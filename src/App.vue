@@ -8,9 +8,13 @@ import { materialState } from './simulation/material'
 import MemberCaptionGrid from './components/MemberCaptionGrid.vue'
 import ApiSettings from './components/ApiSettings.vue'
 import { receiveCaption, expireCaptions, type Caption } from './captions'
+import { createRoomClient } from './roomClient'
 type Member = { id: string; name: string; mic: boolean; color: string }
 const glasses = ref(location.pathname === '/glasses')
 const settingsOpen = ref(false)
+const roomMode = ref<'simulation' | 'online'>('simulation')
+const connecting = ref(false), selfId = ref('')
+let roomClient: ReturnType<typeof createRoomClient> | undefined
 const joined = ref(false), mode = ref<'create' | 'join'>('create'), name = ref(''), code = ref(''), room = ref(''), error = ref('')
 const members = ref<Member[]>([]), captions = ref<Caption[]>([])
 const now = ref(Date.now())
@@ -33,7 +37,7 @@ function characterAt(index: number): { name: string; color: string } {
   const character = materialPack?.characters[index]
   return { name: character?.name ?? (index === 0 ? '我' : '新成员'), color: character?.color ?? '' }
 }
-const me = computed(() => members.value[0])
+const me = computed(() => roomMode.value === 'online' ? members.value.find(member => member.id === selfId.value) : members.value[0])
 const active = computed(() => members.value.filter(m => m.mic))
 const inputMode = ref<'simulation' | 'microphone'>('simulation')
 const asrProvider = ref<AsrProvider>('doubao')
@@ -61,12 +65,19 @@ const asrCallbacks: CaptionCallbacks = {
     }
     asrState.value = state
     asrMessage.value = message
-    if (inputMode.value === 'microphone' && me.value) me.value.mic = state === 'listening'
+    if (inputMode.value === 'microphone' && me.value) {
+      me.value.mic = state === 'listening'
+      if (roomMode.value === 'online') roomClient?.send({ type: 'mic', mic: me.value.mic })
+    }
   },
   onCaption({ memberId, utteranceId, text, state }) {
-    if (inputMode.value === 'microphone' && joined.value) recognize(memberId, utteranceId, text, state)
+    if (inputMode.value === 'microphone' && joined.value) {
+      if (roomMode.value === 'online') roomClient?.send({ type: 'caption', utteranceId, text, state })
+      else recognize(memberId, utteranceId, text, state)
+    }
   },
   onDiscard(memberId, id) {
+    if (roomMode.value === 'online') roomClient?.send({ type: 'discard', utteranceId: id })
     captions.value = captions.value.filter(c => c.memberId !== memberId || c.id !== id || c.state === 'final')
   },
   onUsage(usage) {
@@ -87,7 +98,7 @@ const asr = {
   start() {
     if (!me.value) return
     if (asrProvider.value === 'doubao') clearMicUsage()
-    currentAsrSession = createAsrSession(asrProvider.value, me.value.id, asrCallbacks)
+    currentAsrSession = createAsrSession(asrProvider.value, me.value.id, asrCallbacks, roomClient?.getToken())
     currentAsrSession.start()
   },
   stop() { currentAsrSession?.stop(); currentAsrSession = undefined },
@@ -99,6 +110,7 @@ function changeAsrProvider(event: Event) {
   asrState.value = 'idle'; asrMessage.value = '麦克风已关闭'
 }
 function changeInputMode(event: Event) {
+  if (roomMode.value === 'online') return
   asr.stop()
   clearMicUsage()
   pending = []; scenarioRunning.value = false; simulationStarted.value = null
@@ -110,7 +122,8 @@ function toggleRealMic() {
   if (asrActive.value) asr.stop()
   else if (joined.value && inputMode.value === 'microphone') asr.start()
 }
-window.addEventListener('pagehide', asr.stop)
+function handlePageHide() { if (roomMode.value === 'online') leave(); else asr.stop() }
+window.addEventListener('pagehide', handlePageHide)
 function addMember() {
   if (members.value.length >= 8) { error.value = '房间已满，最多允许 8 人。'; return }
   const character = characterAt(members.value.length)
@@ -141,6 +154,34 @@ function enter() {
   error.value = ''
   if (!name.value.trim()) { error.value = '请先填写你的显示名称。'; return }
   if (mode.value === 'join' && !/^\d{6}$/.test(code.value)) { error.value = '请输入 6 位数字房间码。'; return }
+  if (roomMode.value === 'online') {
+    if (connecting.value) return
+    connecting.value = true
+    roomClient?.close()
+    roomClient = createRoomClient({
+      onJoined(roomCode, memberId) {
+        room.value = roomCode; selfId.value = memberId
+        inputMode.value = 'microphone'; captions.value = []; joined.value = true; connecting.value = false
+      },
+      onMembers(next) {
+        members.value = next
+        captions.value = captions.value.filter(caption => next.some(member => member.id === caption.memberId && (member.mic || caption.state === 'final')))
+      },
+      onCaption(event) {
+        if (joined.value) receiveCaption(captions.value, event.memberId, event.utteranceId, event.text, event.state, Date.now())
+      },
+      onDiscard(memberId, utteranceId) {
+        captions.value = captions.value.filter(caption => caption.memberId !== memberId || caption.id !== utteranceId || caption.state === 'final')
+      },
+      onError(message) {
+        error.value = message
+        if (!joined.value) { connecting.value = false; roomClient?.close() }
+      },
+      onClose() { leave(); error.value = '房间连接已断开，请重新加入；麦克风已停止。' },
+    })
+    roomClient.connect(mode.value, name.value.trim(), code.value)
+    return
+  }
   room.value = mode.value === 'create' ? String(Math.floor(100000 + Math.random() * 900000)) : code.value
   members.value = [{ id: crypto.randomUUID(), name: name.value.trim(), mic: inputMode.value === 'simulation', color: characterAt(0).color }]
   for (let i = 0; i < 3; i++) addMember()
@@ -184,6 +225,8 @@ function runSimulation() {
 }
 function leave() {
   asr.stop()
+  roomClient?.close(); roomClient = undefined
+  connecting.value = false; selfId.value = ''
   clearMicUsage()
   joined.value = false; members.value = []; captions.value = []; pending = []
   scenarioRunning.value = false; simulationStarted.value = null; error.value = ''
@@ -197,8 +240,8 @@ function tick() {
 // Each final has its own immutable deadline; the shared clock never resets it.
 const timer = setInterval(tick, 50)
 onUnmounted(() => {
-  asr.stop(); clearInterval(timer); pending = []
-  window.removeEventListener('pagehide', asr.stop)
+  asr.stop(); roomClient?.close(); clearInterval(timer); pending = []
+  window.removeEventListener('pagehide', handlePageHide)
 })
 const copied = ref(false)
 async function copyCode() { try { await navigator.clipboard.writeText(room.value); copied.value = true; setTimeout(() => copied.value = false, 2000) } catch { error.value = `请手动复制房间码：${room.value}` } }
@@ -216,15 +259,15 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
     <header v-if="!joined" class="header"><a class="brand" href="/"><span class="brand-icon">≋</span>实时字幕<span class="brand-en">LIVE CAPTIONS</span></a><button @click="settingsOpen = !settingsOpen" :aria-expanded="settingsOpen">设置</button><a class="glasses-link" href="/glasses">▱ AR 预览 <span>↗</span></a></header>
     <ApiSettings v-if="!joined && settingsOpen" @close="settingsOpen = false" />
     <main v-else-if="!joined" class="landing">
-      <section class="intro"><div class="eyebrow"><span class="dot"></span> 多人字幕房间 · 交互演示</div><h1>多人<span>实时字幕</span></h1><p>按成员显示实时字幕，让每句话随时间自然消散。</p><div class="feature-tags"><span>◎ 最多 8 名成员</span><span>◷ 每句话独立渐隐</span><span>✦ 无字幕历史记录</span></div></section>
-      <section class="entry-card"><span class="small-label">房间设置</span><h2>创建或加入房间</h2><p>输入显示名称；加入房间需填写 6 位数字房间码。</p><div class="mode-tabs"><button :class="{ selected: mode === 'create' }" @click="mode = 'create'; error = ''">创建房间</button><button :class="{ selected: mode === 'join' }" @click="mode = 'join'; error = ''">加入房间</button></div><form @submit.prevent="enter"><label for="display-name">显示名称</label><input id="display-name" v-model="name" maxlength="20" placeholder="输入显示名称" autocomplete="nickname"/><template v-if="mode === 'join'"><label for="room-code">房间码</label><input id="room-code" v-model="code" maxlength="6" inputmode="numeric" placeholder="输入 6 位数字房间码"/></template><p v-if="error" class="error" role="alert">{{ error }}</p><button class="primary" type="submit">{{ mode === 'create' ? '创建房间' : '加入房间' }} <span>→</span></button></form><div class="privacy-note">♧ 字幕确认后显示 3、6 或 10 秒，再用 2 秒渐隐清除。</div><div class="demo-note"><span>DEMO</span> 支持模拟测试和单设备普通话识别，不同设备不互通。真实模式需授权麦克风，音频将交给所选的浏览器或豆包语音服务。</div></section>
+      <section class="intro"><div class="eyebrow"><span class="dot"></span> 多人实时字幕 · 保留模拟测试</div><h1>多人<span>实时字幕</span></h1><p>按成员显示实时字幕，让每句话随时间自然消散。</p><div class="feature-tags"><span>◎ 最多 8 名成员</span><span>◷ 每句话独立渐隐</span><span>✦ 无字幕历史记录</span></div></section>
+      <section class="entry-card"><span class="small-label">房间设置</span><h2>创建或加入房间</h2><p>输入显示名称；加入房间需填写 6 位数字房间码。</p><label for="room-mode">使用方式</label><select id="room-mode" v-model="roomMode" :disabled="connecting"><option value="simulation">本地模拟演示</option><option value="online">真实联网房间</option></select><div class="mode-tabs"><button :class="{ selected: mode === 'create' }" @click="mode = 'create'; error = ''">创建房间</button><button :class="{ selected: mode === 'join' }" @click="mode = 'join'; error = ''">加入房间</button></div><form @submit.prevent="enter"><fieldset :disabled="connecting"><label for="display-name">显示名称</label><input id="display-name" v-model="name" maxlength="20" placeholder="输入显示名称" autocomplete="nickname"/><template v-if="mode === 'join'"><label for="room-code">房间码</label><input id="room-code" v-model="code" maxlength="6" inputmode="numeric" placeholder="输入 6 位数字房间码"/></template><p v-if="error" class="error" role="alert">{{ error }}</p><button class="primary" type="submit">{{ mode === 'create' ? '创建房间' : '加入房间' }} <span>→</span></button></fieldset></form><div class="privacy-note">♧ 字幕确认后显示 3、6 或 10 秒，再用 2 秒渐隐清除。</div><div class="demo-note"><span>{{ roomMode === 'online' ? '联网' : 'DEMO' }}</span> 本地模拟互不联网；真实联网房间支持最多 8 人，各自开麦并共享字幕。识别音频将交给所选语音服务；面对面串音仍需实测。</div></section>
     </main>
     <main v-else class="room-layout">
       <header class="room-topbar">
         <div><h1>字幕房间</h1><button class="copy-room" @click="copyCode" aria-label="复制房间码">{{ room }} · {{ copied ? '已复制' : '复制房间码' }}</button></div>
         <button class="room-exit" @click="leave">离开房间</button>
       </header>
-      <div class="room-demo-controls">
+      <div v-if="roomMode === 'simulation'" class="room-demo-controls">
         <label for="input-mode">输入</label>
         <select id="input-mode" :value="inputMode" @change="changeInputMode">
           <option value="simulation">模拟字幕</option>
@@ -256,10 +299,10 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
         </select>
         <button @click="runSimulation" :disabled="scenarioRunning">{{ scenarioRunning ? '测试中' : '运行' }}</button>
       </div>
-      <p v-else class="room-grid-note">普通话 · 仅“我”接收真实语音 · {{ asrProvider === 'doubao' ? '本地检测到说话后上传至豆包，按服务用量计费' : '音频可能发送至浏览器语音服务' }}</p>
+      <p v-else class="room-grid-note">普通话 · {{ roomMode === 'online' ? '每人独立开麦，字幕同步到同房成员' : '仅“我”接收真实语音' }} · {{ asrProvider === 'doubao' ? '本地检测到说话后上传至豆包，按服务用量计费' : '音频可能发送至浏览器语音服务' }}</p>
       <label class="layout-experiment"><input v-model="adaptiveCards" type="checkbox" />{{ adaptiveCards ? '动态自适应布局（实验）' : '固定等分布局（原版）' }}</label>
       <section class="room-stage" aria-label="房间内容">
-        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :live-input="inputMode === 'microphone'" @toggle-mic="toggleMemberMic" />
+        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :live-input="inputMode === 'microphone'" :online-room="roomMode === 'online'" @toggle-mic="toggleMemberMic" />
       </section>
       <p v-if="error" class="room-error error" role="alert">{{ error }}</p>
       <p v-if="inputMode === 'microphone'" class="room-grid-note" :class="{ error: asrState === 'error' }" role="status">{{ asrMessage }}</p>
@@ -274,6 +317,6 @@ async function copyCode() { try { await navigator.clipboard.writeText(room.value
         <button v-else-if="me" class="room-self-mic" :aria-pressed="me.mic" @click="toggleMemberMic(me.id)">{{ me.mic ? '关闭我的麦克风' : '开启我的麦克风' }}</button>
       </div>
     </main>
-    <footer v-if="!joined"><span>实时字幕 · 面对面多人交流</span><span>单设备识别 <span class="footer-dot">●</span> 保留模拟测试</span></footer>
+    <footer v-if="!joined"><span>实时字幕 · 面对面多人交流</span><span>多人联网 / 本地演示 <span class="footer-dot">●</span> 保留模拟测试</span></footer>
   </div>
 </template>

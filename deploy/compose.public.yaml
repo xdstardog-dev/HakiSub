@@ -1,0 +1,6 @@
+# 在项目根目录与原 compose.yaml 合并使用；网关继续仅发布到回环地址。
+services:
+  hakisub:
+    environment:
+      HAKISUB_DEPLOYMENT_MODE: public
+      HAKISUB_ALLOWED_ORIGINS: ${HAKISUB_PUBLIC_ORIGIN:?Set the exact public HTTPS origin}

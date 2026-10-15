@@ -38,6 +38,8 @@ input { min-width: 0; }
 .feature-tags { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; margin-top: 16px; color: #577061; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #34443b; font-size: 14px; flex-shrink: 0; }
 .entry-card { width: 100%; background: #fff; border: 1px solid #dce4d8; border-radius: 18px; padding: 22px; }
+.entry-card fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.entry-card select { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid #cfdacb; border-radius: 9px; background: #fcfdfa; font: inherit; }
 .small-label { font-size: 12px; color: #617267; }
 .entry-card h2 { font-size: 23px; margin: 10px 0; }
 .entry-card > p { font-size: 13px; color: #617267; line-height: 1.7; }

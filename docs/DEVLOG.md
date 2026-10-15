@@ -290,3 +290,132 @@
 任务：按用户要求整理并推送主仓库更新。
 
 检查：重新执行 `npm test`、`npm run build` 均通过，`node --check public/product.js` 与 `git diff --check` 通过；未调用真实麦克风或豆包。提交范围包含本地VAD、静音断流、每次句首保护、固定模型与许可证、测试和产品说明页资源及文档。独立 `sites/hakisub-product/` 工作区已另行同步且无未提交变更，将其从主仓库忽略以避免误加入嵌套Git引用；主仓库保留 `public/product.*` 源文件并明确说明复制边界。密钥、依赖、构建产物及生成的WASM运行资源不纳入提交。
+
+日期：2026-10-15（Asia/Shanghai）
+
+任务：检查并理解今天的更新。
+
+检查范围：今日提交 90a2794 与 f914426，核对音频采集、Silero Worker 与流式帧、检测门槛与句首缓冲、有序上传和静音结束、网关设置与用量统计、模拟素材模块及产品说明页。开始时主仓库工作区干净。本次未修改业务代码，仅追加本检查记录；未编辑 DEEPSEEK-MEMORY.md。
+
+验证：初次 npm test 与 npm run build 因本机缺少新增 onnxruntime-web 依赖失败；npm ci 在沙箱内因缓存缺失失败，获准在沙箱外安装锁定依赖后，npm test 全部通过（含真实模型 WASM 静音推理）。npm run build 在沙箱内遇到 esbuild spawn EPERM，获准在沙箱外重跑通过。未开启真实麦克风、调用豆包、验证在线产品页或调整本机常驻服务；中文轻声、噪声、后台运行、真实计费与安卓仍需独立验收。
+
+日期：2026-10-15（Asia/Shanghai）
+
+任务：排查本机正式网页无法收音，提示“本地语音检测失败，已停止识别；不会自动切换为持续上传”。
+
+原因与处理：确认用户使用 http://127.0.0.1:8787/。端口进程虽从当前 dist 读取新前端，内存中仍为旧静态服务实现，将 .mjs 和 .wasm 均作为 application/octet-stream 返回，导致浏览器拒绝执行模型运行模块。当前磁盘代码已有正确类型，故无需改业务代码。停止并重启 HakiSub-Local 后发现旧 Node 子进程（PID 17988）仍占端口、新任务退出码为1；核实其命令行是 F:\hakiSub\server\index.mjs --production，结束该指定旧进程，再启动任务恢复服务。服务重启清空内存用量，未读取或修改 Key。
+
+验证：重启后实际8787地址的MJS类型为 text/javascript; charset=utf-8，WASM为 application/wasm。临时无头Chrome检查直接使用8787入口引用的Worker，模型成功初始化且10包静音推理通过；临时检查文件已删除。此前本次排查亦通过现有 vad-browser-smoke（模拟静音麦克风、模型与清理检查）；未访问真实麦克风或调用豆包，真实讲话恢复待用户刷新并验收。npm test 与 npm run build 已在同次会话前序检查通过，本次无业务代码修改，未重复运行。仅追加开发记录，未编辑DEEPSEEK-MEMORY.md。
+
+
+日期：2026-10-15（Asia/Shanghai）
+
+任务：按用户确认的多人同时开麦、分别识别并显示本人卡片目标，开始第一阶段真实房间通信及多成员 ASR 开发。
+
+实际修改：新增 server/roomGateway.mjs 与 src/roomClient.ts，服务端创建/验证六位码、最多8人、成员身份和临时令牌、成员快照、统一字幕/撤回广播、心跳及离房销毁；新成员不补发历史，不保存音频和识别历史。App.vue 新增本地模拟/真实联网入口，联网时按服务端身份定位本人、独立开麦、只更新对应成员卡片、断线/离页停止采集和清空页面；保留本地模拟、浏览器ASR、字幕时间和布局行为。网关在房间令牌下允许每人一路、全局默认最多8路独立豆包会话，关麦/离房撤销本人连接；原本机无令牌入口保留单路兼容，与成员会话互斥。Vite新增房间WebSocket代理，卡片区分远端真实成员状态；README与ARCHITECTURE同步说明已实现范围和部署边界。保留任务开始前已有DEVLOG改动，未编辑DEEPSEEK-MEMORY.md。
+
+验证：npm test 全部通过，新增 rooms.test.mjs 使用真实本地WebSocket和假豆包上游验证创建/加入/满员/销毁、八路并发上限、双路独立音频及识别结果、身份冒用防护、跨房间隔离、无历史补发、关麦/离房清理及令牌失效、客户端消息与清理；demo.test.mjs 补充本人并非首位成员、ASR令牌传递、本人/他人字幕回包、断线停麦和联网不混入模拟模式。npm run build 通过（沙箱内 esbuild spawn EPERM，获准沙箱外重跑通过）。
+
+未验收与下一步：未调用真实麦克风或豆包，未验证账户并发额度、真实双设备同时讲话、串音及长时稳定性。没有部署、推送或重启本机常驻服务；当前进程仍可能是旧网关，不可据新dist判断其支持房间。服务仍绑定127.0.0.1且只允许本机Origin，后续完成公网域名/HTTPS/双WebSocket代理、访问与用量限制、管理员设置保护及禁用公网旧无令牌ASR入口后，再进行真实设备验收。房间临时令牌不写浏览器存储，部署不得记录包含session参数的ASR URL。
+
+
+日期：2026-10-15（Asia/Shanghai）
+
+任务：按用户要求开展阿里云第一阶段部署前审查和制定方案，服务器变更须另行确认。
+
+实际工作：只读核对房间/字幕广播、成员ASR、采集与VAD、字幕清理、密钥设置、正式与开发启动方式、现有测试及工作区未提交状态。确认当前Node只监听127.0.0.1、Origin固定本机、无成员令牌ASR入口仍开放、共享测试端缺少管理员设置隔离，尚无Docker配置。Windows OpenSSH与ssh-keygen可执行文件已确认存在，未调用SSH、生成/读取密钥或访问服务器。新增docs/DEPLOYMENT-PLAN.md，规划单Node容器+宿主机回环发布+每测试者独立SSH隧道、初始资源和日志限制、服务端env注入、镜像白名单、权限边界、只读检查范围、回滚及分级验收；README/ARCHITECTURE增加方案入口。业务代码与其他项目未改，未编辑DEEPSEEK-MEMORY.md。
+
+验证：本轮npm test全通过；npm run build获准在沙箱外执行并通过（既有esbuild子进程限制）。仅覆盖本地WebSocket、假上游、客户端/UI及音频测试，未调用真实麦克风或豆包。未构建/运行Docker镜像，未核实用户所述服务器版本及余量。尚未部署、修改SSH/安全组/防火墙/端口、创建远程目录或重启服务。下一步待公网IP、SSH端口、现有密钥状态与用户对SSH连接准备及只读环境检查的确认。
+
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：SSH已由用户通过MobaXterm验证登录后，准备阿里云私有测试部署包。用户只读输出显示目标目录不存在、sudo docker ps成功且无运行容器；此前截图显示x86_64、可用约1.1GiB内存、2GiB Swap、33GB磁盘余量，尚未由Codex远程独立检查。
+
+实际修改：新增runtimeConfiguration.mjs，默认local保持现状，private-test限制本机Origin、关闭密钥设置与无成员令牌ASR、限制单房间及默认两路并发；index.mjs支持服务端监听配置，网关接收明确策略。新增Dockerfile、白名单.dockerignore、compose.yaml、空Key与发布配置示例；容器非root/只读、512MiB内存且不使用额外Swap、0.75CPU、64PID、日志轮转及自动重启，宿主机只规划127.0.0.1:18787映射。最终镜像只带ws、网关与dist，前端本地预构建。新增无密钥发布包脚本及逐文件SHA256清单，明确使用当前工作区完整代码；新增部署执行手册并更新README/架构/方案状态。未触碰其他项目、DEEPSEEK-MEMORY.md或真实Key。
+
+验证：npm test全部通过（含新deployment.test.mjs，真实本地WebSocket验证私有模式设置404、无令牌拒绝、Origin、单房间及两路并发限制）；npm run build获准沙箱外执行通过；npm run package:private-test成功，发布包hakisub-20261015T160310Z.tar.gz（UTC编号对应北京时间2026-10-16），逐文件清单核验通过，归档列表无实际.env、密钥、Git或其他项目。归档列表读取的tar子进程遇到沙箱EPERM，获准沙箱外只读重跑通过。git diff --check通过。
+
+边界：本机没有Docker运行环境，尚未实测Compose解析、Linux镜像构建或容器运行，基础镜像22-bookworm-slim仍为首次获取标签，启动前须记录并固定RepoDigest。没有连接服务器执行操作，没有创建远程目录、上传、开端口、启动或重启服务；所有远程变更仍待用户确认。没有调用真实麦克风或豆包，双人/8人真实验收待部署后执行。下一步先请求仅创建目标目录、上传校验解压发布包的授权，容器和隧道启动另行确认。
+
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：用户询问是否可自动化部署，改为准备一次执行的首次私有部署脚本。
+
+实际修改：新增deploy/start-private-test.sh，无参数仅打印计划，--apply才执行；限制/srv/projects/hakisub及admin身份，拒绝符号链接配置、已有本项目容器和占用的18787端口，保留已有密钥配置；自动初始化空Key环境、锁定Node镜像摘要、静默校验Compose、构建/启动本项目并做HTTP检查。未自动录入Key、创建隧道或修改SSH/防火墙。打包脚本纳入新脚本，更新执行手册；旧已上传发布包不含此脚本，需单独补充上传。
+
+验证：Bash语法校验及默认仅显示计划模式通过（沙箱Bash信号管道被阻止，获准本机沙箱外运行）；npm test、npm run build通过。脚本实际--apply分支和Docker仍未在实机运行验证，不将本地检查视为部署成功。没有连接或修改服务器，容器启动及回环端口映射仍待用户明确确认；不要求用户将口令或私钥交给聊天。
+
+
+日期：2026-10-16（Asia/Shanghai）
+
+修正首次部署脚本sudo预检：用户截图显示sudo -v要求密码，而sudo -n true无输出。不能据此推断所有sudo命令可免密，移除-v，改为sudo -n docker version实际验证Docker权限；全部Docker操作非交互，权限不足停止且不修改sudoers/SSH。修正条件内命令替换可能掩盖容器/端口查询失败的问题，改为独立赋值后检查。Bash语法及仅显示计划模式、npm test、npm run build通过，Bash/构建获准本机沙箱外运行。尚未远程执行修正版，无真实Docker/ASR验收，用户需先只读确认sudo -n docker权限，再补传修正版脚本。
+
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：用户要求优先使用服务器现有阿里云Docker加速器拉取既定Node镜像，失败再考虑本地构建上传；随后要求改为Windows自带OpenSSH直接管理，不再通过MobaXterm转贴命令。服务器文件删除、服务重启与开放端口须事先确认。
+
+实际修改与检查：保持Dockerfile的node:22-bookworm-slim，首次部署脚本增加daemon加速器信息和最多3次拉取，每次90秒、间隔5秒，失败保留配置并停止。README、架构和部署手册同步说明镜像获取顺序、manifest inspect直连与daemon镜像加速器的区别、离线导入后禁止再次构建/拉取，以及实际阻塞。保留工作区原有未提交修改，未编辑DEEPSEEK-MEMORY.md。
+
+连接状态：确认Windows OpenSSH 9.5p1、已有hakisub_aliyun密钥文件路径及known_hosts；未读取或输出私钥内容。通过获准的沙箱外原生SSH建立网络连接并匹配既有服务器指纹，服务器接受现有公钥，认证因私钥未解锁而未完成；复用Pageant代理也未取得可用密钥。按用户直接管理要求，经授权启用本机Windows ssh-agent，状态Running/Automatic，打开标准ssh-add本机隐藏输入窗口；记录时代理尚无identity，等待用户在本机解锁。已在artifacts准备hakisub-server别名片段，遵守“登录成功后建立别名”的顺序，尚未修改用户SSH config或服务器登录配置。
+
+离线准备：本机无Docker；直接curl访问Docker Hub超时，Windows默认代理可访问官方registry。已核验官方原标签Linux/amd64清单可获取，将官方Google go-containerregistry/crane 0.22.1免安装工具下载到忽略的artifacts并按官方checksums校验，未安装/重装Docker，未构建或上传镜像。服务器镜像拉取失败与加速器配置来自用户已有终端输出，Codex尚未成功远程执行拉取，不能将manifest inspect直连超时解释为加速器必然不可用。
+
+验证：npm test全部通过；npm run build在获准沙箱外通过，沙箱内原先因esbuild spawn EPERM失败；Bash语法与默认仅显示计划模式通过。本次仅调整部署脚本与文档，无网关、UI或音频行为变更。无真实API/麦克风、Linux容器构建或运行验收；未删除服务器文件、重启服务或开放端口。下一步在本机密钥解锁后自动执行whoami/hostname只读验证，成功后添加用户级连接别名并继续现有加速器拉取重试。
+
+本轮完成更新（2026-10-16，Asia/Shanghai）：用户已在本机标准窗口解锁原有私钥。Windows自带OpenSSH成功执行whoami与hostname，确认admin和目标主机；随后用CreateNew新建原本不存在的用户SSH配置，建立并验证hakisub-server别名。全程保留既有私钥、known_hosts和服务器SSH登录配置。Windows本机ssh-agent已为Running/Automatic，后续直接使用原生SSH/SCP管理，无需用户转贴服务器命令。
+
+镜像获取实测：Codex通过别名直接核实Docker29.9.1、Composev5.6.0、x86_64、约1125MiB可用内存、33GiB磁盘余量、18787空闲及当前仅hello-world镜像；服务器既有阿里云加速器连续3次docker pull原定node:22-bookworm-slim均返回not found。未修改daemon、Node标签或Docker安装。
+
+离线实际交付：本机按官方checksums验证crane0.22.1，使用Windows默认代理获取原标签的官方Node22.23.3 Linux/amd64基础镜像，固定node@sha256:efd0ab5780c2d9ab1f0f869571a00d5edb17793bff4cce4a2792e3eb0ffc7562。ws8.22.0从官方npm下载并与锁文件SHA512核对；运行文件、Dockerfile及包文件28项与已测试快照hakisub-20261015T160310Z一致。组装最终server/dist/ws应用层，未执行Dockerfile的npm安装阶段，未安装本机Docker。完整归档85,066,240字节，SHA256为b1766599a7f9d4d377845b6c3613e765605b47e212a072aff310c56b6927d38a；crane完整结构校验通过，经原生SCP上传及服务器SHA256复核后docker load成功。原始config摘要836502a049818f093919d09a597827be58e0d7f1324903c7a44d74a1b80d199d与全部六层均核对一致；Docker29 containerd显示manifest ID f9c6bf8ca6a05e8e3f4422d69ee014c97549b55fb2df20bfed86126ba3a4f832，已区分记录。
+
+容器验收：先用无网络、无宿主端口的临时只读容器验证Nodev22.23.3、UID1000、生产网页与VAD模型/MJS/WASM类型、设置404、无令牌ASR403、非许可Origin403、房间创建/加入及合成字幕广播，全部通过；不含真实上游或麦克风。用户明确批准启动和隧道后，Compose以--no-build --pull never创建本项目独立网络及容器hakisub-test-hakisub-1，健康检查healthy。实际资源限制512MiB且无额外Swap、0.75CPU、64PID、非root及只读根目录已核实，宿主端口仅127.0.0.1:18787。首次空闲快照24.9MiB、0.01%CPU，仅为瞬时空闲记录。
+
+访问与收尾：本机隐藏原生SSH进程PID35232建立127.0.0.1:18787到服务器同端口的隧道，http://localhost:18787返回200，实际health configured:false；已请求在Codex打开页面。隧道PID保存在忽略目录artifacts/hakisub-server-tunnel.local，本机重启或进程关闭后需重建；容器独立常驻。项目.env仅将基础镜像字段固定为已验摘要，无服务重启或密钥回显。归档、OFFLINE-IMAGE与DEPLOYMENT-RECEIPT保留在本机artifacts和服务器项目images目录，README/ARCHITECTURE/部署手册与初期方案状态同步。未改安全组、防火墙、SSH登录规则或其他项目，未删除服务器文件、录音、保存识别历史、提交或推送Git。豆包Key配置、真实API/麦克风、双设备同时讲话、串音、长时负载及重启恢复仍待单独验收。
+
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：修复私有部署设置页持续显示“正在读取配置”、本机密钥表单及“设置服务不可用，请重启npm run dev”的错误提示。
+
+原因与修改：实测部署health为configured:false、settings为404，这是私有模式关闭网页管理的预期策略；ApiSettings此前把非JSON的404当作开发服务故障，并无条件展示本机表单和用量轮询。现初次GET settings遇404时改查现有health布尔状态，后续刷新只查health，展示服务器统一管理说明，移除该模式的密钥输入/保存/删除/连接测试和用量组件，并在脚本拒绝设置写操作。加载状态区分读取中、可用和不可用，异常/超时可重试；卸载取消请求并忽略迟到404。本机设置、环境密钥只读和保存后清空输入继续保留。没有开放服务端设置接口或改动网关、ASR协议、字幕、音频和布局行为。
+
+验证：新增tests/api-settings-view.test.mjs，以模拟fetch及真实Vue模板渲染检查私有只读、无写入/用量入口、本机保存/环境只读、异常/恢复/超时及卸载取消；纳入npm test。npm test、npm run build全部通过，构建沿用获准沙箱外esbuild执行。使用独立无Key发布快照在本机127.0.0.1:18788临时启动private-test，并在浏览器实际确认无旧错误或表单；该临时预览及测试标签页已清理。README、ARCHITECTURE及部署手册同步更新，未编辑DEEPSEEK-MEMORY.md。
+
+部署：生成hakisub-20261015T172741Z快照及Linux/amd64完整镜像，仍使用已固定官方Node22.23.3和ws8.22.0。通过原生SSH/SCP上传到服务器images/对应新版本目录，校验发布包、RELEASE与镜像SHA256并docker load；config摘要3ac01612c299c96c0c2a9d2fab3b5fadc370be9fad91615bc34c2506799f9504核对通过，临时无网络容器全部冒烟检查通过。镜像归档SHA256为bb48897d86439991dfadc277f2b5f05b94cf2fa4a0e129baaa61fb91d7398f52，Docker29 manifest ID为20c61690ace0b9fc5ea831a3097522059f21d240b4f1f988d32504ee16a9e0fc。
+
+用户明确批准更新服务后，仅切换.env发布标识并重建本项目容器，配置健康失败恢复旧版，实际更新成功未触发回滚。新容器healthy、node用户、只读根目录，仍仅127.0.0.1:18787，保留旧镜像和原密钥/资源配置。通过原有SSH隧道刷新用户页面，打开设置并点击刷新，实际显示“尚未配置API Key”及服务器统一管理说明，错误和持续加载已消失；截图保存在忽略目录artifacts/settings-private-deployed.jpg。宿主根目录旧发布文件保留，当前运行版本和新manifest位于images/hakisub-20261015T172741Z。未调用真实豆包或麦克风，未新增公网端口、修改SSH/防火墙、删除服务器文件、提交或推送Git。真实语音仍需服务器安全录入Key后单独验收。
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：用户要求直接上传服务器，达到他人点击公网链接即可进入的状态。
+
+实际修改：runtimeConfiguration新增public模式，强制明确的非本机HTTPS Origin，拒绝路径、凭据和通配符，保留本机/私有模式校验；公网禁用网页设置及无令牌ASR，默认两路并发、最多100个房间。新增deploy/compose.public.yaml作为现有Compose覆盖文件，保留回环端口和资源配置；发布脚本包含覆盖文件和公网文档。扩展部署测试验证公网配置、合法Origin建房、非法来源/无令牌拒绝及设置404。README、ARCHITECTURE和PUBLIC-DEPLOYMENT同步实际进展。没有改UI、音频或字幕生命周期，未编辑DEEPSEEK-MEMORY.md。
+
+验证：npm test全部通过；npm run build因沙箱esbuild spawn EPERM失败后，获准沙箱外重跑通过。git diff --check通过。发布包hakisub-20261015T174817Z生成成功，完整Linux/amd64镜像沿用已固定官方Node22.23.3和锁定ws8.22.0，crane validate通过。原生SSH确认服务器现有容器健康、80/443无监听；新发布包/镜像经SCP上传到本项目独立images目录，服务器SHA256核验通过，docker load成功。临时无外部网络、无宿主端口、无Key、只读非root容器通过生产HTTP、模型/WASM类型、设置404、无令牌ASR403、非法Origin403、双成员房间及合成字幕广播。详细哈希见PUBLIC-DEPLOYMENT.md和artifacts/OFFLINE-IMAGE.json。
+
+未完成与阻塞：已向用户询问已有域名或无域名情况，尚未收到回复；未确定HTTPS入口、签发证书、安装代理或开放公网端口，因此不能声称已可供他人公网访问。新镜像仅预置，当前常驻仍为hakisub-20261015T172741Z且healthy，无重启。实际health configured:false，服务器Key未配置；未调用真实豆包API或麦克风，真实语音、双设备和公网WSS仍待验收。本机测试的HTTPS Origin字符串不等于TLS验收。没有上传密钥、修改SSH/防火墙、删除服务器文件、Git提交或推送。
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：按用户新约束为hakisub.xdstar.work准备免费HTTPS/WSS；广州服务器ICP未通过前保持不公开，后端不得新增公网端口。
+
+域名核查：用户02:44:33控制台状态为持有者未实名认证及clientHold等；公共Google DNS对主域名NS、子域名A/AAAA返回NXDOMAIN，直接向记录中的dns17.hichina.com查子域名A/AAAA也未找到。独立RDAP确认注册商阿里云、注册2026-10-15T18:01:20Z/到期2027-10-15T18:01:20Z、NS dns17/dns18.hichina.com及clientHold/clientRenewProhibited/两项转移限制/addPeriod。CAA权威核查未完成：Windows枚举不支持，Node DNS访问ECONNREFUSED；不推断无CAA。公开状态不证明全部Hold原因，已提供实名关联模板、检查邮件/工单、备案与后续DNS步骤；不替用户提交证件或备案材料。
+
+修改：新增deploy/caddy/Caddyfile，指定免费Let's Encrypt、全路径反代回环18787及自动WebSocket，关闭admin/HTTP3，不开访问日志并过滤request。新增独立compose.caddy.yaml，默认public-web profile未启用，ICP确认值默认no，镜像固定为实际验证ID，证书/config持久卷及128MiB/0.25CPU/最小能力限制。新增public.env.example，更新白名单打包脚本、README、ARCHITECTURE和PUBLIC-DEPLOYMENT。没有修改UI/音频/网关，未编辑DEEPSEEK-MEMORY.md。
+
+实际验收：npm test全部通过。npm run build沙箱esbuild EPERM后，最初审批额度不足导致不能升级；恢复后获准重跑通过。打包脚本node --check、git diff --check通过。官方Caddy2.11.6-alpine固定registry清单86d4376a…，核对config和5层、crane validate通过；SCP上传到服务器images/caddy-preparation-20261016后核验归档SHA256并docker load。Docker导入ID b8109060…与原registry/归档manifest不同，纠正初次使用f1349d3c…导致No such image；RootFS全部diff_ids与官方config一致。临时容器仅cap_drop ALL导致带文件能力的Caddy执行EPERM，按生产Compose保留NET_BIND_SERVICE后，在无网络无端口只读128MiB/0.25CPU容器中caddy validate返回Valid configuration；隔离空Key环境三份Compose config --quiet通过。详细完整摘要见PUBLIC-DEPLOYMENT.md及本机/服务器CADDY-IMAGE.json。
+
+边界与收尾：只上传、导入和离线验证Caddy，未安装常驻代理、申请证书、修改DNS或防火墙。最后ss确认80/443无监听，现有hakisub-test-hakisub-1健康且仅127.0.0.1:18787。无真实HTTPS/WSS、证书续期、豆包API或麦克风验收，服务器Key上次实测为空。剩余条件为域名实名、暂停解析原因处理及ICP备案通过，随后才配置A记录/开放80与443/启用Caddy并验收；8787/18787不向公网开放。不提交或推送Git。
+
+日期：2026-10-16（Asia/Shanghai）
+
+任务：按用户要求汇总上述累计更新，完成本次 Git 提交与远端推送前检查。
+
+本次归档范围：多人联网房间、成员身份与独立ASR会话、统一字幕广播及离房清理；本机/私有/公网运行配置与限制；Docker与Compose、无密钥发布包及首次部署脚本；私有部署设置页只读状态和加载异常修复；Caddy免费HTTPS/WSS及备案前默认禁用配置；对应模拟测试、README、架构与部署执行记录。保留模拟模式和既有字幕生命周期，未修改DEEPSEEK-MEMORY.md。
+
+本轮验证：npm test全部通过，包含房间通信、成员隔离、独立音频、部署策略和设置页模拟测试；npm run build首次受沙箱esbuild spawn EPERM限制，经授权沙箱外重跑通过。git diff --check通过；35个待提交文件的常见凭据格式检查未发现可疑内容，环境文件、密钥、artifacts及构建产物保持忽略。git fetch origin成功，提交前HEAD与origin/main一致。本轮仅整理、验证和Git交付，未重新部署或操作服务器。
+
+验收边界：既有记录显示私有测试版已部署；公网应用镜像和Caddy仅准备完成，域名实名、暂停解析原因处理及ICP备案仍待完成。真实HTTPS/WSS、豆包API、麦克风、双设备与长时稳定性未在本轮验收，不能将自动化测试通过视为这些验收完成。

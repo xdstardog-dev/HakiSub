@@ -12,8 +12,9 @@
     "server": "node server/index.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
-    "test": "node tests/simulation.test.mjs && node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs && node tests/doubao.test.mjs && node tests/audio-capture.test.mjs && node tests/speech-detector.test.mjs && node tests/api-settings.test.mjs && node tests/static-website.test.mjs",
-    "preview": "vite preview"
+    "test": "node tests/simulation.test.mjs && node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs && node tests/doubao.test.mjs && node tests/audio-capture.test.mjs && node tests/speech-detector.test.mjs && node tests/api-settings.test.mjs && node tests/api-settings-view.test.mjs && node tests/static-website.test.mjs && node tests/rooms.test.mjs && node tests/deployment.test.mjs",
+    "preview": "vite preview",
+    "package:private-test": "node scripts/package-private-test.mjs"
   },
   "dependencies": {
     "onnxruntime-web": "1.24.3",

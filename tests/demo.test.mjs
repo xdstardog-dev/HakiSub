@@ -26,12 +26,16 @@ class FakeRecognition {
 const browserEvents = new Map(), documentEvents = new Map()
 const browser = { isSecureContext: true, SpeechRecognition: FakeRecognition, addEventListener: (name, fn) => browserEvents.set(name, fn), removeEventListener: name => browserEvents.delete(name) }
 const documentStub = { hidden: false, addEventListener: (name, fn) => documentEvents.set(name, fn), removeEventListener: name => documentEvents.delete(name) }
-let doubaoCallbacks, doubaoStopped = false
-const context = vm.createContext({ createDoubaoAsrClient: callbacks => {
+let doubaoCallbacks, doubaoStopped = false, doubaoRoomToken, roomCallbacks, roomSent = [], roomClosed = false
+const context = vm.createContext({ createRoomClient: callbacks => {
+  roomCallbacks = callbacks
+  return { connect() {}, send(event) { roomSent.push(event) }, getToken: () => 'self-room-token', close() { roomClosed = true } }
+}, createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
+  doubaoRoomToken = roomToken
   doubaoCallbacks = callbacks
   return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
 }, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: { pathname: '/' }, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
-const exported = 'globalThis.demo = {name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
+const exported = 'globalThis.demo = {roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
 vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
@@ -227,6 +231,28 @@ assert.equal(d.micStartedAt.value, null, '切换识别来源清除本次统计')
 assert.equal(d.captions.value.length, 2, '换来源保留已确认字幕的原生命周期')
 advance(12000); assert.equal(d.captions.value.length, 0)
 d.leave()
+// 联网房间中的本人不一定排第一；只发送自己的字幕，广播回包再渲染。
+d.roomMode.value = 'online'; d.mode.value = 'create'; d.enter()
+assert.equal(d.connecting.value, true); assert.equal(d.joined.value, false)
+roomCallbacks.onJoined('654321', 'self')
+roomCallbacks.onMembers([{ id: 'other', name: 'Other', mic: true, color: '' }, { id: 'self', name: 'Me', mic: false, color: '' }])
+assert.equal(d.me.value.id, 'self'); assert.equal(d.members.value.length, 2)
+d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
+assert.equal(doubaoRoomToken, 'self-room-token')
+assert.equal(roomSent.at(-1).type, 'mic'); assert.equal(roomSent.at(-1).mic, true)
+doubaoCallbacks.onResult('one', '本人的话', 'interim')
+assert.equal(d.captions.value.length, 0, '等待房间回包，避免重复和身份错位')
+const sentCaption = roomSent.at(-1)
+roomCallbacks.onCaption({ ...sentCaption, memberId: 'self' })
+roomCallbacks.onCaption({ memberId: 'other', utteranceId: 'two', text: '别人的话', state: 'final' })
+assert.deepEqual(Array.from(d.captions.value, caption => caption.memberId), ['self', 'other'])
+roomCallbacks.onDiscard('self', sentCaption.utteranceId)
+assert.equal(d.captions.value.length, 1)
+d.changeInputMode({ target: { value: 'simulation' } })
+assert.equal(d.inputMode.value, 'microphone', '联网模式不混入模拟成员')
+roomCallbacks.onClose()
+assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(roomClosed, true)
+assert.equal(d.captions.value.length, 0); assert.match(d.asrState.value, /idle/)
 cleanup(); assert.ok(timers.every(t => t.cleared))
 assert.equal(browserEvents.size, 0); assert.equal(documentEvents.size, 0)
 console.log('通过：真实识别接入现有生命周期、模式隔离、授权失败、切屏保持/离页关闭、字数边界、独立生命周期、渐隐中加入新句、Interim 原位更新与确认、重复 Final、成员隔离与静音、六种模拟、一分钟压力测试（81 句）、1～8 人切换、离房及卸载清理。')

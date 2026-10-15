@@ -9,10 +9,10 @@ type ClientEnvironment = {
   createDetector: (onResult: (pcm: ArrayBuffer, probability: number) => void, onError: (message: string) => void) => SpeechDetector
 }
 export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: ClientEnvironment = {
-  createSocket: () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/asr`),
+  createSocket: () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/asr${roomToken ? `?session=${encodeURIComponent(roomToken)}` : ''}`),
   createCapture: createAudioCapture,
   createDetector: createSpeechDetector,
-}) {
+}, roomToken = '') {
   let generation = 0, active = false, microphoneReady = false
   let socket: WebSocket | undefined, capture: AudioCapture | undefined
   let detector: SpeechDetector | undefined

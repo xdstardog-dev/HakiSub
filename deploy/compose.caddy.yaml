@@ -1,0 +1,47 @@
+# 与根 compose.yaml、deploy/compose.public.yaml 合并；仅用于 Linux 服务器。
+# 默认不启用；备案成功后才可使用 public-web profile 并设置确认字段。
+services:
+  caddy:
+    profiles: [public-web]
+    image: ${HAKISUB_CADDY_IMAGE:?Set a verified official Caddy image digest}
+    network_mode: host
+    environment:
+      HAKISUB_ICP_CONFIRMED: ${HAKISUB_ICP_CONFIRMED:-no}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        if [ "$${HAKISUB_ICP_CONFIRMED}" != "yes" ]; then
+          echo 'ICP filing is not confirmed; HTTPS remains disabled.' >&2
+          exit 1
+        fi
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - type: bind
+        source: ./deploy/caddy
+        target: /etc/caddy
+        read_only: true
+        bind:
+          create_host_path: false
+      - hakisub_caddy_data:/data
+      - hakisub_caddy_config:/config
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  hakisub_caddy_data:
+  hakisub_caddy_config:

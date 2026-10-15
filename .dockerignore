@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!server/
+!server/*.mjs
+!dist/
+!dist/**
+# 即使白名单目录出现误放文件，也不将凭据发送到构建上下文。
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/secrets/**
+**/.git/**

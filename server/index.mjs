@@ -3,6 +3,11 @@ import { createApiKeyStore } from './apiKeyStore.mjs'
 import { fileURLToPath } from 'node:url'
 import { access } from 'node:fs/promises'
 import { createStaticWebsite } from './staticWebsite.mjs'
+import { readRuntimeConfiguration } from './runtimeConfiguration.mjs'
+
+let configuration
+try { configuration = readRuntimeConfiguration() }
+catch (error) { console.error(error.message); process.exit(1) }
 
 let keyStore
 try { keyStore = await createApiKeyStore(fileURLToPath(new URL('../.env', import.meta.url)), process.env.DOUBAO_API_KEY) }
@@ -14,16 +19,16 @@ if (production) {
   try { await access(new URL('../dist/index.html', import.meta.url)) }
   catch { console.error('请先运行 npm run build，再启动本机正式服务。'); process.exit(1) }
 }
-const gateway = createAsrGateway({ keyStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
+const gateway = createAsrGateway({ ...configuration, keyStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
   serveWebsite: production ? createStaticWebsite(websiteDirectory) : undefined })
 let vite
 try {
   await new Promise((resolve, reject) => {
     gateway.server.once('error', reject)
-    gateway.server.listen(8787, '127.0.0.1', resolve)
+    gateway.server.listen(configuration.port, configuration.host, resolve)
   })
-  console.log('本地 ASR 网关：http://127.0.0.1:8787（密钥只在服务端读取）')
-  if (!keyStore.status().configured) console.log('尚未配置 API Key，请在主页设置中填写；仍可使用模拟与浏览器识别。')
+  console.log(`HakiSub 已启动（端口 ${configuration.port}，密钥只在服务端读取）。`)
+  if (!keyStore.status().configured) console.log(configuration.enableSettings ? '尚未配置 API Key，请在主页设置中填写；仍可使用模拟与浏览器识别。' : '尚未配置 API Key，请管理员配置服务端环境；仍可检查房间连接。')
   if (process.argv.includes('--dev')) {
     const { createServer } = await import('vite')
     vite = await createServer()

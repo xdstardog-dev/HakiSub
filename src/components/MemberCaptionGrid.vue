@@ -9,6 +9,7 @@ const props = defineProps<{
   now: number
   selfId?: string
   liveInput?: boolean
+  onlineRoom?: boolean
   adaptive?: boolean
 }>()
 const emit = defineEmits<{ toggleMic: [id: string] }>()
@@ -112,7 +113,7 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
       <div class="tile-heading">
         <div class="tile-identity">
           <h2 :title="member.name">{{ member.name }}<small v-if="member.id === selfId">（我）</small></h2>
-          <span class="tile-status">{{ liveInput && member.id !== selfId ? '未接入设备' : !member.mic ? '麦克风关闭' : liveInput ? '麦克风开启' : '模拟麦克风开启' }}</span>
+          <span class="tile-status">{{ liveInput && member.id !== selfId && !onlineRoom ? '未接入设备' : !member.mic ? '麦克风关闭' : liveInput ? '麦克风开启' : '模拟麦克风开启' }}</span>
         </div>
         <button class="tile-mic" :disabled="liveInput && member.id !== selfId" @click="emit('toggleMic', member.id)"
           :aria-label="`${member.mic ? '关闭' : '开启'}${member.name}的麦克风`" :aria-pressed="member.mic">
