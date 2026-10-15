@@ -1,32 +1,3 @@
-export type StressUtterance = { memberIndex: number; at: number; duration: number; text: string }
-
-// A repeatable one-minute conversation: dense and sparse ten-second phases.
-// Each row follows the same outing discussion, with all three reading durations.
-const dialogue = [
-  ['周末去哪？', '去公园吧。', '我想先去附近新开的咖啡馆坐一会儿，然后再去公园。', '好呀！', '那家咖啡馆周末可能人比较多，我们最好提前问问有没有八个人的位置，免得到时候大家站在门口等。', '我来问。', '我下午两点以后都有空，你们觉得几点集合比较合适？', '两点半吧。'],
-  ['我查一下路线。', '坐地铁方便吗？', '地铁出口走过去大概还要十分钟，如果有人不熟悉那边的路，我们可以先在地铁站出口集合再一起走。', '可以。', '从东门进去比较近，旁边还有一条树荫下的小路。', '我骑车来。', '自行车可以停在咖啡馆旁边，不过周末车位可能有点紧张。', '到时联系。'],
-  ['想喝什么？', '冰拿铁！', '我不太能喝咖啡，店里如果有不含咖啡因的热饮就好了。', '有热可可。', '我上次去的时候看到菜单上还有水果茶和热牛奶，甜度也可以调整，大家到了之后再慢慢选就行。', '我要少糖。', '我们也可以点两份小蛋糕分着吃，先看看当天有什么口味。', '赞成！'],
-  ['天气怎么样？', '可能下雨。', '如果下午真的下雨，我们就在咖啡馆多坐一会儿，不用急着去公园，等雨停了再决定要不要出去散步。', '带伞吧。', '我可以多带一把折叠伞，谁忘记带了就和我一起走。', '谢谢你。', '我出门之前再看一次天气预报，有变化就提前告诉大家。', '好。'],
-  ['谁带相机？', '我带！', '公园湖边那条路下午光线挺好，我们可以在那里拍一张合照。', '我带三脚架。', '大家不用为了拍照特意赶时间，我们先吃点东西再慢慢走，看到喜欢的地方就停下来休息一会儿。', '没问题。', '我还想看看公园里的花展，听说这周刚换了新的展区。', '一起去！'],
-  ['再确认一下。', '两点半见。', '那就周六下午两点半在地铁站东出口集合，先去咖啡馆，天气好的话再去公园，临时有事记得告诉大家。', '收到！', '我会提前十分钟到出口附近等大家，不用着急。', '周六见。', '路上注意安全，骑车过来的朋友到了以后再和我们碰面。', '到时见！'],
-]
-
-export function createStressConversation(): StressUtterance[] {
-  return dialogue.flatMap((lines, phase) => {
-    const dense = phase % 2 === 0
-    const events: StressUtterance[] = []
-    for (let round = 0; round < 3; round++) {
-      const speakers = dense ? Array.from({ length: 8 }, (_, i) => i) : [(phase + round * 3) % 8]
-      for (const memberIndex of speakers) {
-        const text = lines[(memberIndex + round) % 8]!
-        events.push({
-          memberIndex,
-          at: phase * 10000 + round * (dense ? 3000 : 4000) + (dense ? memberIndex * 70 : 0),
-          duration: Math.min(1600, Math.max(600, Array.from(text).length * 30)),
-          text,
-        })
-      }
-    }
-    return events
-  }).sort((a, b) => a.at - b.at)
-}
+// 已废弃：压力测试的对话与时间轴逻辑已迁移到 src/simulation/scenarios.ts，
+// 台词文本已迁移到 materials/example.json。本文件不再被任何代码引用。
+// 因工作区文件权限禁止删除子文件，此处保留为空壳，请勿再 import 本文件。

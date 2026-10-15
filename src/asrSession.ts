@@ -11,6 +11,7 @@ export function createAsrSession(provider: AsrProvider, memberId: string, callba
     onState: callbacks.onState,
     onResult: (utteranceId, text, state) => callbacks.onCaption({ memberId, utteranceId: `${sessionId}-${utteranceId}`, text, state }),
     onDiscard: utteranceId => callbacks.onDiscard(memberId, `${sessionId}-${utteranceId}`),
+    onUsage: callbacks.onUsage,
   }
   return provider === 'browser' ? createBrowserAsr(normalized) : createDoubaoAsrClient(normalized)
 }

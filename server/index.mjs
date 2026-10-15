@@ -1,10 +1,21 @@
-import { loadEnvFile } from 'node:process'
 import { createAsrGateway } from './asrGateway.mjs'
+import { createApiKeyStore } from './apiKeyStore.mjs'
+import { fileURLToPath } from 'node:url'
+import { access } from 'node:fs/promises'
+import { createStaticWebsite } from './staticWebsite.mjs'
 
-try { loadEnvFile(new URL('../.env', import.meta.url)) }
+let keyStore
+try { keyStore = await createApiKeyStore(fileURLToPath(new URL('../.env', import.meta.url)), process.env.DOUBAO_API_KEY) }
 catch (error) { if (error.code !== 'ENOENT') { console.error('无法读取 .env，请检查文件格式。'); process.exit(1) } }
 
-const gateway = createAsrGateway({ apiKey: process.env.DOUBAO_API_KEY })
+const production = process.argv.includes('--production')
+const websiteDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
+if (production) {
+  try { await access(new URL('../dist/index.html', import.meta.url)) }
+  catch { console.error('请先运行 npm run build，再启动本机正式服务。'); process.exit(1) }
+}
+const gateway = createAsrGateway({ keyStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
+  serveWebsite: production ? createStaticWebsite(websiteDirectory) : undefined })
 let vite
 try {
   await new Promise((resolve, reject) => {
@@ -12,7 +23,7 @@ try {
     gateway.server.listen(8787, '127.0.0.1', resolve)
   })
   console.log('本地 ASR 网关：http://127.0.0.1:8787（密钥只在服务端读取）')
-  if (!process.env.DOUBAO_API_KEY?.trim()) console.log('尚未配置 DOUBAO_API_KEY，仍可使用模拟与浏览器识别。')
+  if (!keyStore.status().configured) console.log('尚未配置 API Key，请在主页设置中填写；仍可使用模拟与浏览器识别。')
   if (process.argv.includes('--dev')) {
     const { createServer } = await import('vite')
     vite = await createServer()

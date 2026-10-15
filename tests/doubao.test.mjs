@@ -8,6 +8,7 @@ import WebSocket from 'ws'
 import { createRecognitionRequest, createAudioPacket, parseRecognitionResponse, DOUBAO_RESOURCE_ID } from '../server/doubaoProtocol.mjs'
 import { createDoubaoResultMapper } from '../server/doubaoResults.mjs'
 import { createAsrGateway } from '../server/asrGateway.mjs'
+import { createAsrDiagnostics } from '../server/asrDiagnostics.mjs'
 
 function loadTypeScript(path, names, globals = {}) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
@@ -82,36 +83,95 @@ const clipped = []
 createAudioResampler(16000, packet => clipped.push(packet))(new Float32Array(3200).fill(-2))
 assert.equal(new DataView(clipped[0]).getInt16(0, true), -32768)
 
-const { createDoubaoAsrClient } = loadTypeScript('../src/doubaoAsrClient.ts', ['createDoubaoAsrClient'], { setTimeout, clearTimeout })
+const { createVoiceActivityGate } = loadTypeScript('../src/voiceActivityGate.ts', ['createVoiceActivityGate'])
+const { createDoubaoAsrClient } = loadTypeScript('../src/doubaoAsrClient.ts', ['createDoubaoAsrClient'], { setTimeout, clearTimeout, createVoiceActivityGate })
+const voicedPacket = new ArrayBuffer(6400)
+for (let i = 0; i < 3200; i++) new DataView(voicedPacket).setInt16(i * 2, i % 2 ? 5000 : -5000, true)
+const gateEvents = []
+const gate = createVoiceActivityGate(() => gateEvents.push('start'), () => gateEvents.push('audio'), () => gateEvents.push('end'))
+for (let i = 0; i < 100; i++) gate.accept(new ArrayBuffer(6400))
+assert.deepEqual(gateEvents, [])
+gate.accept(voicedPacket); assert.deepEqual(gateEvents, ['start', 'audio', 'audio', 'audio', 'audio'])
+gate.accept(voicedPacket); assert.equal(gateEvents.at(-1), 'audio')
+for (let i = 0; i < 8; i++) gate.accept(new ArrayBuffer(6400))
+assert.equal(gateEvents.at(-1), 'end')
+const audioAfterEnd = gateEvents.length
+for (let i = 0; i < 30; i++) gate.accept(new ArrayBuffer(6400))
+assert.equal(gateEvents.length, audioAfterEnd)
+const taggedPacket = (tag, amplitude = 0, activeFrames = 10) => {
+  const packet = new ArrayBuffer(6400), view = new DataView(packet)
+  view.setInt16(0, tag, true)
+  for (let i = 1; i < activeFrames * 320; i++) view.setInt16(i * 2, i % 2 ? amplitude : -amplitude, true)
+  return packet
+}
+const shortEvents = [], shortPackets = []
+const shortGate = createVoiceActivityGate(() => shortEvents.push('start'), packet => shortPackets.push(packet), () => shortEvents.push('end'), { preRollMs: 500 })
+const beforeShort = [taggedPacket(1), taggedPacket(2), taggedPacket(3)]
+beforeShort.forEach(packet => shortGate.accept(packet))
+const oneCharacter = taggedPacket(4, 300, 3) // 只有约 60ms 的轻声，整包 RMS 会被静音稀释。
+shortGate.accept(oneCharacter)
+assert.deepEqual(shortEvents, ['start'])
+assert.deepEqual(shortPackets, [...beforeShort, oneCharacter], '句首缓冲按时间顺序且触发包只出现一次')
+for (let i = 0; i < 8; i++) shortGate.accept(taggedPacket(10 + i))
+assert.deepEqual(shortEvents, ['start', 'end'])
+for (let i = 0; i < 300; i++) shortGate.accept(taggedPacket(20 + i))
+const afterLongSilence = taggedPacket(500, 300, 3)
+shortGate.accept(afterLongSilence)
+assert.deepEqual(shortEvents, ['start', 'end', 'start'], '长时间静音后短句仍能触发')
+assert.equal(shortPackets.at(-1), afterLongSilence)
+const customPreRoll = []
+const customGate = createVoiceActivityGate(() => {}, packet => customPreRoll.push(packet), () => {}, { preRollMs: 200 })
+const oldQuiet = taggedPacket(510), recentQuiet = taggedPacket(511), configuredStart = taggedPacket(512, 5000)
+customGate.accept(oldQuiet); customGate.accept(recentQuiet); customGate.accept(configuredStart)
+assert.deepEqual(customPreRoll, [recentQuiet, configuredStart], '前置环形缓冲长度可配置')
+const pauseEvents = []
+const pauseGate = createVoiceActivityGate(() => pauseEvents.push('start'), () => {}, () => pauseEvents.push('end'))
+pauseGate.accept(taggedPacket(520, 300, 3))
+for (let i = 0; i < 7; i++) pauseGate.accept(taggedPacket(521 + i))
+pauseGate.accept(taggedPacket(530, 300, 3))
+assert.deepEqual(pauseEvents, ['start'], '短暂停顿后轻声续讲仍属于同一会话')
+for (let i = 0; i < 8; i++) pauseGate.accept(taggedPacket(531 + i))
+assert.deepEqual(pauseEvents, ['start', 'end'])
 function clientFixture() {
   let emitAudio, reportCaptureError, resolveCapture
-  const socket = { readyState: 1, bufferedAmount: 0, sent: [], send(value) { this.sent.push(value) }, close() { this.closed = true } }
+  const sockets = []
   const capture = { stopped: false, start: () => new Promise(resolve => { resolveCapture = resolve }), stop() { this.stopped = true } }
-  const states = [], results = [], discarded = []
-  let socketCount = 0
-  const client = createDoubaoAsrClient({ onState: (state, message) => states.push({ state, message }), onResult: (...result) => results.push(result), onDiscard: id => discarded.push(id) }, {
-    createSocket: () => { socketCount++; return socket },
+  const states = [], results = [], discarded = [], usages = []
+  const client = createDoubaoAsrClient({ onState: (state, message) => states.push({ state, message }), onResult: (...result) => results.push(result), onDiscard: id => discarded.push(id), onUsage: usage => usages.push(usage) }, {
+    createSocket: () => { const socket = { readyState: 1, bufferedAmount: 0, sent: [], send(value) { this.sent.push(value) }, close() { this.closed = true } }; sockets.push(socket); return socket },
     createCapture: (onAudio, onError) => { emitAudio = onAudio; reportCaptureError = onError; return capture },
   })
-  return { client, socket, capture, states, results, discarded, get socketCount() { return socketCount },
-    readyCapture: async () => { resolveCapture(); await Promise.resolve() }, audio: () => emitAudio(new ArrayBuffer(6400)),
-    captureError: () => reportCaptureError('设备断开'), message: message => socket.onmessage({ data: JSON.stringify(message) }) }
+  return { client, sockets, capture, states, results, discarded, usages, get socket() { return sockets.at(-1) }, get socketCount() { return sockets.length },
+    readyCapture: async () => { resolveCapture(); await Promise.resolve() }, audio: (packet = voicedPacket, count = 1) => { for (let i = 0; i < count; i++) emitAudio(packet) },
+    captureError: () => reportCaptureError('设备断开'), message: message => sockets.at(-1).onmessage({ data: JSON.stringify(message) }) }
 }
 const fixture = clientFixture()
 fixture.client.start(); fixture.client.start(); assert.equal(fixture.socketCount, 0)
-await fixture.readyCapture(); fixture.audio(); assert.equal(fixture.socket.sent.length, 0)
-fixture.message({ type: 'ready' }); fixture.audio(); assert.equal(fixture.socket.sent.length, 1)
+await fixture.readyCapture(); fixture.audio(new ArrayBuffer(6400), 30); assert.equal(fixture.socketCount, 0)
+fixture.audio(voicedPacket, 2); assert.equal(fixture.socketCount, 1)
+fixture.message({ type: 'ready' }); assert.equal(fixture.socket.sent.length, 2)
+fixture.message({ type: 'usage', requestId: 'segment-1', submittedAudioSeconds: .4, completedAudioSeconds: .2, serverAudioSeconds: null })
+assert.equal(fixture.usages.length, 1)
+fixture.audio(new ArrayBuffer(6400), 8)
+assert.equal(fixture.socket.sent.at(-1), 'finish')
+fixture.audio(voicedPacket, 2); assert.equal(fixture.socketCount, 1)
+fixture.message({ type: 'ended' }); assert.equal(fixture.capture.stopped, false)
+assert.equal(fixture.socketCount, 1, '旧连接未关闭时不得抢占网关单连接名额')
+fixture.socket.onclose()
+assert.equal(fixture.socketCount, 2)
+fixture.message({ type: 'ready' })
+assert.equal(fixture.socket.sent.length, 2)
 fixture.message({ type: 'caption', utteranceId: 'a', text: '你', state: 'interim' })
 fixture.message({ type: 'caption', utteranceId: 'a', text: '你好', state: 'final' })
 fixture.message({ type: 'caption', utteranceId: 'b', text: '未完', state: 'interim' })
 const lateMessage = fixture.socket.onmessage
 fixture.client.stop(); fixture.audio(); lateMessage({ data: JSON.stringify({ type: 'ready' }) })
-assert.equal(fixture.socket.sent.length, 1); assert.equal(fixture.capture.stopped, true); assert.equal(fixture.socket.closed, true)
+assert.equal(fixture.capture.stopped, true); assert.equal(fixture.socket.closed, true)
 assert.deepEqual(fixture.discarded, ['b']); assert.equal(fixture.states.at(-1).state, 'idle')
 const cancelled = clientFixture(); cancelled.client.start(); cancelled.client.stop(); await cancelled.readyCapture()
 assert.equal(cancelled.socketCount, 0); assert.equal(cancelled.capture.stopped, true)
 for (const failure of ['close', 'error', 'backpressure', 'capture', 'invalid']) {
-  const f = clientFixture(); f.client.start(); await f.readyCapture(); f.message({ type: 'ready' })
+  const f = clientFixture(); f.client.start(); await f.readyCapture(); f.audio(voicedPacket, 2); f.message({ type: 'ready' })
   if (failure === 'close') f.socket.onclose()
   if (failure === 'error') f.message({ type: 'error', message: '服务未开通' })
   if (failure === 'backpressure') { f.socket.bufferedAmount = 64001; f.audio() }
@@ -119,10 +179,42 @@ for (const failure of ['close', 'error', 'backpressure', 'capture', 'invalid']) 
   if (failure === 'invalid') f.message({ type: 'unexpected' })
   assert.equal(f.capture.stopped, true); assert.equal(f.states.at(-1).state, 'error'); assert.equal(f.socketCount, 1)
 }
+const delayed = clientFixture()
+delayed.client.start(); await delayed.readyCapture()
+const quietLead = [taggedPacket(601), taggedPacket(602), taggedPacket(603)]
+const speech = [taggedPacket(604, 5000), taggedPacket(605, 5000), taggedPacket(606, 5000)]
+const quietTail = Array.from({ length: 8 }, (_, index) => taggedPacket(607 + index))
+for (const packet of [...quietLead, ...speech, ...quietTail]) delayed.audio(packet)
+assert.equal(delayed.socketCount, 1)
+assert.equal(delayed.socket.sent.length, 0, '建连等待期间只缓存，不发送')
+delayed.message({ type: 'ready' })
+for (let i = 0; i < 12; i++) delayed.audio(taggedPacket(700 + i))
+assert.deepEqual(delayed.socket.sent, [...quietLead, ...speech, ...quietTail, 'finish'], '补发和实时上传严格有序、无重复，结束包在音频之后')
+delayed.message({ type: 'caption', utteranceId: 'short-final', text: '好', state: 'final' })
+delayed.message({ type: 'ended' })
+assert.deepEqual(delayed.results.at(-1), ['short-final', '好', 'final'], '尾部 Final 在连接关闭前交付')
+delayed.socket.onclose()
+assert.equal(delayed.capture.stopped, false)
+const repeated = clientFixture()
+repeated.client.start(); await repeated.readyCapture()
+for (let utterance = 0; utterance < 3; utterance++) {
+  repeated.audio(taggedPacket(800 + utterance, 5000))
+  if (utterance === 0) repeated.message({ type: 'ready' })
+  repeated.audio(new ArrayBuffer(6400), 8)
+  if (utterance < 2) {
+    repeated.audio(taggedPacket(810 + utterance, 5000))
+    repeated.message({ type: 'ended' })
+    repeated.socket.onclose()
+    repeated.message({ type: 'ready' })
+  }
+}
+assert.equal(repeated.socketCount, 3, '快速重复开口自动使用三个有序会话')
+assert.equal(repeated.capture.stopped, false)
+repeated.client.stop(); delayed.client.stop()
 
 class FakeUpstream extends EventEmitter {
   readyState = 0; bufferedAmount = 0; sent = []
-  send(packet) { this.sent.push(packet) }
+  send(packet, callback) { this.sent.push(packet); callback?.() }
   terminate() { this.readyState = 3; this.terminated = true }
   open() { this.readyState = 1; this.emit('open') }
 }
@@ -142,6 +234,92 @@ async function gatewayFixture(options = {}) {
     close: () => gateway.close() }
 }
 const nextTurn = () => new Promise(resolve => setTimeout(resolve, 20))
+// 已知一分钟输入经过真实重采样、编码与本地 WebSocket，只连接假上游。
+for (const rate of [16000, 44100, 48000]) {
+  const records = []
+  const diagnosticGateway = await gatewayFixture({
+    keyStore: { getKey: () => 'test-secret-not-real', status: () => ({ configured: true }) },
+    diagnostics: { enabled: true, write: record => records.push(record) },
+  })
+  try {
+    diagnosticGateway.upstream.open(); await nextTurn()
+    const second = new WebSocket(diagnosticGateway.url, { origin: 'http://127.0.0.1:5173' })
+    assert.match(await new Promise(resolve => second.on('error', error => resolve(error.message))), /403/)
+    assert.equal(diagnosticGateway.connections, 1)
+    const resample = createAudioResampler(rate, packet => diagnosticGateway.client.send(Buffer.from(packet)))
+    const block = new Float32Array(128).fill(0.25)
+    for (let offset = 0; offset < rate * 60; offset += 128) resample(block.subarray(0, Math.min(128, rate * 60 - offset)))
+    for (let attempt = 0; attempt < 100 && diagnosticGateway.upstream.sent.length < 301; attempt++) await nextTurn()
+    const audioPackets = diagnosticGateway.upstream.sent.slice(1)
+    assert.equal(audioPackets.length, 300)
+    assert.equal(audioPackets.reduce((sum, packet) => sum + gunzipSync(packet.subarray(8)).length, 0), 1920000)
+    diagnosticGateway.upstream.emit('message', responsePacket({ audio_info: { duration: 60000 }, result: {} }), true)
+    diagnosticGateway.upstream.emit('message', responsePacket({ audio_info: { duration: 60000 }, result: {} }), true)
+    await nextTurn()
+    const usageEvents = diagnosticGateway.received.filter(message => message.type === 'usage')
+    assert.ok(usageEvents.length >= 1)
+    assert.deepEqual(usageEvents.at(-1), { type: 'usage', requestId: diagnosticGateway.options.headers['X-Api-Request-Id'],
+      submittedAudioSeconds: 60, completedAudioSeconds: 60, serverAudioSeconds: 60 })
+    diagnosticGateway.client.close(); await once(diagnosticGateway.client, 'close'); await nextTurn()
+    const summary = records.at(-1)
+    assert.equal(summary.event, 'end'); assert.equal(summary.submittedAudioSeconds, 60)
+    assert.equal(summary.completedAudioSeconds, 60); assert.equal(summary.serverDuration.value, 60000)
+    assert.equal(summary.requestId, diagnosticGateway.options.headers['X-Api-Request-Id'])
+    assert.equal(records.filter(record => record.event === 'end').length, 1)
+    assert.equal(diagnosticGateway.upstream.terminated, true)
+    assert.equal(JSON.stringify(records).includes('test-secret-not-real'), false)
+    const usageUrl = diagnosticGateway.url.replace('ws:', 'http:') + '/settings/usage'
+    const usageResponse = await fetch(usageUrl)
+    assert.equal(usageResponse.headers.get('cache-control'), 'no-store')
+    const usage = await usageResponse.json()
+    assert.equal(usage.totalAudioSeconds, 60)
+    assert.equal(usage.latest.submittedAudioSeconds, 60)
+    assert.equal(usage.latest.active, false)
+    assert.equal(usage.latest.serverDuration.value, 60000)
+    assert.equal(JSON.stringify(usage).includes('test-secret-not-real'), false)
+    assert.equal((await fetch(usageUrl, { headers: { Origin: 'https://untrusted.example' } })).status, 403)
+    const nextClient = new WebSocket(diagnosticGateway.url, { origin: 'http://127.0.0.1:5173' })
+    await once(nextClient, 'open'); diagnosticGateway.upstream.open(); await nextTurn()
+    nextClient.send(Buffer.alloc(6400)); await nextTurn()
+    const nextUsage = await (await fetch(usageUrl)).json()
+    assert.equal(nextUsage.totalAudioSeconds, 60.2)
+    assert.equal(nextUsage.latest.submittedAudioSeconds, 0.2)
+    assert.equal(nextUsage.latest.active, true)
+    assert.equal(nextUsage.latest.serverDuration, null)
+    assert.notEqual(nextUsage.latest.requestId, usage.latest.requestId)
+    nextClient.close(); await once(nextClient, 'close'); await nextTurn()
+    console.log(`用量模拟：${rate}Hz 输入60秒 → 300包 → 1920000 PCM字节 → 上游60秒；单连接，停止已清理。`)
+  } finally { await diagnosticGateway.close() }
+}
+const finishedGateway = await gatewayFixture()
+try {
+  finishedGateway.upstream.open(); await nextTurn()
+  finishedGateway.client.send(Buffer.alloc(6400, 1)); await nextTurn()
+  finishedGateway.client.send('finish'); await nextTurn()
+  const lastPacket = finishedGateway.upstream.sent.at(-1)
+  assert.equal(lastPacket[1], 0x22)
+  assert.equal(gunzipSync(lastPacket.subarray(8)).length, 0)
+  finishedGateway.upstream.emit('message', responsePacket(payload(utterance('结束', true)), { flags: 3, sequence: -1 }), true)
+  await nextTurn()
+  assert.equal(finishedGateway.received.at(-1).type, 'ended')
+  assert.equal(finishedGateway.received.some(event => event.type === 'caption' && event.state === 'final'), true)
+  if (finishedGateway.client.readyState !== WebSocket.CLOSED) await once(finishedGateway.client, 'close')
+  const reopened = new WebSocket(finishedGateway.url, { origin: 'http://127.0.0.1:5173' })
+  await once(reopened, 'open')
+  assert.equal(finishedGateway.connections, 2, '旧连接关闭后网关允许新句建连')
+  reopened.close(); await once(reopened, 'close')
+} finally { await finishedGateway.close() }
+const disabledRecords = []
+const disabled = createAsrDiagnostics('disabled', { write: value => disabledRecords.push(value) })
+disabled.submitted(6400); disabled.completed(6400); disabled.end()
+assert.equal(disabledRecords.length, 0)
+const missingDurationRecords = []
+const missingDuration = createAsrDiagnostics('missing', { enabled: true, write: value => missingDurationRecords.push(value) })
+missingDuration.response({ result: { text: '不得记录' }, audio_info: { duration: 'secret' } })
+missingDuration.end(); missingDuration.end()
+assert.equal(missingDurationRecords.at(-1).serverDuration, null)
+assert.equal(missingDurationRecords.length, 2)
+assert.equal(JSON.stringify(missingDurationRecords).includes('不得记录'), false)
 const gateway = await gatewayFixture()
 try {
   assert.equal(gateway.options.headers['X-Api-Key'], 'test-secret-not-real')

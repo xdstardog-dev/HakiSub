@@ -32,7 +32,15 @@ export function createAudioCapture(onPacket: (pcm: ArrayBuffer) => void, onError
         processor.port.onmessage = event => { if (!stopped) resample(event.data as Float32Array) }
         processor.onprocessorerror = () => { if (!stopped) onError('麦克风音频处理失败，请重新开启。') }
         stream.getAudioTracks().forEach(track => track.onended = () => { if (!stopped) onError('麦克风设备已断开，请检查设备。') })
-        context.onstatechange = () => { if (!stopped && context?.state !== 'running') onError('麦克风采集被浏览器暂停，请重新开启。') }
+        context.onstatechange = () => {
+          if (stopped || !context || context.state === 'running') return
+          if (context.state === 'suspended') {
+            // 切换窗口时浏览器可能短暂挂起音频图；先尝试恢复，再报告真正的采集故障。
+            void context.resume().then(() => {
+              if (!stopped && context?.state !== 'running') onError('麦克风采集被浏览器暂停，请重新开启。')
+            }).catch(() => { if (!stopped) onError('麦克风采集被浏览器暂停，请重新开启。') })
+          } else onError('麦克风采集被浏览器关闭，请重新开启。')
+        }
         // Worklet 输出保持全零，只让音频图运行，不回放用户声音。
         source.connect(processor); processor.connect(context.destination)
       } catch (error) {

@@ -14,7 +14,7 @@ function fixture({ denied = false, moduleError = false } = {}) {
     sampleRate = 16000; state = 'running'; destination = {}; closed = false
     constructor() { contexts.push(this) }
     audioWorklet = { addModule: async () => { if (moduleError) throw Error('module failed') } }
-    resume = async () => {}
+    resume = async () => { this.state = 'running' }
     close = async () => { this.closed = true; this.state = 'closed' }
     createMediaStreamSource = () => ({ connect() {}, disconnect() {} })
   }
@@ -39,6 +39,8 @@ const active = fixture()
 const activeStart = active.capture.start(); await new Promise(resolve => setImmediate(resolve)); active.allow(); await activeStart
 const processor = active.processors[0], lateAudio = processor.port.onmessage
 lateAudio({ data: new Float32Array([1]) }); assert.equal(active.packets.length, 1)
+active.contexts[0].state = 'suspended'; active.contexts[0].onstatechange(); await Promise.resolve()
+assert.equal(active.contexts[0].state, 'running'); assert.equal(active.errors.length, 0)
 active.track.onended(); assert.match(active.errors[0], /断开/)
 active.capture.stop(); lateAudio({ data: new Float32Array([1]) })
 assert.equal(active.packets.length, 1); assert.equal(active.track.stopCount, 1)
