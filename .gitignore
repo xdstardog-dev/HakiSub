@@ -1,5 +1,7 @@
 node_modules/
 dist/
+public/vad/ort-wasm-*
+public/vad/ort.wasm.min.mjs
 *.local
 
 # Local environment and private credentials
@@ -14,3 +16,9 @@ secrets/
 *.pfx
 id_rsa
 id_ed25519
+
+# Generated product-site deployment packages
+/sites/hakisub-product-package/
+/sites/hakisub-product.tar.gz
+# Independent Sites Git checkout; canonical product page files are in public/
+/sites/hakisub-product/

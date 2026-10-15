@@ -6,13 +6,17 @@
   "scripts": {
     "start": "node server/index.mjs --production",
     "dev": "node server/index.mjs --dev",
+    "predev": "npm run prepare:vad",
+    "prebuild": "npm run prepare:vad",
+    "prepare:vad": "node scripts/prepare-vad-runtime.mjs",
     "server": "node server/index.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
-    "test": "node tests/simulation.test.mjs && node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs && node tests/doubao.test.mjs && node tests/audio-capture.test.mjs && node tests/api-settings.test.mjs && node tests/static-website.test.mjs",
+    "test": "node tests/simulation.test.mjs && node tests/demo.test.mjs && node tests/asr.test.mjs && node tests/caption-grid.test.mjs && node tests/adaptive-layout.test.mjs && node tests/doubao.test.mjs && node tests/audio-capture.test.mjs && node tests/speech-detector.test.mjs && node tests/api-settings.test.mjs && node tests/static-website.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "onnxruntime-web": "1.24.3",
     "vue": "^3.5.0",
     "ws": "^8.22.0"
   },

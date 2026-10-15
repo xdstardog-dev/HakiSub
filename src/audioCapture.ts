@@ -15,10 +15,10 @@ export function createAudioCapture(onPacket: (pcm: ArrayBuffer) => void, onError
   return {
     stop,
     async start() {
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw Error('麦克风需要 Chrome 和本机 localhost 或 HTTPS 地址。')
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw Error('麦克风需要支持音频采集的浏览器和本机 localhost 或 HTTPS 地址。')
       try {
         // 在用户点击的调用栈内 resume，避免自动播放策略把采集上下文挂起。
-        context = new AudioContext({ sampleRate: 16000 })
+        context = new AudioContext()
         await context.resume()
         if (stopped) return
         stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
@@ -46,7 +46,7 @@ export function createAudioCapture(onPacket: (pcm: ArrayBuffer) => void, onError
       } catch (error) {
         stop()
         const name = error instanceof DOMException ? error.name : ''
-        throw Error(name === 'NotAllowedError' ? '麦克风权限被拒绝，请在 Chrome 网站设置中允许。' : '无法开启麦克风，请检查设备、浏览器权限和音频支持。')
+        throw Error(name === 'NotAllowedError' ? '麦克风权限被拒绝，请在浏览器网站设置中允许。' : '无法开启麦克风，请检查设备、浏览器权限和音频支持。')
       }
     },
   }

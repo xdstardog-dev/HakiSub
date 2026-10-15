@@ -4,7 +4,7 @@ import { resolve, sep, extname } from 'node:path'
 // 正式模式只暴露 dist，绝不把项目根目录（含 .env）作为网页目录。
 export function createStaticWebsite(directory) {
   const root = resolve(directory)
-  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' }
+  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' }
   return async (request, response) => {
     if (!['GET', 'HEAD'].includes(request.method)) { response.writeHead(405); response.end(); return }
     try {

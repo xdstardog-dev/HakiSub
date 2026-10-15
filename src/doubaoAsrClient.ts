@@ -1,17 +1,21 @@
 import { createAudioCapture, type AudioCapture } from './audioCapture'
 import { createVoiceActivityGate } from './voiceActivityGate'
+import { createSpeechDetector, type SpeechDetector } from './speechDetector'
 import type { AsrCallbacks } from './captionEvents'
 
 type ClientEnvironment = {
   createSocket: () => WebSocket
   createCapture: (onPacket: (pcm: ArrayBuffer) => void, onError: (message: string) => void) => AudioCapture
+  createDetector: (onResult: (pcm: ArrayBuffer, probability: number) => void, onError: (message: string) => void) => SpeechDetector
 }
 export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: ClientEnvironment = {
   createSocket: () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/asr`),
   createCapture: createAudioCapture,
+  createDetector: createSpeechDetector,
 }) {
   let generation = 0, active = false, microphoneReady = false
   let socket: WebSocket | undefined, capture: AudioCapture | undefined
+  let detector: SpeechDetector | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let gatewayReady = false, finishing = false, awaitingClose = false
   const queuedAudio: (ArrayBuffer | null)[] = []
@@ -29,6 +33,7 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
     active = false; generation++
     microphoneReady = false
     capture?.stop(); capture = undefined
+    detector?.stop(); detector = undefined
     gate.reset(); queuedAudio.length = 0
     cleanupSocket()
   }
@@ -108,23 +113,29 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
       if (active) return
       active = true; generation++
       const currentGeneration = generation
-      callbacks.onState('starting', '正在请求麦克风权限…')
-      startupTimer = setTimeout(() => { if (active && generation === currentGeneration) fail('麦克风启动超时。') }, 20000)
+      callbacks.onState('starting', '正在准备麦克风与本地语音检测…')
+      startupTimer = setTimeout(() => { if (active && generation === currentGeneration) fail('麦克风或本地语音检测启动超时。') }, 30000)
       try {
+        detector = environment.createDetector((pcm, probability) => {
+          if (!active || generation !== currentGeneration) return
+          try {
+            gate.accept(pcm, probability)
+            // 每个判定后的原包推进有序补发，不靠页面定时器催上传。
+            if (active) flush()
+          } catch { if (active) fail('语音判断异常，已停止识别。') }
+        }, message => { if (active && generation === currentGeneration) fail(message) })
         capture = environment.createCapture(pcm => {
           if (!active || generation !== currentGeneration) return
-          gate.accept(pcm)
-          // 采集持续出包，借它推进有序补发；不依赖后台可能被节流的 JS 定时器。
-          if (active) flush()
+          detector?.accept(pcm)
         },
           message => { if (active && generation === currentGeneration) fail(message) })
-        void capture.start().then(() => {
+        void Promise.all([capture.start(), detector.start()]).then(() => {
           if (!active || generation !== currentGeneration) return
           microphoneReady = true; clearTimeout(startupTimer)
           if (queuedAudio.length) connect()
           else callbacks.onState('listening', '麦克风已开启 · 等待说话（本地检测）')
         }).catch(error => { if (active && generation === currentGeneration) fail(error instanceof Error ? error.message : '无法启动语音识别。') })
-      } catch { fail('无法初始化麦克风，请使用支持音频采集的 Chrome。') }
+      } catch { fail('无法初始化麦克风或本地语音检测，请检查浏览器支持。') }
     },
     stop() { cleanup(); callbacks.onState('idle', '麦克风已关闭') },
   }

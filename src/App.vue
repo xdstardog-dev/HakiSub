@@ -36,7 +36,7 @@ function characterAt(index: number): { name: string; color: string } {
 const me = computed(() => members.value[0])
 const active = computed(() => members.value.filter(m => m.mic))
 const inputMode = ref<'simulation' | 'microphone'>('simulation')
-const asrProvider = ref<AsrProvider>('browser')
+const asrProvider = ref<AsrProvider>('doubao')
 const asrState = ref<AsrState>('idle')
 const asrMessage = ref('麦克风已关闭')
 const asrActive = computed(() => ['starting', 'listening', 'reconnecting'].includes(asrState.value))

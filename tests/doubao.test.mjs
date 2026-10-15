@@ -83,7 +83,19 @@ const clipped = []
 createAudioResampler(16000, packet => clipped.push(packet))(new Float32Array(3200).fill(-2))
 assert.equal(new DataView(clipped[0]).getInt16(0, true), -32768)
 
-const { createVoiceActivityGate } = loadTypeScript('../src/voiceActivityGate.ts', ['createVoiceActivityGate'])
+const { createVoiceActivityGate: createProbabilityGate } = loadTypeScript('../src/voiceActivityGate.ts', ['createVoiceActivityGate'])
+// 本文件测试上传会话顺序，声音判定由 fixture 明确注入；真实模型另有独立测试。
+const mockSpeechProbability = pcm => {
+  const view = new DataView(pcm)
+  let active = 0
+  for (let index = 1; index < 3200; index++) if (Math.abs(view.getInt16(index * 2, true)) >= 200) active++
+  return active >= 600 ? .9 : .01
+}
+const createVoiceActivityGate = (...args) => {
+  const gate = createProbabilityGate(...args), accept = gate.accept
+  gate.accept = pcm => accept(pcm, mockSpeechProbability(pcm))
+  return gate
+}
 const { createDoubaoAsrClient } = loadTypeScript('../src/doubaoAsrClient.ts', ['createDoubaoAsrClient'], { setTimeout, clearTimeout, createVoiceActivityGate })
 const voicedPacket = new ArrayBuffer(6400)
 for (let i = 0; i < 3200; i++) new DataView(voicedPacket).setInt16(i * 2, i % 2 ? 5000 : -5000, true)
@@ -132,17 +144,26 @@ pauseGate.accept(taggedPacket(530, 300, 3))
 assert.deepEqual(pauseEvents, ['start'], '短暂停顿后轻声续讲仍属于同一会话')
 for (let i = 0; i < 8; i++) pauseGate.accept(taggedPacket(531 + i))
 assert.deepEqual(pauseEvents, ['start', 'end'])
-function clientFixture() {
-  let emitAudio, reportCaptureError, resolveCapture
+function clientFixture({ delayDetector = false } = {}) {
+  let emitAudio, reportCaptureError, resolveCapture, resolveDetector, reportDetectorError, detectionResult
+  const bufferedDetection = []
+  const detector = { ready: !delayDetector, stopped: false,
+    start: () => delayDetector ? new Promise(resolve => { resolveDetector = resolve }) : Promise.resolve(),
+    accept(pcm) { if (this.ready) detectionResult(pcm, mockSpeechProbability(pcm)); else bufferedDetection.push(pcm) },
+    stop() { this.stopped = true },
+  }
   const sockets = []
   const capture = { stopped: false, start: () => new Promise(resolve => { resolveCapture = resolve }), stop() { this.stopped = true } }
   const states = [], results = [], discarded = [], usages = []
   const client = createDoubaoAsrClient({ onState: (state, message) => states.push({ state, message }), onResult: (...result) => results.push(result), onDiscard: id => discarded.push(id), onUsage: usage => usages.push(usage) }, {
     createSocket: () => { const socket = { readyState: 1, bufferedAmount: 0, sent: [], send(value) { this.sent.push(value) }, close() { this.closed = true } }; sockets.push(socket); return socket },
     createCapture: (onAudio, onError) => { emitAudio = onAudio; reportCaptureError = onError; return capture },
+    createDetector: (onResult, onError) => { detectionResult = onResult; reportDetectorError = onError; return detector },
   })
-  return { client, sockets, capture, states, results, discarded, usages, get socket() { return sockets.at(-1) }, get socketCount() { return sockets.length },
-    readyCapture: async () => { resolveCapture(); await Promise.resolve() }, audio: (packet = voicedPacket, count = 1) => { for (let i = 0; i < count; i++) emitAudio(packet) },
+  return { client, sockets, capture, detector, states, results, discarded, usages, get socket() { return sockets.at(-1) }, get socketCount() { return sockets.length },
+    readyDetector: async () => { detector.ready = true; resolveDetector(); bufferedDetection.forEach(pcm => detectionResult(pcm, mockSpeechProbability(pcm))); await new Promise(resolve => setImmediate(resolve)) },
+    detectorError: () => reportDetectorError('本地语音检测失败'),
+    readyCapture: async () => { resolveCapture(); await new Promise(resolve => setImmediate(resolve)) }, audio: (packet = voicedPacket, count = 1) => { for (let i = 0; i < count; i++) emitAudio(packet) },
     captureError: () => reportCaptureError('设备断开'), message: message => sockets.at(-1).onmessage({ data: JSON.stringify(message) }) }
 }
 const fixture = clientFixture()
@@ -170,15 +191,30 @@ assert.equal(fixture.capture.stopped, true); assert.equal(fixture.socket.closed,
 assert.deepEqual(fixture.discarded, ['b']); assert.equal(fixture.states.at(-1).state, 'idle')
 const cancelled = clientFixture(); cancelled.client.start(); cancelled.client.stop(); await cancelled.readyCapture()
 assert.equal(cancelled.socketCount, 0); assert.equal(cancelled.capture.stopped, true)
-for (const failure of ['close', 'error', 'backpressure', 'capture', 'invalid']) {
+for (const failure of ['close', 'error', 'backpressure', 'capture', 'detector', 'invalid']) {
   const f = clientFixture(); f.client.start(); await f.readyCapture(); f.audio(voicedPacket, 2); f.message({ type: 'ready' })
   if (failure === 'close') f.socket.onclose()
   if (failure === 'error') f.message({ type: 'error', message: '服务未开通' })
   if (failure === 'backpressure') { f.socket.bufferedAmount = 64001; f.audio() }
   if (failure === 'capture') f.captureError()
+  if (failure === 'detector') f.detectorError()
   if (failure === 'invalid') f.message({ type: 'unexpected' })
   assert.equal(f.capture.stopped, true); assert.equal(f.states.at(-1).state, 'error'); assert.equal(f.socketCount, 1)
+  assert.equal(f.detector.stopped, true, '任何故障均释放检测器，不能继续上传')
 }
+const modelLoading = clientFixture({ delayDetector: true })
+modelLoading.client.start(); await modelLoading.readyCapture()
+modelLoading.audio(voicedPacket, 2)
+assert.equal(modelLoading.socketCount, 0, '模型尚未就绪不能开启豆包上传')
+await modelLoading.readyDetector()
+assert.equal(modelLoading.socketCount, 1, '模型就绪后启动已缓存讲话，不丢首次开口')
+modelLoading.message({ type: 'ready' }); assert.equal(modelLoading.socket.sent.length, 2)
+modelLoading.client.stop()
+const cancelledModel = clientFixture({ delayDetector: true })
+cancelledModel.client.start(); await cancelledModel.readyCapture(); cancelledModel.audio()
+cancelledModel.client.stop(); await cancelledModel.readyDetector()
+assert.equal(cancelledModel.socketCount, 0, '加载期间停止后，迟到的模型结果不得重新开麦或上传')
+assert.equal(cancelledModel.capture.stopped, true); assert.equal(cancelledModel.detector.stopped, true)
 const delayed = clientFixture()
 delayed.client.start(); await delayed.readyCapture()
 const quietLead = [taggedPacket(601), taggedPacket(602), taggedPacket(603)]

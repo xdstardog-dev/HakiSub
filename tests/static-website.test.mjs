@@ -8,6 +8,8 @@ import { createStaticWebsite } from '../server/staticWebsite.mjs'
 import { allowedAppOrigins } from '../server/apiSettings.mjs'
 const directory = await mkdtemp(join(tmpdir(), 'hakisub-web-'))
 await writeFile(join(directory, 'index.html'), '<h1>HakiSub</h1>')
+await writeFile(join(directory, 'runtime.mjs'), 'export const ready = true')
+await writeFile(join(directory, 'runtime.wasm'), Buffer.from([0, 97, 115, 109]))
 const server = createServer(createStaticWebsite(directory))
 server.listen(0, '127.0.0.1'); await once(server, 'listening')
 const base = `http://127.0.0.1:${server.address().port}`
@@ -21,8 +23,11 @@ try {
   assert.equal((await fetch(base, { method: 'POST' })).status, 405)
   assert.equal(await (await fetch(base, { method: 'HEAD' })).text(), '')
   assert.ok(allowedAppOrigins.includes('http://127.0.0.1:8787'))
+  assert.match((await fetch(base + '/runtime.mjs')).headers.get('content-type'), /javascript/)
+  assert.equal((await fetch(base + '/runtime.wasm')).headers.get('content-type'), 'application/wasm')
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve))
-  await unlink(join(directory, 'index.html')); await rmdir(directory)
+  for (const file of ['index.html', 'runtime.mjs', 'runtime.wasm']) await unlink(join(directory, file))
+  await rmdir(directory)
 }
 console.log('通过：正式网页、AR路由、文件隔离、HEAD与方法限制；未调用豆包。')

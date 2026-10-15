@@ -9,10 +9,10 @@ function fixture({ denied = false, moduleError = false } = {}) {
   let resolveMedia
   const track = { stopCount: 0, stop() { this.stopCount++ } }
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] }
-  const contexts = [], processors = [], errors = [], packets = []
+  const contexts = [], processors = [], errors = [], packets = [], contextOptions = []
   class AudioContext {
     sampleRate = 16000; state = 'running'; destination = {}; closed = false
-    constructor() { contexts.push(this) }
+    constructor(options) { contexts.push(this); contextOptions.push(options) }
     audioWorklet = { addModule: async () => { if (moduleError) throw Error('module failed') } }
     resume = async () => { this.state = 'running' }
     close = async () => { this.closed = true; this.state = 'closed' }
@@ -28,7 +28,7 @@ function fixture({ denied = false, moduleError = false } = {}) {
     AudioContext, AudioWorkletNode, URL, DOMException, createAudioResampler: (_rate, onPacket) => onPacket })
   vm.runInContext(ts.transpile(captureSource + '\nglobalThis.create = createAudioCapture', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
   const capture = context.create(packet => packets.push(packet), message => errors.push(message))
-  return { capture, track, contexts, processors, errors, packets, allow: () => resolveMedia(stream) }
+  return { capture, track, contexts, contextOptions, processors, errors, packets, allow: () => resolveMedia(stream) }
 }
 const pending = fixture()
 const pendingStart = pending.capture.start(); await new Promise(resolve => setImmediate(resolve))
@@ -38,6 +38,7 @@ assert.equal(pending.track.stopCount, 1); assert.equal(pending.contexts[0].close
 const active = fixture()
 const activeStart = active.capture.start(); await new Promise(resolve => setImmediate(resolve)); active.allow(); await activeStart
 const processor = active.processors[0], lateAudio = processor.port.onmessage
+assert.equal(active.contextOptions[0], undefined, '不强制16kHz AudioContext，重采样由输出层负责')
 lateAudio({ data: new Float32Array([1]) }); assert.equal(active.packets.length, 1)
 active.contexts[0].state = 'suspended'; active.contexts[0].onstatechange(); await Promise.resolve()
 assert.equal(active.contexts[0].state, 'running'); assert.equal(active.errors.length, 0)

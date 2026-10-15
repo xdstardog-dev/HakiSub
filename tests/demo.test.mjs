@@ -34,6 +34,7 @@ const context = vm.createContext({ createDoubaoAsrClient: callbacks => {
 const exported = 'globalThis.demo = {name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
 vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
+assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
 const advance = ms => { time += ms; d.tick() }
 d.enter(); assert.equal(d.joined.value, false)
 d.name.value = '测试'; d.mode.value = 'join'; d.code.value = 'abc'; d.enter(); assert.equal(d.joined.value, false)
@@ -158,6 +159,7 @@ d.leave()
 // Real input uses the same caption lifecycle and cannot run alongside simulation.
 d.enter(); d.scenario.value = 'stress'; d.runSimulation(); advance(100)
 d.changeInputMode({ target: { value: 'microphone' } })
+d.changeAsrProvider({ target: { value: 'browser' } })
 assert.equal(d.scenarioRunning.value, false); assert.equal(d.captions.value.length, 0)
 d.runSimulation(); advance(2000); assert.equal(d.captions.value.length, 0)
 d.toggleRealMic()
