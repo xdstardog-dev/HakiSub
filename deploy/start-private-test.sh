@@ -76,6 +76,7 @@ sudo -n docker compose config --quiet
 
 step='build'
 sudo -n docker compose build
+sh deploy/prepare-room-storage.sh
 step='start'
 sudo -n docker compose up -d --no-build
 step='health'

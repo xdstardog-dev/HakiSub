@@ -11,6 +11,8 @@
 
 网页通过独立Worker使用单线程WASM；需要WebAssembly SIMD支持，不需要跨源隔离。模型更新需同步修改校验值、推理契约及测试；运行时更新需同步核对资源文件名和许可证。不可只更换WASM而保留旧版本JS。
 
+准备脚本同时生成四份gzip副本，正式Node静态服务协商gzip并对带版本的公开VAD资源启用长期缓存。`src/vadAssets.ts`的版本及解压后字节长度需随资源升级；Worker并行流式下载模型/WASM、显示下载进度，再使用已下载字节初始化，避免ORT重复请求。gzip响应的Content-Length是压缩长度，页面进度采用解压后已读长度；模型/WASM合计由约14.7MB降至约5.1MB传输。HTML不使用长期缓存，音频和密钥不进入资源缓存。
+
 `npm test` 包含固定模型的真实WASM静音推理及模拟状态检查；可选公开语音示例检查：`node tests/speech-detector.test.mjs <16kHz单声道16-bit PCM WAV路径>`。测试音频不收入仓库，不记录用户音频。
 
 构建后可用 `node tests/vad-browser-smoke.mjs <Playwright模块路径或包名>` 检查本地正式网页；需另行提供Playwright及已安装的Chrome，或设 `VAD_BROWSER_CHANNEL=msedge` 使用Edge。此工具只用生成的静音模拟麦克风，不调用真实麦克风或豆包，不安装为产品依赖。

@@ -419,3 +419,128 @@
 本轮验证：npm test全部通过，包含房间通信、成员隔离、独立音频、部署策略和设置页模拟测试；npm run build首次受沙箱esbuild spawn EPERM限制，经授权沙箱外重跑通过。git diff --check通过；35个待提交文件的常见凭据格式检查未发现可疑内容，环境文件、密钥、artifacts及构建产物保持忽略。git fetch origin成功，提交前HEAD与origin/main一致。本轮仅整理、验证和Git交付，未重新部署或操作服务器。
 
 验收边界：既有记录显示私有测试版已部署；公网应用镜像和Caddy仅准备完成，域名实名、暂停解析原因处理及ICP备案仍待完成。真实HTTPS/WSS、豆包API、麦克风、双设备与长时稳定性未在本轮验收，不能将自动化测试通过视为这些验收完成。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务：用户确认xdstar.work备案通过（鄂ICP备2026059859号-1），要求HakiSub作为主站小板块；用户选择主站入口卡片跳转hakisub.xdstar.work，确认尚无主页。
+
+实际修改：新增deploy/xdstar/中的独立HTML/CSS/SVG主页，展示HakiSub介绍、入口、明确标注的字幕界面示意及真实备案链接；自适应手机/桌面，无外部字体、脚本、统计或音频。Caddy新增根域名静态服务及仅作用于主站的安全头，保留子域名全路径HTTPS/WSS代理。Compose新增主页只读挂载；发布白名单包含主页目录，public.env示例修正过期的尚未备案注释。README、ARCHITECTURE和公网部署文档同步；未编辑DEEPSEEK-MEMORY.md，未改变应用UI、网关、采集或字幕生命周期。
+
+检查与验证：npm test全部通过；npm run build首次因沙箱esbuild EPERM失败，经授权沙箱外重跑通过。打包脚本node --check、git diff --check通过。浏览器413px手机布局和1280px桌面视口检查无横向溢出，正确显示入口与备案链接，截图保存在artifacts/xdstar-home-mobile.png及xdstar-home-desktop.png。
+
+服务器准备：SSH确认当前私有容器healthy，回环18787及health configured:false，80/443无监听，UFW inactive且INPUT ACCEPT。新主页/配置包SHA256 b2d710076cc8236709334fa485c4372a1f58d01a1187ab6215ce8111688e0a5c经SCP上传至images/xdstar-public-web-20261020并复核，根deploy保留备份后更新。双域名Caddy在无网络无端口临时容器验证成功，三份Compose解析通过；第一次临时命令遗漏caddy程序名，修正后通过。既有公网兼容应用镜像174817Z在无网络无Key非root只读临时容器通过网页、VAD、设置404、非法Origin/无令牌ASR拒绝与双成员合成字幕广播。
+
+上线执行：用户随后完成@/hakisub两条A到8.138.171.235并确认云防火墙TCP80/443放行，权威/公共/服务器DNS复核一致，CAA均ENODATA。根.env备份为images/xdstar-public-web-20261020/environment.before，保留原镜像及deploy备份后，通过已校验的三份Compose启用双站Caddy并切换174817Z公网应用。现应用healthy、非root只读、512MiB/0.75CPU且只映射127.0.0.1:18787；Caddy只读128MiB/0.25CPU，证书/config持久卷及80/443监听，未开放2019或后端公网端口。两个Let's Encrypt YE1证书签发成功，有效期至2027-01-18；实际续期周期尚未经历。
+
+公网验收：服务器外Node及Windows curl开启证书校验，完成两站HTTPS200/HTTP308、主页资源/入口/备案、应用资源及VAD模型/MJS/WASM类型、WSS建房/加入/合成字幕/跨房间隔离/断线清理、非法Origin（包含主站跨源访问）与无令牌ASR403、设置和.env404，全部通过。签发前HTTPS首次握手失败，证书就绪后通过；沙箱代理不可用时获准在沙箱外验收。内置浏览器线上导航两次超时，未声称线上UI已实测；本地视觉及相同页面公网内容均通过，正式主站打开请求返回queued。Key仍configured:false；未调用豆包API、麦克风或两台设备讲话，真实识别及长时稳定性待验收。
+
+发布归档：npm run package:private-test成功生成hakisub-20261020T130656Z（SHA256 8986dd40b908611a2ed0638569f7d0340feac5b4e1f9bc73bd9ce04139ccd97b），清单确认包含三份主页文件；它是本轮构建/文档归档，未制作或部署新应用镜像，运行版本仍174817Z。未上传本机密钥、保存识别历史、修改SSH或其他项目，未提交或推送Git。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务：按用户要求先改本地再同步服务器：默认真实联网；房间内配置豆包；首页保留房间与房间码，全员退出后仍能再次进入。
+
+本地实现：App默认online，创建后自动打开房内配置，返回首页保留房间入口；rememberedRooms仅保存房间码/显示名/创建者管理凭据，不保存API Key/成员令牌/字幕。roomGateway全员离开不销毁房间；成员关闭仍立即撤销令牌、释放ASR且不补发字幕。随机创建者凭据只发给本人，服务器持久化SHA256摘要，原浏览器再次加入校验管理身份。消息在异步磁盘入队前限流、创建资料保存成功后才允许加入。
+
+房间配置与存储：新增RoomApiSettings原生模态弹窗和roomSettings认证接口，有效成员只看状态，创建者可保存/移除/握手测试，输入提交或卸载后清空；Origin、Bearer权限、大小/格式、全房关麦与更新互斥均由服务端执行。房间Key优先，未设置时兼容旧服务器默认Key并显示来源。roomStore以AES-256-GCM、独立nonce和房间码AAD加密Key，同目录原子替换且串行写入，失败保留旧配置；成员/音频/字幕不落盘。主密钥仅来自服务端环境或根.env，本机首次初始化带锁；Linux初始化脚本在服务器生成主密钥并初始化只读容器的数据卷，Dockerfile和Compose同步。
+
+本地验证：npm test全套通过，新增persistent-rooms及room-settings-view覆盖重启恢复、加密/不回显、房间Key路由、创建者/成员/非法Origin、写失败保旧、忙碌保护、旧令牌失效、真实Vue模板与浏览器存储。npm run build通过（获准沙箱外），未改变音频处理或字幕时间规则，保留模拟/浏览器ASR。隔离生产预览使用无效测试值，浏览器实际完成创建、保存、全员退出、刷新、再次进入及权限恢复；390px手机和桌面配置弹窗无横向溢出，截图在artifacts/room-api-mobile.png、room-api-configuration.png和rooms-home-retained.png。未测试真实API、连接握手或麦克风。
+
+实际部署：生成hakisub-20261020T133934Z，包SHA256 e16a6c611276f5d2802df54fb3011871702fb036df24980d9c5b7fad8e865bdc。官方固定Node22.23.3/ws8.22.0离线镜像归档SHA256 75fd4a6bd71f57770a2699625056950986117acb794206dafc00b06a7eb5cbf0，config摘要058501a67250a2716738e4a4da6dcdc9670f42c1e155e6e8e7443069166bec19，27份运行文件核对及crane validate通过。上传后服务器复核SHA256、docker load及无网络无真实Key临时容器网页/VAD/设置404/Origin/房间验收通过。
+
+备份原根.env/compose/server.env到本次images目录，安全保留原Key；服务器本地生成房间主密钥（不显示），初始化带Compose标签的hakisub-test_hakisub_room_data并同步新compose/init脚本。只重建HakiSub，Caddy/主站不重启，应用healthy、node、只读根目录、512MiB/0.75CPU、回环18787；数据卷仅/app/data可写，服务器环境文件仍0600。旧镜像及环境保留，未触发回退。
+
+公网实际验收：通过可信HTTPS/WSS读取新版JS并创建测试房间，创建者可写而普通成员写入403、状态不回显Key；全员退出后再次加入和配置保留正常。无效合成Key在实际卷内验证非明文，真实重启应用一次后恢复原房间/创建者/配置、旧成员令牌403且无字幕历史，随后移除测试Key。完整两站HTTPS/HTTP跳转/资源/房间广播/隔离/断线清理/非法Origin/旧设置关闭回归通过；首次Windows主站DNS短暂ENOTFOUND，权威/公共DNS核验后重试通过。没有调用真实握手、豆包识别或麦克风；保留少量空测试房间元数据，不存识别历史。主站保持在线，health configured:false指服务器默认Key未配置，房间状态改由新接口提供。
+
+边界：旧版临时房间需重建；新持久资料上限100房（含空房），尚无解散/清理入口。创建者凭据限原浏览器，清除浏览器数据后尚无身份恢复；恢复须同时保留主密钥和数据卷，实际完整备份恢复未演练。真实API/麦克风/双设备/长时稳定性待验收。未编辑DEEPSEEK-MEMORY.md，未提交或推送Git。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务：修复网页版点击麦克风后停在准备状态，随后报“本地语音检测积压”。截图房间985529；仅只读检查其Key已配置及服务健康，不读取或显示Key。内置浏览器读取线上页超时，没有把它写成线上UI验收。
+
+原因及修改：采集与本地模型同时启动，speechDetector在模型未ready时也用25包/5秒的运行期队列限制，加载稍慢即报积压，20秒模型超时尚未到就已失败。改为模型加载期间只滚动保留最近3包（约600ms）；ready后按序处理这些最近片段，丢弃等待期旧包。运行期积压/陈旧音频/单包超时及加载失败均继续停止并清理，不放开持续上传。本人卡片启动时明确显示“麦克风准备中”，图标和底部按钮都可取消，底部不再在准备中误显示已开启；只有listening才显示麦克风开启。
+
+验证：新增12秒/60包慢加载回归，确认只保留最近3包且不误报积压，原有运行期故障/队列/取消测试继续通过；卡片实际Vue模板验证准备中/取消及开启状态。npm test、npm run build通过，构建获准沙箱外执行。隔离浏览器验收页面使用本页合成静音替代getUserMedia，拦截所有ASR连接，并将真实Worker初始化延迟12秒；实际浏览器AudioContext、Worklet、重采样、Silero WASM推理经过准备状态后进入listening，持续静音15秒未报积压、云连接0，关闭后回到idle。截图artifacts/microphone-startup-fixed.png。没有访问真实麦克风或调用豆包。README和ARCHITECTURE同步，未编辑DEEPSEEK-MEMORY.md。
+
+部署完成：hakisub-20261020T140219Z发布包SHA256 b59f7eb7dfe87f2f06e68a0d2434f9d14ee15d3a4dd227d499eff159181a8212，固定Node22.23.3/ws8.22.0离线镜像SHA256 41e49b8f95d87835c2b6dfc914165c894bbb81da6ddfbd1ca7b52be83a668c86，config 9e82f045419443e077c4b236a5e7d6ee3eeb1afb532650584520feb2b2968c1c。27份运行文件、crane、上传后哈希及无网络/无真实Key临时Linux容器验收通过。备份原根.env及加密rooms.json，只更新发布标识并重建应用，失败回退未触发；主密钥、卷、Caddy和主站保持不变。最终healthy、仅回环18787，截图中的房间985529及其加密Key仍存在。
+
+公网验收：新JS index-CwKlPyyj.js与本地构建逐字节一致、准备中/取消开启文字可用，两站可信HTTPS/HTTP跳转、应用/VAD资源、WSS房间广播/隔离/断线清理与Origin/旧设置限制全部通过。没有自动使用用户Key测试握手、上传音频或调用ASR；真实讲话与设备权限待用户刷新重进后验收。未提交或推送Git。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务：继续修复用户报告的无检测，用户随后确认错误为“本地语音检测模型加载超时”。明确故障尚在本地VAD准备，未进入豆包；服务器原资源200且容器健康，原始模型2327524字节、WASM12361745字节。旧20秒启动保护无法容忍较慢下载/编译；未获取用户端实际分阶段耗时，不断言具体浏览器故障。线上浏览器读取再次超时，故没有把它写成线上UI验收。
+
+修改：新增vadAssets.ts版本化同源URL和有界流式下载，按解压后长度累计并校验完整字节；Worker并行下载模型/WASM，直接传ORT的wasmBinary和模型字节避免重复请求。页面显示运行库/下载百分比/初始化；speechDetector改为下载30秒无进度、初始化60秒、总准备180秒保护，保留600ms加载滚动缓冲、运行25包/3秒推理/5秒陈旧保护。doubaoAsrClient把采集30秒单独计时，已授权采集不再被旧30秒总启动时限中断；取消/故障仍终止Worker并释放音轨，不降低VAD门槛、不改持续上传。prepare-vad-runtime生成四份gzip，静态服务协商编码并添加Vary/长度，版本化公开资源长期缓存、HTML仍no-cache；打包校验gzip存在，Git忽略生成文件。README、ARCHITECTURE、资源说明和部署记录同步。
+
+本地测试：npm test及npm run build全部通过，构建获准沙箱外执行；新增流式进度/压缩头长度/404/截断/超长/取消、虚拟60秒下载加45秒初始化、停滞/绝对时限/错误阶段/迟到进度、静态gzip协商/禁用q=0/HEAD/缓存回归。可选浏览器脚本同步默认模拟选择及带版本的模型拦截，但未执行该Playwright脚本。
+
+实际隔离浏览器：artifacts/vad-download-bench使用本次dist正式构建，WASM gzip分40秒传输，实际下载/模型初始化通过并进入等待说话；合成静音44秒未建ASR连接。Windows内置TTS普通话经真实AudioContext/Worklet/重采样/Silero后触发一次本地假ASR连接，505600字节输入和模拟字幕返回；截图artifacts/vad-download-speech-proof.png。关闭后流0，重开命中缓存，WASM下载总次数仍1，静音40秒无新增上传，最终两路测试流均释放。离线同样本20秒组合输入46个人声触发包、14秒进入队列、两次开口均结束。全部为合成人声/假ASR，未录真实麦克风、未读取用户Key、未调用真实豆包。
+
+部署：hakisub-20261020T142427Z包SHA256 530b3a2a16c586cd034e6e0cdc24fe20062602c258013a7548042c8522a8d278，镜像归档SHA256 d814ec4037fc0deb7a83bff48e919ac091b84efbba6278735c7eb5337eb42d2c，config e394552b5d62f8ec975bf05d83945a621c880679a931527617f834c08f71a858。固定Node22.23.3/ws8.22.0、31份运行文件、crane和上传哈希、无网络无真实KeyLinux隔离验证均通过。原镜像下载稍慢最终正常完成，没有执行备用基础层拼装。备份根.env和加密房间数据后仅重建应用，回退未触发；原房间985529及其加密Key保留，主密钥/卷/Caddy未改。最终healthy、node、只读根目录、512MiB/0.75CPU、127.0.0.1:18787。
+
+公网验证：index-tVTPFNyA.js与本地逐字节一致；四份资源5127529字节gzip传输，编码/缓存/Vary/压缩及解压哈希均正确，HTML no-cache。两站HTTPS、跳转、资源、WSS房间广播/隔离/清理/Origin/旧设置回归通过。真实设备/麦克风/豆包尚未验收，需用户强制刷新重新入房并等待就绪。未编辑DEEPSEEK-MEMORY.md，未提交或推送Git。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务及范围：用户反馈延迟和偶发“无法连接本地语音网关，请运行npm run dev”导致停止；后续确认体感不到一秒可接受、取消延迟调优。保留现有识别参数、200ms分包、每步最多补发两个包、500ms句首和1.6秒静音收尾。服务器只读检查healthy、无重启/OOM、低负载；没有当时HTTP握手状态码，不能确认所有断线的实际原因。核对官方双向流式优化版与二遍说明后没有更换接口或参数。
+
+修改：asrGateway在识别cleanup立即标记asrStopped并释放本人占位，升级只统计有效识别；旧Socket的close引用检查保留，避免清掉后续新占位。此前识别已停而Socket关闭握手未完成期间仍占有效名额，可能拒绝下一句。新增gateway-recovery.test让旧客户端pause、不回close帧，验证本机/联网下一句可及时进入、旧close不影响新占位、重复连接仍403。
+
+doubaoAsrClient对网页到网关的传输error/异常close/send异常恢复：250/750ms退避，滚动30秒最多两次，采集/VAD保持；仅保留未交给WebSocket的队列，已发送语音不重放，旧Interim撤销、Final保留；无待发送音频时回本地等待，不空建豆包会话。连接编号和代次防迟到事件、错误及close双事件重复恢复；手动关闭/离房取消计时器；服务端明确错误、模型/采集故障或积压仍停止，耗尽后提示服务器网关和重新入房。App仅豆包reconnecting继续发送mic:true，避免恢复时误广播关麦导致服务器撤销ASR。没有修改浏览器ASR重连行为或字幕生命周期；中断片段可能不完整，不承诺无损恢复。
+
+验证：npm test全套及npm run build通过，构建获准沙箱外。新增模拟覆盖首次握手失败保留有序队列、发送后断线不重放、迟到ready/close、两次上限、手动取消、send异常和无语音不空建连接；真实Vue逻辑覆盖恢复期间本人mic:true。隔离正式构建用系统合成人声、实际AudioContext/Worklet/Silero和假网关，第一次握手503后自动恢复一次、收到一条模拟字幕、采集流保持1，停止后0。首次测试的旁栏观察器选择了错误节点，修正验收脚本后重验，恢复状态已观察、握手失败1、有效连接1、模拟字幕1；截图artifacts/gateway-recovery-browser.png。未访问真实麦克风或豆包，未读取用户Key。README/ARCHITECTURE/部署记录已同步。
+
+部署hakisub-20261020T144728Z：包SHA256 93cec73dfee50c01eac3c6c9c67d9d1b670030b2ca738ab37906a79868354a21，镜像归档SHA256 ba00e0437baeb21f7448a04a89b4b94d23c3b16f7f670b21c93d80c3f4048adc，config efd8be574327979135c09f1c9235b611e9cc5d38501ccdbea286a0ca31808a9c。31份运行文件、固定Node22.23.3/ws8.22.0、crane、上传哈希均通过。服务器两个无网络/无Key/非root只读临时容器分别通过生产网页/模型/房间检查和旧close竞态（本机与联网）验证，之后备份根.env和加密rooms.json，仅重建应用，失败回退未触发。原房间985529和加密Key仍存在，主密钥/卷/Caddy不变。
+
+公网JS index-B1z7ZHrn.js与本地一致，恢复文案存在、原npm run dev错误文案消失；四资源压缩/缓存/解压哈希、两站TLS/跳转/WSS广播/隔离/清理/Origin/旧设置限制回归通过。最终healthy、node、只读根目录、512MiB/0.75CPU、回环18787。真实识别/断线和网络效果待用户刷新重进观察，未调用真实API、未编辑DEEPSEEK-MEMORY.md、未提交或推送Git。
+
+日期：2026-10-20（Asia/Shanghai）
+
+任务：按用户明确要求将真实房间985529无痛换为114514。只读预检原房间/配置存在且目标未占用。AAD绑定房间号，单改JSON会破坏Key解密；浏览器房主凭据按旧号码保存，也需同步兼容。
+
+实现：roomStore新增可选aliases兼容旧version 1，校验所有正式/别名六位码互斥；renameRoom经串行原子写入保留ownerHash、以新号AAD重加密同一Key，并将旧号存为别名，不复制第二间房。save保留别名，创建房间避开别名。roomGateway旧新码解析同一room对象，joined仅向成员返回号码别名；未新增公开改号API。rememberRoom合并旧新入口并保留ownerToken；App直接新号但仅有旧凭据时最多补验一次，失败不无限重连。新增服务器CLI renameRoom.mjs默认只读预检，--apply供停服维护使用；脚本仅输出保留状态布尔值，不输出Key/管理凭据，重复执行识别已完成。音频、字幕、识别参数、重连流程未改。
+
+本地测试：npm test和npm run build通过。新增room-renaming.test覆盖实际AES-GCM、只改号解密失败、目标冲突/非法号文件不变、Key不明文/重加密、房主保留、旧新码同房/配置只读权限/合成字幕广播、更新Key保留别名/连续迁移/别名防占用、CLI预检及幂等无泄露。CLI子进程被沙箱限制，获准沙箱外通过同一测试与全套回归；Vue逻辑/rememberedRooms/RoomClient同步测试房主补验、最多一次及入口合并。隔离正式构建实际浏览器用合成资料完成旧985529首页记录→直接114514→可管理原配置→返回首页唯一114514房主入口，截图artifacts/room-renamed-home-proof.png；未使用真实Key/麦克风/豆包。
+
+部署hakisub-20261020T150521Z：包SHA256 642a5c3dea267a0f34da2ca8c92191fdd41376a7bcb3ff9dccc538826bb0cc00，镜像归档SHA256 4cd6608946f25b287596d922e82ecc329b948f9779e53c218aa58b9e4a678f2a，config f9295277137ef164a6cd0384c95bef3cdb90396fa6f014120641bd157f6edf4b；32份运行文件、固定Node22.23.3/ws8.22.0、crane及上传哈希通过。服务器两个无外网/无真实Key/非root只读临时容器通过生产网页检查与完整迁移CLI/别名/房主/广播测试。真实维护前预检原配置、目标空闲、UID1000及备份权限，保存root.env、server.env和停服后rooms.json备份至images目录，仅服务器保留，文件0600。
+
+实际迁移停服窗口3秒：CLI确认同一Key内容、同一ownerHash、旧入口保留，数据量未增加；切换应用并恢复healthy，回退未触发。主密钥/数据卷/Caddy/识别配置不变，node用户、只读根目录、512MiB/0.75CPU、127.0.0.1:18787。真实旧985529与新114514通过公网WSS均返回canonical114514并进入同一成员列表；配置仍room/已配置，验收成员只读、响应无Key。新JS index-BJ06bT-s.js与本地一致，完整HTTPS/WSS/模型压缩/隔离清理/Origin回归通过。检查期间只查看结构/配置布尔值，不记录在场字幕，不调用ASR。保留少量回归空房元数据，无字幕历史；用户刷新重进后首页更新，手动开麦。未编辑DEEPSEEK-MEMORY.md，未提交或推送Git。
+
+日期：2026-10-21（Asia/Shanghai）
+
+任务：联网房间进入后使用独立六位数字地址，左上增加仅图标分享按钮。
+
+修改：roomNavigation.ts解析房间路径、构造不含查询参数/凭据的正式分享URL，并封装系统分享、Clipboard回退、取消与受限结果。App初始直达链接预填房间号及已有显示名；joined后从首页pushState、直达或别名replaceState为正式号。返回首页/前进后退清理房间和麦克风，刷新/关闭及异常断线保留地址，重进仍手动开麦。分享按钮有aria-label/title、复制状态提示和受限时只读地址，离房取消迟到反馈；模拟模式保持原流程且不显示分享按钮。静态服务仅对白名单六位路径提供HTML，其他未知/敏感路径仍404。README、ARCHITECTURE同步。
+
+验证：npm test全套、npm run build通过，新增路径/无凭据URL/系统分享/复制回退/取消/权限失败、历史切换清理/别名规范/刷新保留/迟到分享回归；追加交互回归单独执行通过。实际内置浏览器使用本次dist及隔离网关，/114514/直接打开预填加入，输入合成名称后进入，左上图标无可见文字，点击显示链接已复制，返回首页地址为/、后退到/114514/恢复加入表单而不自动开麦。截图artifacts/room-link-share-proof.png。未采集真实音频、调用豆包或发送第三方分享。
+
+部署：hakisub-20261020T173624Z，包SHA256 36c7ca646b14e0f74823a49f9bfcaadbbe2c8ce0da6320baae9104d9e9289aa1；镜像归档SHA256 fa083dd061cb09091c019823e0ba4d4caad09174f0782e158bd818ff1b0c33a6，config 49a9815cdab56a558e7f46f0ea89b077f72d17ff053ee6241f19dcce451695b8。固定Node22.23.3/ws8.22.0、32份运行文件、crane及上传校验通过；无外网/无真实Key临时容器通过深链接和现有网页/房间/模型检查。备份根.env与加密rooms.json，仅切换应用镜像；旧版本及回退环境保留，未触发回退。房间114514、985529别名和加密Key仍存在，主密钥/数据卷/Caddy保持原状。
+
+公网验证：/114514/、/114514、/985529/及带查询参数直达均200且与根页相同，HEAD正确、HTML no-cache，非法位数/子路径/敏感路径404；index-DhETaCY6.js与本地构建逐字节一致（SHA256 e19130d339afa41c592507dc066fe828b3fe0847b4c9625a825b162a3e1f7aaf），分享图标文案可用。两站可信HTTPS/HTTP跳转、WSS测试房间创建/加入/广播/隔离/清理/非法Origin/旧设置限制及四份VAD资源gzip/缓存/哈希通过。浏览器补验刷新后预填已有名称和房间码，再次进入可复制完整/114514/地址；测试仅隔离网关与合成身份。未编辑DEEPSEEK-MEMORY.md，未提交或推送Git。
+
+日期：2026-10-21（Asia/Shanghai）
+
+任务：xdstar.work统一账号系统；先完成现有架构审查，再按用户补充继续本地开发。保留已有大量未提交改动，不编辑DEEPSEEK-MEMORY.md，不提交或推送Git。
+
+审查：通过现有SSH别名只读核实Star-Hub Ubuntu24.04.5、2CPU/1613MiB、可用约1068MiB、31GiB磁盘余量；仅HakiSub/Caddy两个运行容器，无已运行数据库服务。Node22.23.3/Docker29.9.1，应用healthy/只读根目录/node用户/回环18787，房间卷及0600资料存在；两站可信HTTPS GET200。默认Key health为false不能推断各房间无Key。未读取密钥或房间内容，未写服务器文件或重启服务。GitHub main的package文件落后于本地新增房间测试，保留当前工作区为开发基线。
+
+本地实现：新增accounts独立Fastify/SQLite服务和Vue账号页面，开放注册、大小写不敏感的全局唯一登录账号、可重复/可改昵称、30天最长/7天闲置会话、登录/退出、个人中心、改密码/三问、传统密保重置及会话撤销、email扩展字段。Argon2id及答案NFKC/大小写/空白规范化；会话只存token摘要。使用主站专属HttpOnly/Secure/SameSite=Lax/无Domain Cookie，精确Origin凭据CORS；CSRF绑定会话与account/hakisub范围，项目端只读UID/nickname，不读username。接口拒绝编码/点路径，私人数据按UID查询。
+
+防滥用：SQLite持久事件实现注册5次/10分钟和成功3个/滚动24h；成功配额与插入同事务复检，上海自然日超100只记预警。登录/恢复多层限制、虚拟账号同成本验证、恢复挑战10分钟/5次/一次消费、单路哈希与8个排队上限。仅信任配置的精确代理peer与Caddy覆盖的客户端IP头，IPv6按/64聚合。管理员CLI支持预警、定向IP解除（保留注册日计数）、SQLite一致性备份，备份排他创建不覆盖文件。
+
+HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独立账号新标签入口、存档保存/列表/改名/删除/链接加载。仅存识别来源及布局，不存Key、ownerToken、member token、音频/字幕；加载不入房或开麦，在线期间禁用加载。UID/房主/成员分离，未来ownerUid可与匿名ownerHash并存，绑定必须另验房主凭据。本轮未实现暂停全房ASR/强制销毁/房间额度熔断，没有更改现有WebSocket、ASR、Key或计费逻辑，也没有扩大生产付费访问。
+
+开源复用：Fastify及cookie/cors/csrf/static插件、argon2、better-sqlite3和原有Vue/Vite。评估Better Auth（现成username注册要求邮箱）、Passport（仍需存储和恢复）、rate-limiter-flexible（基础固定窗口，业务仍需同事务滚动成功额度），保留当前轻量组合，具体复用/自实现及许可证见accounts/THIRD-PARTY.md。LiveKit仅作未来权限分离参考，不引入媒体栈。官方npm审计发现原static8.x路径处理漏洞，升到10.1.6并适配新setHeaders接口；最终运行依赖审计0项。镜像源不支持audit，单次指定官方registry，没有改全局配置。
+
+验证：npm test全部通过；npm run build通过。新增npm run test:accounts通过客户端模拟及4个后端测试组，使用真实SQLite/Argon2id，覆盖跨UID越权、密钥字段拒绝、账号/配额并发、24h边界、重启持久会话/限流、代理伪造/IPv6、哈希队列、密码会话轮换、三问规范化/并发消费/旧会话失效、备份integrity_check和拒绝覆盖。npm run build:accounts通过。初次沙箱内构建/原换房CLI测试受子进程EPERM拦截，获准沙箱外后全量通过；新增测试直接运行node:test文件以避免额外测试子进程。修复版静态页/CSP和编码路径已补HTTP断言。
+
+浏览器：隔离回环8790账号+5179 HakiSub+8791空Key网关，合成账号登录后自动填入“星间旅人”，保存存档、个人中心读取并改名、链接加载返回HakiSub均成功；不自动入房/开麦。进入独立测试房间后成员卡显示nickname，Key为空；退出账号后游客入口/本浏览器创建者凭据仍保留。修复首次登录关联项目列表刷新，最终页面无console warn/error。截图artifacts/account-review/account-presets.png和hakisub-account-room.png。预览网关显式禁止真实上游与Key握手测试；没有访问真实麦克风或豆包。仅不同本地Origin通过，不当成真正跨子域生产验收。
+
+交付与边界：新增审查方案、部署/备份手册、开源选择记录、账号Dockerfile、可选Compose与Caddy候选文件、隔离预览/无密钥打包脚本；README与ARCHITECTURE同步。传统三问的熟人猜测接管和自定义问题枚举风险已明确，不能声称完全消除。Linux原生依赖/容器资源权限、Compose/Caddy实际验证、正式TLS跨子域Cookie/CORS/代理IP、异机加密备份恢复及生产ASR费用保护尚未验收；未部署账号、未覆盖生产配置、未重启现有服务、未开放端口或修改生产密钥。
+
+补充收尾：隔离预览显式拒绝.env、secrets、artifacts和账号服务端源码的HTTP访问，并关闭这些目录的开发热更新监听；实际请求首页与App源码200，测试数据库、账号服务端源码和.env均403。预览服务已停止，无遗留8790/8791/5179监听。账号白名单包的21份文件已逐项核对SHA-256且无数据库/密钥路径；Docker默认数据库明确落在/app/data，新Linux镜像仍待隔离验收。
+最终账号包：xdstar-accounts-20261020T183940Z（UTC版本标识），21份文件逐项SHA-256通过，归档SHA-256为0b95e5d2d52b17139f70dc23209e3e29f38152354c8b82e76432640b5a4ad986。后端静态文件测试使用隔离fixture，不依赖已有dist；最终账号专项测试再次全部通过。未上传或部署。
+
+日期：2026-10-21（Asia/Shanghai）
+
+按用户要求整理当前工作区提交到原GitHub仓库：包含此前房间持久化/独立URL/语音恢复/部署文档，以及本轮统一账号的源码、测试、锁文件和候选配置。提交前检查Git纳入范围与真实本机密钥值的匹配，不显示密钥；现有.env、.env.local、数据库、依赖、构建目录、截图和镜像/发布包继续保留本地，不强制添加忽略文件。新增SQLite/DB日志及backups目录忽略规则，防止数据库移到其他目录后意外入库。测试结果沿用本轮已通过的npm test、npm run build、npm run test:accounts、npm run build:accounts及官方运行依赖审计0项；此次仅更新Git排除规则与提交记录，没有修改运行逻辑或生产环境。提交/推送的最终哈希与结果以实际Git操作为准。

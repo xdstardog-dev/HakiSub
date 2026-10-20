@@ -2,7 +2,7 @@ import type { CaptionEvent } from './captionEvents'
 
 export type RoomMember = { id: string; name: string; mic: boolean; color: string }
 type RoomCallbacks = {
-  onJoined: (code: string, memberId: string) => void
+  onJoined: (code: string, memberId: string, ownership: { ownerToken?: string; isOwner: boolean; aliases: string[] }) => void
   onMembers: (members: RoomMember[]) => void
   onCaption: (event: CaptionEvent) => void
   onDiscard: (memberId: string, utteranceId: string) => void
@@ -25,17 +25,20 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
     socket.close(); socket = undefined
   }
   return {
-    connect(type: 'create' | 'join', name: string, code: string) {
+    connect(type: 'create' | 'join', name: string, code: string, ownerToken?: string) {
       close()
       socket = createSocket()
       connectionTimer = setTimeout(() => {
         close(); callbacks.onError('连接房间超时，请重新加入。'); callbacks.onClose()
       }, 10000)
-      socket.onopen = () => { send({ type, name, code }) }
+      socket.onopen = () => { send({ type, name, code, ...(ownerToken ? { ownerToken } : {}) }) }
       socket.onmessage = message => {
         try {
           const event = JSON.parse(message.data)
-          if (event.type === 'joined') { clearTimeout(connectionTimer); token = event.token; callbacks.onJoined(event.code, event.memberId) }
+          if (event.type === 'joined') { clearTimeout(connectionTimer); token = event.token; callbacks.onJoined(event.code, event.memberId, {
+            ownerToken: event.ownerToken, isOwner: event.isOwner === true,
+            aliases: Array.isArray(event.aliases) ? event.aliases.filter((code: unknown) => typeof code === 'string' && /^\d{6}$/.test(code)) : [],
+          }) }
           else if (event.type === 'members') callbacks.onMembers(event.members)
           else if (event.type === 'caption') callbacks.onCaption(event)
           else if (event.type === 'discard') callbacks.onDiscard(event.memberId, event.utteranceId)

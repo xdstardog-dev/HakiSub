@@ -1,0 +1,22 @@
+{
+  "name": "xdstar-accounts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node server/index.mjs --development",
+    "build": "node ../node_modules/vite/bin/vite.js build --config vite.config.mjs",
+    "test": "node tests/accounts.test.mjs",
+    "admin": "node server/admin.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.3",
+    "@fastify/cors": "11.3.1",
+    "@fastify/csrf-protection": "7.1.0",
+    "@fastify/static": "10.1.6",
+    "argon2": "0.45.1",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.7"
+  }
+}

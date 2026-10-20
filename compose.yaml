@@ -18,10 +18,13 @@ services:
       HAKISUB_ALLOWED_ORIGINS: http://localhost:18787,http://127.0.0.1:18787
       HAKISUB_MAX_ASR_SESSIONS: ${HAKISUB_MAX_ASR_SESSIONS:-2}
       HAKISUB_ASR_DEBUG: "0"
+      HAKISUB_ROOM_STORE_PATH: /app/data/rooms.json
       NODE_OPTIONS: --max-old-space-size=256
     restart: unless-stopped
     init: true
     read_only: true
+    volumes:
+      - hakisub_room_data:/app/data
     tmpfs:
       - /tmp:size=16m,mode=1777
     cap_drop:
@@ -45,3 +48,5 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+volumes:
+  hakisub_room_data:

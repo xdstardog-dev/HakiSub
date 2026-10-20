@@ -3,6 +3,7 @@ dist/
 artifacts/
 public/vad/ort-wasm-*
 public/vad/ort.wasm.min.mjs
+public/vad/*.gz
 *.local
 
 # Local environment and private credentials
@@ -17,6 +18,15 @@ secrets/
 *.pfx
 id_rsa
 id_ed25519
+
+# Private databases, journals and backups must not enter source control.
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+backups/
 
 # Generated product-site deployment packages
 /sites/hakisub-product-package/

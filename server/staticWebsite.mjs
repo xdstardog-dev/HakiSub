@@ -10,11 +10,21 @@ export function createStaticWebsite(directory) {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname)
       if (pathname.split('/').some(part => part.startsWith('.')) || pathname.includes('\\')) throw Error()
-      const file = resolve(root, '.' + (['/', '/glasses'].includes(pathname) ? '/index.html' : pathname))
+      const pageRoute = ['/', '/glasses'].includes(pathname) || /^\/\d{6}\/?$/.test(pathname)
+      const file = resolve(root, '.' + (pageRoute ? '/index.html' : pathname))
       if (!file.startsWith(root + sep)) throw Error()
       const content = await readFile(file)
-      response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' })
-      response.end(request.method === 'HEAD' ? undefined : content)
+      const vadResource = /^\/vad\/(silero-v6\.onnx|ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(mjs|wasm))$/.test(pathname)
+      let body = content, compressed = false
+      if (vadResource && /(?:^|,)\s*gzip\s*(?:;\s*q=(?!0(?:\.0*)?(?:\s|,|$))\d?(?:\.\d+)?)?\s*(?:,|$)/i.test(request.headers['accept-encoding'] ?? '')) {
+        try { body = await readFile(file + '.gz'); compressed = true } catch { /* 开发目录可没有预压缩文件。 */ }
+      }
+      const version = new URL(request.url, 'http://localhost').searchParams.get('v')
+      response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream',
+        'Cache-Control': vadResource && version && /^[a-zA-Z0-9.-]{1,80}$/.test(version) ? 'public, max-age=31536000, immutable' : 'no-cache',
+        'X-Content-Type-Options': 'nosniff', 'Content-Length': body.byteLength,
+        ...(vadResource ? { Vary: 'Accept-Encoding' } : {}), ...(compressed ? { 'Content-Encoding': 'gzip' } : {}) })
+      response.end(request.method === 'HEAD' ? undefined : body)
     } catch { response.writeHead(404); response.end('Not found') }
   }
 }

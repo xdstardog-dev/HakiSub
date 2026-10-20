@@ -145,7 +145,7 @@ assert.deepEqual(pauseEvents, ['start'], '短暂停顿后轻声续讲仍属于�
 for (let i = 0; i < 8; i++) pauseGate.accept(taggedPacket(531 + i))
 assert.deepEqual(pauseEvents, ['start', 'end'])
 function clientFixture({ delayDetector = false } = {}) {
-  let emitAudio, reportCaptureError, resolveCapture, resolveDetector, reportDetectorError, detectionResult
+  let emitAudio, reportCaptureError, resolveCapture, resolveDetector, reportDetectorError, detectionResult, reportLoading
   const bufferedDetection = []
   const detector = { ready: !delayDetector, stopped: false,
     start: () => delayDetector ? new Promise(resolve => { resolveDetector = resolve }) : Promise.resolve(),
@@ -158,11 +158,11 @@ function clientFixture({ delayDetector = false } = {}) {
   const client = createDoubaoAsrClient({ onState: (state, message) => states.push({ state, message }), onResult: (...result) => results.push(result), onDiscard: id => discarded.push(id), onUsage: usage => usages.push(usage) }, {
     createSocket: () => { const socket = { readyState: 1, bufferedAmount: 0, sent: [], send(value) { this.sent.push(value) }, close() { this.closed = true } }; sockets.push(socket); return socket },
     createCapture: (onAudio, onError) => { emitAudio = onAudio; reportCaptureError = onError; return capture },
-    createDetector: (onResult, onError) => { detectionResult = onResult; reportDetectorError = onError; return detector },
+    createDetector: (onResult, onError, onLoading) => { detectionResult = onResult; reportDetectorError = onError; reportLoading = onLoading; return detector },
   })
   return { client, sockets, capture, detector, states, results, discarded, usages, get socket() { return sockets.at(-1) }, get socketCount() { return sockets.length },
     readyDetector: async () => { detector.ready = true; resolveDetector(); bufferedDetection.forEach(pcm => detectionResult(pcm, mockSpeechProbability(pcm))); await new Promise(resolve => setImmediate(resolve)) },
-    detectorError: () => reportDetectorError('本地语音检测失败'),
+    detectorError: () => reportDetectorError('本地语音检测失败'), loading: message => reportLoading(message),
     readyCapture: async () => { resolveCapture(); await new Promise(resolve => setImmediate(resolve)) }, audio: (packet = voicedPacket, count = 1) => { for (let i = 0; i < count; i++) emitAudio(packet) },
     captureError: () => reportCaptureError('设备断开'), message: message => sockets.at(-1).onmessage({ data: JSON.stringify(message) }) }
 }
@@ -191,9 +191,8 @@ assert.equal(fixture.capture.stopped, true); assert.equal(fixture.socket.closed,
 assert.deepEqual(fixture.discarded, ['b']); assert.equal(fixture.states.at(-1).state, 'idle')
 const cancelled = clientFixture(); cancelled.client.start(); cancelled.client.stop(); await cancelled.readyCapture()
 assert.equal(cancelled.socketCount, 0); assert.equal(cancelled.capture.stopped, true)
-for (const failure of ['close', 'error', 'backpressure', 'capture', 'detector', 'invalid']) {
+for (const failure of ['error', 'backpressure', 'capture', 'detector', 'invalid']) {
   const f = clientFixture(); f.client.start(); await f.readyCapture(); f.audio(voicedPacket, 2); f.message({ type: 'ready' })
-  if (failure === 'close') f.socket.onclose()
   if (failure === 'error') f.message({ type: 'error', message: '服务未开通' })
   if (failure === 'backpressure') { f.socket.bufferedAmount = 64001; f.audio() }
   if (failure === 'capture') f.captureError()
@@ -202,8 +201,73 @@ for (const failure of ['close', 'error', 'backpressure', 'capture', 'detector', 
   assert.equal(f.capture.stopped, true); assert.equal(f.states.at(-1).state, 'error'); assert.equal(f.socketCount, 1)
   assert.equal(f.detector.stopped, true, '任何故障均释放检测器，不能继续上传')
 }
+
+const awaitRetry = async (f, count) => {
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if (f.socketCount === count) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  throw Error('Transport recovery did not run')
+}
+const retryOpening = clientFixture()
+retryOpening.client.start(); await retryOpening.readyCapture()
+const retainedAudio = [taggedPacket(901, 5000), taggedPacket(902, 5000)]
+retainedAudio.forEach(pcm => retryOpening.audio(pcm))
+const firstConnection = retryOpening.socket, lateOpeningClose = firstConnection.onclose, lateOpeningMessage = firstConnection.onmessage
+firstConnection.onerror()
+assert.equal(retryOpening.states.at(-1).state, 'reconnecting')
+assert.equal(retryOpening.capture.stopped, false); assert.equal(retryOpening.detector.stopped, false)
+lateOpeningClose(); await awaitRetry(retryOpening, 2)
+lateOpeningMessage({ data: JSON.stringify({ type: 'ready' }) })
+assert.equal(retryOpening.socket.sent.length, 0, '旧连接迟到ready不能放行新连接')
+retryOpening.message({ type: 'ready' })
+assert.deepEqual(retryOpening.socket.sent, retainedAudio, '握手失败后只补交此前未发送的有序音频')
+retryOpening.client.stop()
+
+const retryListening = clientFixture()
+retryListening.client.start(); await retryListening.readyCapture(); retryListening.audio(voicedPacket, 2); retryListening.message({ type: 'ready' })
+const sentBeforeFailure = [...retryListening.socket.sent]
+retryListening.message({ type: 'caption', utteranceId: 'unfinished', text: '未确认', state: 'interim' })
+retryListening.socket.onclose()
+retryListening.audio(taggedPacket(903, 5000))
+assert.equal(retryListening.socketCount, 1, '退避期间不能由音频回调绕过计时器建连')
+await awaitRetry(retryListening, 2); retryListening.message({ type: 'ready' })
+assert.deepEqual(retryListening.discarded, ['unfinished'])
+assert.equal(retryListening.socket.sent.length, 1)
+assert.ok(!sentBeforeFailure.includes(retryListening.socket.sent[0]), '已交给旧连接的音频不能重放或重复计量')
+retryListening.socket.onerror(); retryListening.audio(taggedPacket(904, 5000)); await awaitRetry(retryListening, 3)
+retryListening.message({ type: 'ready' }); retryListening.socket.onerror()
+assert.equal(retryListening.states.at(-1).state, 'error', '30秒内仅允许两次恢复，不能无限重试')
+assert.match(retryListening.states.at(-1).message, /服务器语音网关/)
+assert.doesNotMatch(retryListening.states.at(-1).message, /npm run dev|本地语音网关/)
+assert.equal(retryListening.capture.stopped, true); assert.equal(retryListening.detector.stopped, true)
+
+const cancelRecovery = clientFixture()
+cancelRecovery.client.start(); await cancelRecovery.readyCapture(); cancelRecovery.audio()
+cancelRecovery.socket.onerror(); cancelRecovery.client.stop()
+await new Promise(resolve => setTimeout(resolve, 300))
+assert.equal(cancelRecovery.socketCount, 1, '手动关闭必须取消待重连，不能自行重新开启麦克风')
+assert.equal(cancelRecovery.states.at(-1).state, 'idle')
+
+const sendFailure = clientFixture()
+sendFailure.client.start(); await sendFailure.readyCapture(); sendFailure.audio(voicedPacket, 2)
+sendFailure.socket.send = () => { throw Error('transport unavailable') }
+sendFailure.message({ type: 'ready' })
+assert.equal(sendFailure.states.at(-1).state, 'reconnecting')
+await awaitRetry(sendFailure, 2); sendFailure.message({ type: 'ready' })
+assert.deepEqual(sendFailure.socket.sent, [voicedPacket, voicedPacket], '同步send失败的包没有交出，恢复后只发送一次')
+sendFailure.audio(new ArrayBuffer(6400), 8)
+sendFailure.socket.onclose()
+await new Promise(resolve => setTimeout(resolve, 800))
+assert.equal(sendFailure.socketCount, 2, '没有待发送语音时，不为恢复空建云端连接')
+assert.equal(sendFailure.states.at(-1).state, 'listening')
+sendFailure.audio(voicedPacket)
+assert.equal(sendFailure.socketCount, 3, '恢复静音等待后，下次开口可再次建立连接')
+sendFailure.client.stop()
 const modelLoading = clientFixture({ delayDetector: true })
 modelLoading.client.start(); await modelLoading.readyCapture()
+modelLoading.loading('正在下载语音检测资源 42%')
+assert.deepEqual(modelLoading.states.at(-1), { state: 'starting', message: '正在下载语音检测资源 42%' })
 modelLoading.audio(voicedPacket, 2)
 assert.equal(modelLoading.socketCount, 0, '模型尚未就绪不能开启豆包上传')
 await modelLoading.readyDetector()
@@ -213,6 +277,8 @@ modelLoading.client.stop()
 const cancelledModel = clientFixture({ delayDetector: true })
 cancelledModel.client.start(); await cancelledModel.readyCapture(); cancelledModel.audio()
 cancelledModel.client.stop(); await cancelledModel.readyDetector()
+cancelledModel.loading('迟到的进度')
+assert.equal(cancelledModel.states.at(-1).state, 'idle', '停止后忽略迟到加载进度')
 assert.equal(cancelledModel.socketCount, 0, '加载期间停止后，迟到的模型结果不得重新开麦或上传')
 assert.equal(cancelledModel.capture.stopped, true); assert.equal(cancelledModel.detector.stopped, true)
 const delayed = clientFixture()

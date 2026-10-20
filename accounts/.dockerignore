@@ -1,0 +1,10 @@
+**
+!package.json
+!package-lock.json
+!server/
+!server/*.mjs
+!dist/
+!dist/**
+**/.env*
+**/*.sqlite*
+**/secrets/**

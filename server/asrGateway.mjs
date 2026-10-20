@@ -6,11 +6,13 @@ import { createDoubaoResultMapper } from './doubaoResults.mjs'
 import { createApiSettingsHandler, allowedAppOrigins } from './apiSettings.mjs'
 import { createAsrDiagnostics } from './asrDiagnostics.mjs'
 import { createRoomGateway } from './roomGateway.mjs'
+import { createRoomSettingsHandler } from './roomSettings.mjs'
 
 export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url, options) => new WebSocket(url, options),
   startupTimeoutMs = 15000, idleTimeoutMs = 10000, maxSessionMs = 15 * 60 * 1000, diagnostics = {}, serveWebsite, maxAsrSessions = 8,
-  allowedOrigins = allowedAppOrigins, allowLegacyAsr = true, enableSettings = true, maxRooms = 100 } = {}) {
-  const rooms = createRoomGateway({ maxRooms })
+  allowedOrigins = allowedAppOrigins, allowLegacyAsr = true, enableSettings = true, maxRooms = 100, roomStore, probeRoomKey } = {}) {
+  const rooms = createRoomGateway({ maxRooms, roomStore })
+  const roomSettingsHandler = createRoomSettingsHandler(rooms, { allowedOrigins, getDefaultKey: () => keyStore?.getKey() ?? apiKey, probe: probeRoomKey })
   const usageStartedAt = new Date().toISOString()
   let totalSubmittedPcmBytes = 0, latestStatistics
   const settingsHandler = keyStore && enableSettings ? createApiSettingsHandler(keyStore, {
@@ -19,6 +21,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
       latest: latestStatistics?.snapshot() ?? null }),
   }) : undefined
   const server = createServer((request, response) => {
+    if (request.url === '/api/rooms/settings') { void roomSettingsHandler(request, response); return }
     if (request.url?.startsWith('/api/asr/settings') && settingsHandler) { void settingsHandler(request, response); return }
     if (request.url === '/api/asr/health') {
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
@@ -35,9 +38,10 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     catch { socket.destroy(); return }
     const token = url.searchParams.get('session')
     const member = token ? rooms.findSession(token) : undefined
-    const legacyBusy = [...sockets.clients].some(client => !client.roomMember)
+    const activeClients = [...sockets.clients].filter(client => !client.asrStopped)
+    const legacyBusy = activeClients.some(client => !client.roomMember)
     if (url.pathname !== '/api/asr' || !allowedOrigins.includes(request.headers.origin) || settingsHandler?.isBusy() ||
-      (token ? !member || !member.mic || member.asr || legacyBusy || sockets.clients.size >= maxAsrSessions : !allowLegacyAsr || sockets.clients.size >= 1)) {
+      (token ? !member || !member.mic || member.asr || member.room.settingsBusy || legacyBusy || activeClients.length >= maxAsrSessions : !allowLegacyAsr || activeClients.length >= 1)) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return
     }
     sockets.handleUpgrade(request, socket, head, client => {
@@ -49,7 +53,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     })
   })
   sockets.on('connection', client => {
-    const sessionApiKey = keyStore?.getKey() ?? apiKey
+    const sessionApiKey = client.roomMember?.room.apiKey || (keyStore?.getKey() ?? apiKey)
     let upstream, stopped = false, ready = false, finishing = false, startupTimer, idleTimer, sessionTimer
     const sessionId = randomUUID()
     const statistics = createAsrDiagnostics(sessionId, diagnostics)
@@ -68,16 +72,19 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     const cleanup = () => {
       if (stopped) return
       stopped = true
+      client.asrStopped = true
       clearTimeout(startupTimer); clearTimeout(idleTimer); clearTimeout(sessionTimer)
       // terminate 立即关闭传输，停止后不再发送积压的音频。
       if (upstream && upstream.readyState !== WebSocket.CLOSED) upstream.terminate()
+      // 已停止的上游不再占成员或并发名额；不能等待浏览器完成close握手才释放。
+      if (client.roomMember?.asr === client) client.roomMember.asr = undefined
       if (client.readyState === WebSocket.OPEN) client.close()
       statistics.end()
     }
     const fail = message => { send({ type: 'error', message }); cleanup() }
     client.on('error', cleanup)
     client.on('close', cleanup)
-    if (!sessionApiKey.trim()) { fail(enableSettings ? '尚未配置豆包 API Key。请到主页的设置中填写并保存。' : '尚未配置豆包 API Key，请联系管理员配置服务端环境。'); return }
+    if (!sessionApiKey.trim()) { fail(client.roomMember ? '尚未配置豆包 API Key，请房间创建者打开房间内的“豆包配置”并保存。' : '尚未配置豆包 API Key，请打开房间内的豆包配置。'); return }
     startupTimer = setTimeout(() => fail('连接豆包超时，请检查网络后手动重试。'), startupTimeoutMs)
     sessionTimer = setTimeout(() => fail('本次识别已达到 15 分钟上限，麦克风已关闭；需要继续时请手动开启。'), maxSessionMs)
     const refreshAudioTimeout = () => {

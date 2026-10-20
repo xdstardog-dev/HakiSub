@@ -6,21 +6,27 @@ import type { AsrCallbacks } from './captionEvents'
 type ClientEnvironment = {
   createSocket: () => WebSocket
   createCapture: (onPacket: (pcm: ArrayBuffer) => void, onError: (message: string) => void) => AudioCapture
-  createDetector: (onResult: (pcm: ArrayBuffer, probability: number) => void, onError: (message: string) => void) => SpeechDetector
+  createDetector: (onResult: (pcm: ArrayBuffer, probability: number) => void, onError: (message: string) => void,
+    onLoading: (message: string) => void) => SpeechDetector
 }
 export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: ClientEnvironment = {
   createSocket: () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/asr${roomToken ? `?session=${encodeURIComponent(roomToken)}` : ''}`),
   createCapture: createAudioCapture,
-  createDetector: createSpeechDetector,
+  createDetector: (onResult, onError, onLoading) => createSpeechDetector(onResult, onError, { onLoading }),
 }, roomToken = '') {
   let generation = 0, active = false, microphoneReady = false
   let socket: WebSocket | undefined, capture: AudioCapture | undefined
   let detector: SpeechDetector | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
+  let captureTimer: ReturnType<typeof setTimeout> | undefined
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let connectionNumber = 0
+  const transportFailures: number[] = []
   let gatewayReady = false, finishing = false, awaitingClose = false
   const queuedAudio: (ArrayBuffer | null)[] = []
   const pendingIds = new Set<string>()
   const cleanupSocket = () => {
+    connectionNumber++
     clearTimeout(startupTimer)
     if (socket) {
       socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null
@@ -31,6 +37,8 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
   }
   const cleanup = () => {
     active = false; generation++
+    clearTimeout(captureTimer)
+    clearTimeout(retryTimer); retryTimer = undefined
     microphoneReady = false
     capture?.stop(); capture = undefined
     detector?.stop(); detector = undefined
@@ -38,29 +46,52 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
     cleanupSocket()
   }
   const fail = (message: string) => { cleanup(); callbacks.onState('error', message) }
+  const recoverTransport = () => {
+    if (!active || retryTimer) return
+    cleanupSocket()
+    const now = Date.now()
+    while (transportFailures.length && now - transportFailures[0]! >= 30000) transportFailures.shift()
+    if (transportFailures.length >= 2) { fail('无法稳定连接服务器语音网关，麦克风已关闭。请检查网络，或重新进入房间后开麦。'); return }
+    transportFailures.push(now)
+    // 只保留还未交给WebSocket的包；已发送的语音不重放，避免重复识别和计量。
+    while (queuedAudio[0] === null) queuedAudio.shift()
+    callbacks.onState('reconnecting', `语音连接短暂中断，正在恢复（${transportFailures.length}/2）…`)
+    const currentGeneration = generation
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined
+      if (!active || generation !== currentGeneration) return
+      if (queuedAudio.length) connect()
+      else callbacks.onState('listening', '语音连接已重置 · 等待继续讲话（中断片段可能不完整）')
+    }, transportFailures.length === 1 ? 250 : 750)
+  }
   const flush = () => {
     if (!gatewayReady || !socket || finishing) return
+    if (socket.readyState !== 1) { recoverTransport(); return }
     let sentPackets = 0
     while (queuedAudio.length && sentPackets < 2) {
       if (queuedAudio[0] === null) {
         queuedAudio.shift()
-        finishing = true; socket.send('finish')
+        try { socket.send('finish'); finishing = true }
+        catch { recoverTransport() }
         return
       }
       if (socket.bufferedAmount > 64000) { fail('音频上传积压，已关闭麦克风，请检查网络。'); return }
-      socket.send(queuedAudio.shift()!)
+      try { socket.send(queuedAudio[0]!); queuedAudio.shift() }
+      catch { recoverTransport(); return }
       sentPackets++
     }
   }
   const connect = () => {
-    if (!active || !microphoneReady || socket) return
+    if (!active || !microphoneReady || socket || retryTimer) return
     callbacks.onState('listening', '检测到说话，正在连接豆包…')
     const currentGeneration = generation
-    startupTimer = setTimeout(() => { if (active && generation === currentGeneration) fail('连接豆包超时，请检查本地网关。') }, 15000)
+    const currentConnection = ++connectionNumber
+    const isCurrent = () => active && generation === currentGeneration && connectionNumber === currentConnection
+    startupTimer = setTimeout(() => { if (isCurrent()) fail('连接语音服务超时，请检查网络后重试。') }, 15000)
     try {
       socket = environment.createSocket()
       socket.onmessage = event => {
-        if (!active || generation !== currentGeneration) return
+        if (!isCurrent()) return
         try {
           const message = JSON.parse(event.data)
           if (message.type === 'ready') {
@@ -83,17 +114,17 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
             else pendingIds.delete(message.utteranceId)
             callbacks.onResult(message.utteranceId, message.text, message.state)
           } else throw Error('无效网关响应')
-        } catch { fail('本地识别网关返回异常数据，已关闭麦克风。') }
+        } catch { fail('服务器语音网关返回异常数据，已关闭麦克风。') }
       }
-      socket.onerror = () => { if (active && generation === currentGeneration && !awaitingClose) fail('无法连接本地语音网关，请运行 npm run dev 后重试。') }
+      socket.onerror = () => { if (isCurrent() && !awaitingClose) recoverTransport() }
       socket.onclose = () => {
-        if (!active || generation !== currentGeneration) return
-        if (!awaitingClose) { fail('语音连接已断开，麦克风已关闭，请手动重试。'); return }
+        if (!isCurrent()) return
+        if (!awaitingClose) { recoverTransport(); return }
         cleanupSocket()
         if (queuedAudio.length) connect()
         else callbacks.onState('listening', '麦克风已开启 · 等待说话（本地检测）')
       }
-    } catch { fail('无法连接本地语音网关。') }
+    } catch { if (isCurrent()) recoverTransport() }
   }
   const gate = createVoiceActivityGate(
     () => { if (!socket && microphoneReady) connect() },
@@ -112,24 +143,27 @@ export function createDoubaoAsrClient(callbacks: AsrCallbacks, environment: Clie
     start() {
       if (active) return
       active = true; generation++
+      transportFailures.length = 0
       const currentGeneration = generation
       callbacks.onState('starting', '正在准备麦克风与本地语音检测…')
-      startupTimer = setTimeout(() => { if (active && generation === currentGeneration) fail('麦克风或本地语音检测启动超时。') }, 30000)
+      captureTimer = setTimeout(() => { if (active && generation === currentGeneration) fail('麦克风启动超时，请检查浏览器权限和设备。') }, 30000)
       try {
         detector = environment.createDetector((pcm, probability) => {
           if (!active || generation !== currentGeneration) return
           try {
             gate.accept(pcm, probability)
             // 每个判定后的原包推进有序补发，不靠页面定时器催上传。
-            if (active) flush()
+            if (active) { if (!socket && queuedAudio.length) connect(); flush() }
           } catch { if (active) fail('语音判断异常，已停止识别。') }
-        }, message => { if (active && generation === currentGeneration) fail(message) })
+        }, message => { if (active && generation === currentGeneration) fail(message) },
+        message => { if (active && generation === currentGeneration && !microphoneReady) callbacks.onState('starting', message) })
         capture = environment.createCapture(pcm => {
           if (!active || generation !== currentGeneration) return
           detector?.accept(pcm)
         },
           message => { if (active && generation === currentGeneration) fail(message) })
-        void Promise.all([capture.start(), detector.start()]).then(() => {
+        const captureStarted = capture.start().then(() => { clearTimeout(captureTimer) })
+        void Promise.all([captureStarted, detector.start()]).then(() => {
           if (!active || generation !== currentGeneration) return
           microphoneReady = true; clearTimeout(startupTimer)
           if (queuedAudio.length) connect()

@@ -12,5 +12,6 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules/ws ./node_modules/ws
 COPY server/ ./server/
 COPY dist/ ./dist/
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 CMD ["node", "server/index.mjs", "--production"]

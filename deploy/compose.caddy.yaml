@@ -24,6 +24,12 @@ services:
           create_host_path: false
       - hakisub_caddy_data:/data
       - hakisub_caddy_config:/config
+      - type: bind
+        source: ./deploy/xdstar
+        target: /srv/xdstar
+        read_only: true
+        bind:
+          create_host_path: false
     restart: unless-stopped
     read_only: true
     tmpfs:

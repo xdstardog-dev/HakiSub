@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { access } from 'node:fs/promises'
 import { createStaticWebsite } from './staticWebsite.mjs'
 import { readRuntimeConfiguration } from './runtimeConfiguration.mjs'
+import { createRoomStore, getRoomEncryptionKey } from './roomStore.mjs'
 
 let configuration
 try { configuration = readRuntimeConfiguration() }
@@ -13,13 +14,18 @@ let keyStore
 try { keyStore = await createApiKeyStore(fileURLToPath(new URL('../.env', import.meta.url)), process.env.DOUBAO_API_KEY) }
 catch (error) { if (error.code !== 'ENOENT') { console.error('无法读取 .env，请检查文件格式。'); process.exit(1) } }
 
+let roomStore
+try {
+  const encryptionKey = await getRoomEncryptionKey(fileURLToPath(new URL('../.env', import.meta.url)), process.env.HAKISUB_ROOM_ENCRYPTION_KEY)
+  roomStore = await createRoomStore(process.env.HAKISUB_ROOM_STORE_PATH ?? fileURLToPath(new URL('../secrets/rooms.json', import.meta.url)), encryptionKey)
+} catch { console.error('无法初始化房间资料，请检查数据目录权限和服务端房间加密主密钥。'); process.exit(1) }
 const production = process.argv.includes('--production')
 const websiteDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 if (production) {
   try { await access(new URL('../dist/index.html', import.meta.url)) }
   catch { console.error('请先运行 npm run build，再启动本机正式服务。'); process.exit(1) }
 }
-const gateway = createAsrGateway({ ...configuration, keyStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
+const gateway = createAsrGateway({ ...configuration, keyStore, roomStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
   serveWebsite: production ? createStaticWebsite(websiteDirectory) : undefined })
 let vite
 try {
@@ -28,7 +34,7 @@ try {
     gateway.server.listen(configuration.port, configuration.host, resolve)
   })
   console.log(`HakiSub 已启动（端口 ${configuration.port}，密钥只在服务端读取）。`)
-  if (!keyStore.status().configured) console.log(configuration.enableSettings ? '尚未配置 API Key，请在主页设置中填写；仍可使用模拟与浏览器识别。' : '尚未配置 API Key，请管理员配置服务端环境；仍可检查房间连接。')
+  if (!keyStore.status().configured) console.log('豆包配置可由创建者在房间内填写；未配置时仍可使用模拟与浏览器识别。')
   if (process.argv.includes('--dev')) {
     const { createServer } = await import('vite')
     vite = await createServer()

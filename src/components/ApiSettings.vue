@@ -67,7 +67,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = '' })
 
 <template>
   <section class="api-settings" aria-labelledby="api-settings-title">
-    <div class="settings-heading"><h1 id="api-settings-title">设置</h1><button @click="emit('close')">返回主页</button></div>
+    <div class="settings-heading"><h1 id="api-settings-title">设置</h1><button @click="emit('close')">返回房间</button></div>
     <div class="settings-card">
       <h2>豆包语音识别</h2>
       <p>ASR 2.0 · 小时版</p>

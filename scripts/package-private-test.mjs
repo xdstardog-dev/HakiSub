@@ -7,7 +7,7 @@ import { join, relative } from 'node:path'
 const root = fileURLToPath(new URL('../', import.meta.url))
 const release = `hakisub-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`
 const output = join(root, 'artifacts'), directory = join(output, release)
-const expectedAssets = ['dist/index.html', 'dist/vad/silero-v6.onnx', 'dist/vad/ort.wasm.min.mjs', 'dist/vad/ort-wasm-simd-threaded.wasm', 'dist/vad/ort-wasm-simd-threaded.mjs']
+const expectedAssets = ['dist/index.html', ...['silero-v6.onnx', 'ort.wasm.min.mjs', 'ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.mjs'].flatMap(file => [`dist/vad/${file}`, `dist/vad/${file}.gz`])]
 for (const file of expectedAssets) await readFile(join(root, file))
 await mkdir(output, { recursive: true })
 await mkdir(directory)
@@ -36,6 +36,8 @@ for (const entry of await readdir(join(root, 'server'), { withFileTypes: true })
   else throw Error('server目录包含非预期内容，已停止打包。')
 }
 await copyDirectory('dist')
+await copyDirectory('deploy/xdstar')
+await copyFile('deploy/prepare-room-storage.sh')
 await writeFile(join(directory, 'RELEASE.json'), JSON.stringify({ release, createdAt: new Date().toISOString(), files }, null, 2) + '\n')
 const archive = join(output, `${release}.tar.gz`)
 const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'

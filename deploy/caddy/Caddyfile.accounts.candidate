@@ -1,0 +1,41 @@
+# 账号系统候选配置，尚未应用生产；实际替换/重建Caddy须先确认维护窗口。
+{
+  admin off
+  servers {
+    protocols h1 h2
+  }
+  log {
+    format filter {
+      wrap json
+      request delete
+    }
+  }
+}
+xdstar.work {
+  tls {
+    issuer acme https://acme-v02.api.letsencrypt.org/directory
+  }
+  @accounts path /account /account/* /api/account/* /api/projects/hakisub/*
+  handle @accounts {
+    reverse_proxy 127.0.0.1:18788 {
+      # 覆盖客户端提交的同名头，后端还必须验证socket peer。
+      header_up X-XDstar-Client-IP {remote_host}
+    }
+  }
+  handle {
+    root * /srv/xdstar
+    file_server
+    encode zstd gzip
+    header {
+      X-Content-Type-Options nosniff
+      Referrer-Policy strict-origin-when-cross-origin
+      Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    }
+  }
+}
+hakisub.xdstar.work {
+  tls {
+    issuer acme https://acme-v02.api.letsencrypt.org/directory
+  }
+  reverse_proxy 127.0.0.1:18787
+}

@@ -8,6 +8,7 @@ const props = defineProps<{
   captions: Caption[]
   now: number
   selfId?: string
+  startingMemberId?: string
   liveInput?: boolean
   onlineRoom?: boolean
   adaptive?: boolean
@@ -101,7 +102,7 @@ const vCaptionScroll: ObjectDirective<HTMLElement> = {
 const tiles = computed(() => props.members.slice(0, 8).map(member => {
   const captions = props.captions.filter(c => c.memberId === member.id)
   const speaking = member.mic && captions.some(c => c.state === 'interim')
-  return { ...member, captions, speaking }
+  return { ...member, captions, speaking, preparing: member.id === props.startingMemberId }
 }))
 </script>
 
@@ -113,14 +114,14 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
       <div class="tile-heading">
         <div class="tile-identity">
           <h2 :title="member.name">{{ member.name }}<small v-if="member.id === selfId">（我）</small></h2>
-          <span class="tile-status">{{ liveInput && member.id !== selfId && !onlineRoom ? '未接入设备' : !member.mic ? '麦克风关闭' : liveInput ? '麦克风开启' : '模拟麦克风开启' }}</span>
+          <span class="tile-status">{{ member.preparing ? '麦克风准备中…' : liveInput && member.id !== selfId && !onlineRoom ? '未接入设备' : !member.mic ? '麦克风关闭' : liveInput ? '麦克风开启' : '模拟麦克风开启' }}</span>
         </div>
         <button class="tile-mic" :disabled="liveInput && member.id !== selfId" @click="emit('toggleMic', member.id)"
-          :aria-label="`${member.mic ? '关闭' : '开启'}${member.name}的麦克风`" :aria-pressed="member.mic">
+          :aria-label="`${member.preparing ? '取消开启' : member.mic ? '关闭' : '开启'}${member.name}的麦克风`" :aria-busy="member.preparing" :aria-pressed="member.mic">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <rect x="9" y="3" width="6" height="12" rx="3" />
             <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
-            <path v-if="!member.mic" d="m3 3 18 18" />
+            <path v-if="!member.mic && !member.preparing" d="m3 3 18 18" />
           </svg>
         </button>
       </div>
@@ -130,7 +131,7 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
             :class="{ 'is-latest': latestCaptionIds.get(member.id) === caption.id }"
             :data-state="caption.state" :data-caption-id="caption.id"
             :style="{ opacity: captionOpacity(caption, now) }">{{ caption.text }}</p>
-          <p v-if="!member.captions.length" class="tile-placeholder">{{ member.mic ? '等待字幕…' : '麦克风已关闭' }}</p>
+          <p v-if="!member.captions.length" class="tile-placeholder">{{ member.preparing ? '正在准备麦克风与本地语音检测…' : member.mic ? '等待字幕…' : '麦克风已关闭' }}</p>
         </div>
       </div>
     </article>

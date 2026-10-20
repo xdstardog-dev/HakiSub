@@ -13,6 +13,20 @@
 	}
 }
 
+xdstar.work {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory
+	}
+	root * /srv/xdstar
+	file_server
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+	}
+}
+
 hakisub.xdstar.work {
 	tls {
 		issuer acme https://acme-v02.api.letsencrypt.org/directory

@@ -44,8 +44,77 @@ const rejection = assert.rejects(cancelledStart, /停止/)
 cancelled.detector.stop(); cancelled.reply({ type: 'ready' }); await rejection
 assert.equal(cancelled.sent.length, 1); assert.equal(cancelled.results.length, 0)
 
+function timedLoadingFixture(options = {}) {
+  let now = 0, nextTimer = 0
+  const timers = new Map(), errors = [], labels = []
+  const create = load('../src/speechDetector.ts', 'createSpeechDetector', {
+    setTimeout: (callback, duration) => { const id = ++nextTimer; timers.set(id, { callback, due: now + duration }); return id },
+    clearTimeout: id => timers.delete(id), Date: { now: () => now },
+  })
+  const worker = { postMessage() {}, terminate() { this.stopped = true } }
+  const detector = create(() => {}, message => errors.push(message), {
+    createWorker: () => worker, assetBase: 'http://localhost/vad/', onLoading: message => labels.push(message), ...options,
+  })
+  const advance = duration => {
+    const target = now + duration
+    while (true) {
+      const next = [...timers.entries()].filter(([, task]) => task.due <= target).sort((a, b) => a[1].due - b[1].due)[0]
+      if (!next) break
+      now = next[1].due; timers.delete(next[0]); next[1].callback()
+    }
+    now = target
+  }
+  return { detector, worker, errors, labels, advance, timers, reply: data => worker.onmessage({ data }) }
+}
+const downloading = timedLoadingFixture(), downloadingStart = downloading.detector.start()
+downloading.reply({ type: 'loading', stage: 'runtime' })
+for (let index = 0; index < 6; index++) {
+  downloading.advance(10000)
+  downloading.reply({ type: 'loading', stage: 'download', loadedBytes: index * 10, totalBytes: 100 })
+}
+assert.equal(downloading.errors.length, 0, '持续下载60秒不能被旧的20/30秒总时限误杀')
+assert.match(downloading.labels.at(-1), /50%/)
+downloading.reply({ type: 'loading', stage: 'initialize' }); downloading.advance(45000)
+assert.equal(downloading.errors.length, 0, '下载和模型初始化分别计时')
+downloading.reply({ type: 'ready' }); await downloadingStart
+assert.equal(downloading.timers.size, 0); downloading.detector.stop()
+
+for (const failure of ['stalled', 'initialize', 'absolute', 'invalid', 'download-error', 'cancel']) {
+  const f = timedLoadingFixture(), promise = f.detector.start(), rejected = assert.rejects(promise)
+  f.reply({ type: 'loading', stage: 'download', loadedBytes: 1, totalBytes: 100 })
+  if (failure === 'stalled') f.advance(30001)
+  if (failure === 'initialize') { f.reply({ type: 'loading', stage: 'initialize' }); f.advance(60001) }
+  if (failure === 'absolute') for (let index = 0; index < 18; index++) {
+    f.advance(10000); f.reply({ type: 'loading', stage: 'download', loadedBytes: index + 2, totalBytes: 100 })
+  }
+  if (failure === 'invalid') f.reply({ type: 'loading', stage: 'download', loadedBytes: NaN, totalBytes: 100 })
+  if (failure === 'download-error') f.reply({ type: 'error', stage: 'download' })
+  if (failure === 'cancel') f.detector.stop()
+  await rejected
+  assert.equal(f.worker.stopped, true, failure); assert.equal(f.timers.size, 0, failure)
+  assert.equal(f.errors.length, failure === 'cancel' ? 0 : 1, failure)
+}
+
 let clock = 1000
 const createTimedDetector = load('../src/speechDetector.ts', 'createSpeechDetector', { Date: { now: () => clock } })
+const loadingMessages = [], loadingErrors = [], loadingResults = []
+const loadingWorker = { postMessage(message) { loadingMessages.push(message) }, terminate() { this.stopped = true } }
+const slowLoading = createTimedDetector((pcm, probability) => loadingResults.push({ pcm, probability }), message => loadingErrors.push(message), {
+  createWorker: () => loadingWorker, assetBase: 'http://localhost/vad/',
+})
+const slowStart = slowLoading.start(), startupPackets = []
+for (let index = 0; index < 60; index++) {
+  clock += 200
+  startupPackets.push(packet(index))
+  slowLoading.accept(startupPackets.at(-1))
+}
+assert.equal(loadingErrors.length, 0, '模型加载12秒不能触发运行期5秒积压保护')
+assert.equal(loadingMessages.length, 1, '模型未就绪时不执行推理或放行音频')
+loadingWorker.onmessage({ data: { type: 'ready' } }); await slowStart
+for (let id = 0; id < 3; id++) loadingWorker.onmessage({ data: { type: 'result', id, probability: .01 } })
+assert.deepEqual(loadingResults.map(result => result.pcm), startupPackets.slice(-3), '只处理最近600ms句首缓冲，丢弃加载期间的旧包')
+assert.equal(loadingErrors.length, 0); slowLoading.stop()
+
 const staleErrors = [], staleResults = []
 const staleWorker = { postMessage() {}, terminate() { this.stopped = true } }
 const stale = createTimedDetector((...result) => staleResults.push(result), message => staleErrors.push(message), {
@@ -131,7 +200,7 @@ try {
   for (let index = 0; index < 10; index++) assert.ok(await silence(new ArrayBuffer(6400)) < .35)
   await assert.rejects(silence(new ArrayBuffer(2)), /Invalid/)
   if (process.argv[2]) {
-    // 可选：使用上游公开的16k单声道PCM示例，文件留在临时目录，不收入仓库。
+    // 可选：使用公开或合成的16k单声道PCM示例，不收入仓库。
     const wave = readFileSync(process.argv[2])
     assert.equal(wave.toString('ascii', 0, 4), 'RIFF')
     let data, rate, channels, bits, format
@@ -157,7 +226,7 @@ try {
     assert.ok(detectedPackets > 0, '真实模型必须能识别示例人声')
     assert.deepEqual(transitions, ['start', 'end', 'start', 'end'], '真实模型支持两次讲话与静音后的再次开口')
     assert.ok(uploaded < 100, '不应把完整静音等待段都上传')
-    console.log(`公开语音样本离线检查：20秒输入，${detectedPackets}个人声触发包，${(uploaded * .2).toFixed(1)}秒进入上传队列，两次讲话均自动结束。`)
+    console.log(`提供的语音样本离线检查：20秒输入，${detectedPackets}个人声触发包，${(uploaded * .2).toFixed(1)}秒进入上传队列，两次讲话均自动结束。`)
   }
 } finally { await session.release() }
 console.log('通过：检测Worker顺序/取消/超时/故障/积压清理、每次句首保护/静音断流/续讲门槛、Silero帧上下文与跨包连续性，以及真实模型WASM静音推理；未调用真实麦克风或豆包。')

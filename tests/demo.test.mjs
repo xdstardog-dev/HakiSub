@@ -13,6 +13,8 @@ const materialPacks = [JSON.parse(readFileSync(new URL('../materials/example.jso
 const asrModel = source('../src/browserAsr.ts').replace(/^import .*$/gm, '').replace(/^export type \{.*$/gm, '').replace(/^export /gm, '')
 const sessionModel = source('../src/asrSession.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const model = source('../src/captions.ts').replace(/^export /gm, '')
+const rememberedModel = source('../src/rememberedRooms.ts').replace(/^export /gm, '')
+const navigationModel = source('../src/roomNavigation.ts').replace(/^export /gm, '')
 let time = 1_800_000_000_000
 const timers = []
 let cleanup
@@ -24,21 +26,26 @@ class FakeRecognition {
   abort() { this.aborted = true }
 }
 const browserEvents = new Map(), documentEvents = new Map()
-const browser = { isSecureContext: true, SpeechRecognition: FakeRecognition, addEventListener: (name, fn) => browserEvents.set(name, fn), removeEventListener: name => browserEvents.delete(name) }
+const pageLocation = { pathname: '/', origin: 'https://hakisub.xdstar.work', search: '', hash: '' }, historyChanges = []
+const updatePath = (method, path) => { const url = new URL(path, pageLocation.origin); Object.assign(pageLocation, { pathname: url.pathname, search: url.search, hash: url.hash }); historyChanges.push({ method, path }) }
+const browser = { history: { pushState: (_state, _unused, path) => updatePath('push', path), replaceState: (_state, _unused, path) => updatePath('replace', path) }, isSecureContext: true, SpeechRecognition: FakeRecognition, addEventListener: (name, fn) => browserEvents.set(name, fn), removeEventListener: name => browserEvents.delete(name) }
 const documentStub = { hidden: false, addEventListener: (name, fn) => documentEvents.set(name, fn), removeEventListener: name => documentEvents.delete(name) }
 let doubaoCallbacks, doubaoStopped = false, doubaoRoomToken, roomCallbacks, roomSent = [], roomClosed = false
+const roomConnections = []
 const context = vm.createContext({ createRoomClient: callbacks => {
   roomCallbacks = callbacks
-  return { connect() {}, send(event) { roomSent.push(event) }, getToken: () => 'self-room-token', close() { roomClosed = true } }
+  return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event) }, getToken: () => 'self-room-token', close() { roomClosed = true } }
 }, createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
   doubaoRoomToken = roomToken
   doubaoCallbacks = callbacks
   return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
-}, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: { pathname: '/' }, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
-const exported = 'globalThis.demo = {roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount};'
-vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+}, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: pageLocation, URL, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
+const exported = 'globalThis.demo = {room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,shareCurrentRoom,sharing,shareMessage,manualShare};'
+vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
+assert.equal(d.roomMode.value, 'online', '默认进入真实联网房间流程')
+d.roomMode.value = 'simulation'
 const advance = ms => { time += ms; d.tick() }
 d.enter(); assert.equal(d.joined.value, false)
 d.name.value = '测试'; d.mode.value = 'join'; d.code.value = 'abc'; d.enter(); assert.equal(d.joined.value, false)
@@ -235,11 +242,17 @@ d.leave()
 d.roomMode.value = 'online'; d.mode.value = 'create'; d.enter()
 assert.equal(d.connecting.value, true); assert.equal(d.joined.value, false)
 roomCallbacks.onJoined('654321', 'self')
+assert.equal(pageLocation.pathname, '/654321/')
+assert.equal(historyChanges.at(-1).method, 'push')
 roomCallbacks.onMembers([{ id: 'other', name: 'Other', mic: true, color: '' }, { id: 'self', name: 'Me', mic: false, color: '' }])
 assert.equal(d.me.value.id, 'self'); assert.equal(d.members.value.length, 2)
 d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
 assert.equal(doubaoRoomToken, 'self-room-token')
 assert.equal(roomSent.at(-1).type, 'mic'); assert.equal(roomSent.at(-1).mic, true)
+doubaoCallbacks.onState('reconnecting', '语音连接短暂中断，正在恢复')
+assert.equal(d.me.value.mic, true, '豆包恢复期间采集仍开启，不能向房间广播关麦并撤销ASR')
+assert.equal(roomSent.at(-1).mic, true)
+doubaoCallbacks.onState('listening', '恢复完成')
 doubaoCallbacks.onResult('one', '本人的话', 'interim')
 assert.equal(d.captions.value.length, 0, '等待房间回包，避免重复和身份错位')
 const sentCaption = roomSent.at(-1)
@@ -253,6 +266,47 @@ assert.equal(d.inputMode.value, 'microphone', '联网模式不混入模拟成员
 roomCallbacks.onClose()
 assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(roomClosed, true)
 assert.equal(d.captions.value.length, 0); assert.match(d.asrState.value, /idle/)
+const migrationOwner = '11111111-1111-1111-1111-111111111111'
+d.rememberedRooms.value = [{ code: '985529', name: 'Owner', ownerToken: migrationOwner }]
+d.mode.value = 'join'; d.code.value = '114514'; d.name.value = 'Owner'; d.enter()
+roomCallbacks.onJoined('114514', 'temporary', { isOwner: false, aliases: ['985529'] })
+assert.equal(d.joined.value, false, '房主补验前不进入临时普通成员界面')
+assert.deepEqual(roomConnections.at(-1), ['join', 'Owner', '114514', migrationOwner])
+roomCallbacks.onJoined('114514', 'owner', { isOwner: true, aliases: ['985529'] })
+assert.equal(d.joined.value, true); assert.equal(d.room.value, '114514')
+assert.equal(d.rememberedRooms.value.length, 1); assert.equal(d.rememberedRooms.value[0].code, '114514')
+assert.equal(d.rememberedRooms.value[0].ownerToken, migrationOwner)
+d.leave()
+d.rememberedRooms.value = [{ code: '985529', name: 'Owner', ownerToken: migrationOwner }]
+d.enter(); const attemptsBefore = roomConnections.length
+roomCallbacks.onJoined('114514', 'temporary', { isOwner: false, aliases: ['985529'] })
+roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
+assert.equal(roomConnections.length, attemptsBefore + 1, '失效管理凭据最多补验一次，不无限重连')
+d.leave()
+assert.equal(pageLocation.pathname, '/')
+pageLocation.pathname = '/985529'; pageLocation.search = '?ownerToken=must-not-share'; pageLocation.hash = '#private'
+browserEvents.get('popstate')()
+assert.equal(d.mode.value, 'join'); assert.equal(d.code.value, '985529'); assert.equal(d.joined.value, false)
+d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
+assert.equal(pageLocation.pathname, '/114514/'); assert.equal(pageLocation.search, ''); assert.equal(pageLocation.hash, '')
+assert.equal(historyChanges.at(-1).method, 'replace', '别名或直达地址在加入后规范为正式房间路径')
+roomCallbacks.onMembers([{ id: 'member', name: 'Me', mic: false, color: '' }])
+d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
+assert.equal(doubaoStopped, false)
+pageLocation.pathname = '/'; browserEvents.get('popstate')()
+assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(d.mode.value, 'create')
+pageLocation.pathname = '/114514/'; browserEvents.get('popstate')()
+assert.equal(d.code.value, '114514'); assert.equal(d.joined.value, false, '前进只准备加入，不自动开麦')
+d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
+let completeShare
+context.navigator.share = () => new Promise(resolve => { completeShare = resolve })
+const sharingPending = d.shareCurrentRoom()
+assert.equal(d.sharing.value, true)
+d.leave(); completeShare(); await sharingPending
+assert.equal(d.shareMessage.value, '', '离房后不显示迟到分享结果')
+d.mode.value = 'join'; d.code.value = '114514'; d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
+browserEvents.get('pagehide')()
+assert.equal(pageLocation.pathname, '/114514/', '刷新和关闭页面保留房间地址')
 cleanup(); assert.ok(timers.every(t => t.cleared))
 assert.equal(browserEvents.size, 0); assert.equal(documentEvents.size, 0)
 console.log('通过：真实识别接入现有生命周期、模式隔离、授权失败、切屏保持/离页关闭、字数边界、独立生命周期、渐隐中加入新句、Interim 原位更新与确认、重复 Final、成员隔离与静音、六种模拟、一分钟压力测试（81 句）、1～8 人切换、离房及卸载清理。')
