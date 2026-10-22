@@ -18,3 +18,9 @@ export function rememberRoom(rooms: RememberedRoom[], room: RememberedRoom, prev
   try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* 禁用存储时，本次页面内仍可再次进入。 */ }
   return next
 }
+
+export function forgetRoomOwnership(rooms: RememberedRoom[], code: string): RememberedRoom[] {
+  const next = rooms.map(room => room.code === code ? { code: room.code, name: room.name } : room)
+  try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* 服务器已经撤销原凭据，本地清理失败不恢复权限。 */ }
+  return next
+}

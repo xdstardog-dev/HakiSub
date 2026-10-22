@@ -554,3 +554,44 @@ HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独
 验证：npm test全套通过、npm run build通过（因既有Node子进程/esbuild沙箱限制，在获准沙箱外执行）。模拟仅使用假上游与临时数据，未调用真实豆包或麦克风。没有实施此前缓存和内存审查建议。
 
 线上：通过既有hakisub-server SSH别名管理；首次临时环境预检被sudo环境过滤导致差异校验停止，尚未修改；改用sudo env后确认有效Compose配置仅ASR上限变化。备份服务器根.env至/srv/projects/hakisub/images/asr-concurrency-20261022T145508Z/environment.before（目录0700、文件0600），原位原子替换2为8，仅重建hakisub服务，保留回退配置。未触发部署回退；镜像仍hakisub-20261020T173624Z，镜像摘要及挂载不变，Caddy容器ID不变。运行容器内readRuntimeConfiguration结果8，healthy，服务器外部可信HTTPS首页和健康接口200。未读取/输出真实Key或字幕、未部署本地其他功能、未编辑DEEPSEEK-MEMORY.md、未提交或推送Git。真实多人识别与长期稳定性仍待用户实测。
+
+日期：2026-10-22（Asia/Shanghai）
+
+任务：UID房主绑定、跨设备房间Key管理与手动全房豆包ASR开关，仅本地开发验收。本地HEAD及origin/main与GitHub main均为f42d35ef7bb5f0aea083090a58bae2bf8ff2618c；git fetch因.git写权限限制未执行成功，改用git ls-remote核实远程HEAD，无需改工作区。最初已有README、compose.yaml、release.env.example、ARCHITECTURE、DEVLOG、两份部署手册、runtimeConfiguration及deployment测试修改，均保留；本轮只在deployment测试中追加独立房间Key夹具，文档在原改动上补充，不编辑DEEPSEEK-MEMORY。
+
+本轮实际文件及功能：
+
+- server/roomStore.mjs：读取v1/v2、写v2，ownerUid、asrEnabled、configured/missing/deleted持久化；保留AES-256-GCM、房号AAD、别名和原子替换；换号保留新字段。
+- server/roomGateway.mjs：统一每房管理互斥、匿名/UID授权、绑定原子撤销旧ownerHash及在线owner、Key与开关变更清理本房ASR、状态广播、失败运行期blocked；浏览器字幕与成员开麦不依赖云端锁。
+- server/roomManagement.mjs（新增）：固定管理端点、独立HMAC、完整正文范围、10秒窗口、nonce上限和每次启动audience防重放；不信任来源IP/代理头或浏览器UID。
+- server/roomSettings.mjs、server/asrGateway.mjs、server/index.mjs：匿名与账号管理统一使用房间授权，ASR upgrade强制开关/Key/锁校验、立即清理并发名额，联网房间取消默认Key回退；服务端加载独立管理密钥。
+- accounts/server/roomManagementClient.mjs（新增）、accounts/server/accountServer.mjs、accounts/server/configuration.mjs：复用主站Cookie/CSRF/Origin和SQLite会话，经网络等待后复查登录，按UID签发有范围的服务请求；列表/绑定/Key与ASR代理，不在账号库复制所有权或Key。
+- accounts/src/OwnedRooms.vue（新增）、accounts/src/AccountApp.vue：个人中心真实所有权列表、Key设置/更换/删除/测试、远程暂停/恢复、进入房间；Key清空、不回显，失败不假成功、账号切换/卸载隔离迟到响应。
+- src/accountClient.ts、src/App.vue、src/roomClient.ts、src/rememberedRooms.ts、src/components/RoomApiSettings.vue：登录创建后自动申请绑定、匿名旧房手动绑定、当前本机旧凭据清理、绑定后房内经账号代理、房间状态实时刷新；保留游客/模拟/Web Speech及现有字幕生命周期。
+- accounts/tests/room-management.test.mjs（新增）、tests/owned-rooms-view.test.mjs（新增）、package.json：新增npm run test:room-management，覆盖双服务真实SQLite/Argon2id/HTTP/WebSocket加假豆包、实际个人中心模板。
+- tests/gateway-recovery.test.mjs、tests/rooms.test.mjs、tests/persistent-rooms.test.mjs、tests/room-settings-view.test.mjs、tests/deployment.test.mjs：已有回归改用显式合成房间Key并验证删除无回退/保存失败阻止识别；保留原八路并发测试。
+- scripts/preview-accounts.mjs：隔离预览接入临时服务签名与artifacts下的测试房间持久化，继续显式拒绝真实豆包上游和真实Key测试。
+- .env.example、deploy/accounts.env.example：仅空占位符和服务地址；README、docs/ARCHITECTURE.md、docs/ACCOUNT-SYSTEM-PLAN.md、docs/ACCOUNT-DEPLOYMENT.md、docs/DEVLOG.md更新权限、迁移、配置、验收及回滚边界。
+
+最终自动验证：npm test全套通过（最终日志artifacts/room-management-review/npm-test.log）；npm run test:accounts通过账号客户端及4组后端测试；npm run test:room-management通过集成与实际模板；npm run build、npm run build:accounts通过；git diff --check无空白错误。早期测试发现旧并发夹具依赖默认Key，改为本房合成Key后通过；沙箱内Vite/esbuild与换号CLI子进程被EPERM阻止，获准沙箱外执行后通过。一次已有测试随机分配到Node禁止端口触发bad port，重新运行通过，未改系统端口策略。全部豆包均为假上游，没有消耗真实API或访问真实麦克风。
+
+浏览器：8790主站账号/5179 HakiSub/8791网关，使用已有隔离合成账号创建房间并自动绑定；个人中心设置合成Key、输入清理、远程暂停/恢复、房内状态同步、删除显示“房主已删除”均成功。修复浏览器发现的弹窗远程状态未刷新问题，最终页面console warn/error为空。截图artifacts/room-management-review/account-desktop.png。viewport覆盖未改变实际1265px视口，未声称手机/窄屏实际验收。测试标签已关闭，8790/8791/5179回环探测均无监听。
+
+最终权限：UID仅长期身份；未绑定房主凭原ownerToken，绑定必须同时有会话和原凭据，成功后随机替换摘要且旧token永久失权；绑定房间由会话UID与ownerUid匹配管理；Member只控制自己麦克风/字幕；房间Key不共享、不回显、不进账号SQLite。绑定状态、Key、开关和114514/985529别名重启恢复已模拟验证，成员令牌不跨重启。
+
+迁移：旧房有Key保持，缺Key不再继承服务器默认Key；默认asrEnabled=true，删除单独为deleted。首次成功保存升级v2，主密钥不变。Key/开关写失败只返回失败、原持久化状态保留，运行期关闭本房付费连接。若磁盘完全不可写，失败锁无法持久化，不能靠重启解除故障；重启前必须修复并成功重试。此物理边界、内网明文只限受控网络、真实Cookie/手机/Linux/费用验收等风险已列入部署手册。
+
+部署/回退：本轮未访问/部署Star-Hub、未修改生产Caddy或env、未重启生产、未删覆数据库/主密钥/数据卷，未提交推送。最小后续方案为隔离副本验证→一致性备份→私有网络双服务密钥→两端镜像配套切换→真实HTTPS双设备验收；回滚优先保留v2授权后端回退前端，不能把新版房间文件强改v1给旧网关，也不能恢复旧Key/ownerToken路径。完整方案在ACCOUNT-DEPLOYMENT本期章节，后续生产操作须另行确认。
+
+
+日期：2026-10-23（Asia/Shanghai）
+
+按用户决定简化为联网房间Key仅后端进程内存。审查确认原roomStore解密恢复Key以及网关blocked路径；本轮移除加解密/自动主密钥生成，存储读取v1/v2/v3、仅写v3元数据白名单。旧密文/明文/Key状态均忽略，不解密、不加载，首次元数据成功写入剥离全文件旧Key字段。读取不自动改原文件，无房间/身份/别名丢失。网关每次启动强制missing，退出时清除内存Key。Key设置/删除不调用磁盘；开关及绑定仍持久化，沿用服务端UID/匿名授权与每房互斥。换删Key/开关立即清理本房上游；开关写失败保留原状态、清掉当前Key并报失败，无blocked或重启重新授权机制。公网/联网Key无默认回退。
+
+实际修改：server/roomStore.mjs、roomGateway.mjs、asrGateway.mjs、index.mjs、renameRoom.mjs；scripts/preview-accounts.mjs；src/App.vue、roomClient.ts、accountClient.ts、components/RoomApiSettings.vue；accounts/src/OwnedRooms.vue；tests/persistent-rooms.test.mjs、room-renaming.test.mjs、owned-rooms-view.test.mjs、accounts/tests/room-management.test.mjs；新增tests/room-key-memory.test.mjs并接入package.json专项命令。README、ARCHITECTURE、ACCOUNT-SYSTEM-PLAN、ACCOUNT-DEPLOYMENT同步当前规则，旧日期条目保留历史含义。旧加密主密钥环境与部署脚本不删除、不在生产执行。
+
+验证：npm test全套通过（artifacts/room-management-review/npm-test-memory.log）；npm run test:accounts、npm run test:room-management、npm run build、npm run build:accounts及typecheck通过。专项包含旧有效AES密文不可恢复、v1/v2/v3明密文/损坏Key忽略、身份/别名/开关保持、重启缺Key/重填、磁盘实际写失败、Key操作不依赖磁盘、开关失败清Key且重启无付费能力、权限/重放/跨设备/并发/会话立即清理。所有豆包为模拟，无付费API或真实麦克风。未额外进行本轮浏览器/手机或生产真实验收，界面文案由实际Vue模板测试与构建覆盖。
+
+边界：本轮没有访问生产服务器、没有修改生产Caddy/环境/密钥/数据库/卷，没有重启生产或提交推送；保留原工作区修改。不再存在“磁盘失败后重启恢复旧Key”的路径。部署必须配套升级网关与页面并通知房主每次后端重启重填Key；不能回退到恢复磁盘Key的旧后端。
+
+提交整理（2026-10-23，Asia/Shanghai）：用户授权分别本地提交。八路ASR并发已独立提交为52b9788，包含配置、部署测试及对应文档；使用原网关加该提交内容构造独立快照，部署/并发模拟测试通过。其余UID房主管理、跨设备Key管理、ASR开关和Key仅内存规则作为第二条提交，保留此前所有开发与验收记录。仅拆分暂存共享文件，未还原或覆盖工作区源码；敏感文件及生成产物继续忽略。沿用此前已通过的完整测试、账号/房间专项和两端构建；本次没有运行生产操作，也不推送远程。最终两条提交哈希以Git记录为准。

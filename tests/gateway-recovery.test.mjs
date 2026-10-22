@@ -40,6 +40,8 @@ for (const roomMode of [false, true]) {
       const room = await connect('/api/rooms'); room.socket.send(JSON.stringify({ type: 'create', name: 'Recovery' }))
       await waitFor(() => room.events.some(event => event.type === 'joined'))
       token = room.events.find(event => event.type === 'joined').token
+      const saved = await fetch(base.replace('ws:', 'http:') + '/api/rooms/settings', { method: 'POST', headers: { Origin: origin, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', apiKey: 'fixture-room-key' }) })
+      assert.equal(saved.status, 200)
       room.socket.send(JSON.stringify({ type: 'mic', mic: true }))
       await waitFor(() => room.events.at(-1)?.members?.[0]?.mic)
     }

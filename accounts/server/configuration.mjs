@@ -27,6 +27,8 @@ export async function readAccountConfiguration(environment = process.env, develo
   if (!isIP(host)) throw Error('账号监听地址必须是 IP。')
   return {
     development, secret, host, port: number('XDSTAR_ACCOUNT_PORT', 8790, 65535),
+    roomGatewayUrl: values.XDSTAR_HAKISUB_GATEWAY_URL,
+    roomManagementSecret: values.HAKISUB_ROOM_MANAGEMENT_SECRET,
     origin: origin(values.XDSTAR_ACCOUNT_ORIGIN ?? (development ? 'http://127.0.0.1:8790' : 'https://xdstar.work'), development),
     projectOrigin: origin(values.XDSTAR_HAKISUB_ORIGIN ?? (development ? 'http://127.0.0.1:5173' : 'https://hakisub.xdstar.work'), development),
     databasePath: values.XDSTAR_ACCOUNT_DATABASE ?? fileURLToPath(new URL('../../secrets/accounts.sqlite', import.meta.url)),

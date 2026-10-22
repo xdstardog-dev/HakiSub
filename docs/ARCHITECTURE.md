@@ -1,12 +1,30 @@
 # HakiSub 架构
 
+> 2026-10-23 本地规则更新：所有真实联网房间Key仅存在当前HakiSub后端进程内存中，启动或重启后统一未配置。旧加密Key不解密、不加载。元数据读取v1/v2/v3、写v3。此规则取代此前Key加密持久化、blocked及重启失败锁说明；未部署生产。
+
+## UID 房主与远程房间管理（2026-10-22，本地未部署）
+
+`accounts/server/accountServer.mjs` 复用主站 HttpOnly、Secure、host-only Cookie / CSRF / 精确 Origin。所有管理路径位于 `/api/projects/hakisub/rooms`；HakiSub 子域通过带凭据 CORS 请求主站，Cookie 仍只发给主站。客户端不提交 UID、不复制 Cookie 或长期 token。`GET rooms` 只返回当前账号真正拥有的房间，个人偏好存档与本机入口继续单独管理。
+
+账号服务只从有效 SQLite 会话取 UID，网络等待后重查会话，通过 `roomManagementClient.mjs` 签发限定房间操作。独立 `HAKISUB_ROOM_MANAGEMENT_SECRET` 对 `POST\n/internal/rooms/manage\n<完整JSON正文>` 做 HMAC-SHA256。正文包含 UID、动作、房间码、时间、一次性 nonce 和每次网关启动随机 audience；10 秒时间窗、常量时间签名比较、nonce 缓存上限及重启失效防止篡改/重放。请求不重定向、不接受浏览器 Origin，响应不含 Key/ownerHash/ownerToken。内部接口即使误入反代也必须校验签名；生产仍不得公开代理 `/internal/*`。双服务只通过回环/隔离容器网络或受信 TLS 通信，不允许公网明文传递 Key。账号故障/过期/缺配置拒绝管理，无成员权限降级。管理请求已经发出后不作跨服务分布式撤销；请求有效期最多10秒，不向浏览器签发可复用授权票据。
+
+`roomGateway.mjs` 是唯一所有权与运行状态权威：匿名房间用 ownerHash 核对原凭据；绑定同时验证服务器认证的 UID 和原 ownerToken，原子保存 ownerUid 并随机替换 ownerHash，撤销所有在线成员缓存的匿名 owner。绑定失败不撤销；已绑定拒绝重复认领（含同 UID），不提供解绑/转移。绑定后匿名设置 POST 一律403，账号管理每次核对 ownerUid，普通 memberId/token 只代表在线成员。登录后创建复用“创建匿名真实房间 → 服务器核验绑定”流程；若账号不可用，明确提示绑定未完成并保留可重试的匿名房主凭据。
+
+`roomStore.mjs` 读取v1/v2/v3，写v3白名单元数据：code、aliases、ownerHash、ownerUid、asrEnabled。旧encryptedKey/apiKey/keyState忽略且不解密，不需要旧加密主密钥。首次成功元数据写入剥离全文件旧Key字段；读取不自动改写源文件。网关加载记录后强制apiKey为空、keyState=missing，即使传入旧适配器也不恢复Key。configured/deleted/missing仅当前进程内存状态，后端启动重置为missing。
+
+房内匿名设置与账号远程操作共用每房互斥管理函数，冲突409。Key设置/删除仅更改网关内存，不调用持久存储；绑定/开关只提交元数据。换删Key、切换开关时先锁定并同步清理本房客户端/上游和并发占位。开关持久化失败返回500，保持原开关并清除当前Key，广播缺Key状态；无blocked或重启重新授权状态。重启即缺Key，不能因磁盘故障恢复付费能力。
+
+ASR WebSocket upgrade 强制检查成员、开麦、房间锁、asrEnabled、本房内存Key和并发。恢复开关不会自动开麦，Key测试仍只检查握手。身份、跨设备管理、Cookie/签名授权、成员广播与模拟/Web Speech规则不变。
+
+自动验证：`npm run test:room-management` 使用真实 SQLite/Argon2id/HTTP/WebSocket 和假豆包，另渲染实际个人中心模板；现有四条测试/构建命令仍须执行。真实跨子域 TLS/Cookie、真机/麦克风/云端识别及容器资源验收单独记录。
+
 ASR 并发配置（2026-10-22）：`runtimeConfiguration.mjs` 三种部署模式默认均为 8 路，`HAKISUB_MAX_ASR_SESSIONS` 仍只接受 1～8，Compose 与发布示例同步默认 8。此上限为网关跨房间的全局有效识别连接数，每成员一路、无令牌入口限制、Origin、Key、超时和停止清理逻辑不变。线上原镜像已通过显式环境配置从 2 改为 8，无需发布本地其他功能。部署模拟覆盖默认八路、显式两路覆盖、跨房间第九路拒绝、同成员重复拒绝以及关麦后释放名额；后文默认两路是历史记录。
 
 统一账号（2026-10-21，本地完成，未部署）：`accounts/server/` 是独立 Fastify/SQLite 服务，使用成熟 Cookie/CORS/CSRF 插件、Argon2id 与 better-sqlite3，不修改实时网关或豆包协议。主站专属 `__Host-xdstar_session` Cookie（无Domain）只发送给主站；HakiSub 的 `accountClient.ts` 通过精确 Origin 凭据 CORS 请求最小身份和本人存档，不读取 username 或长期认证 token。账号设置只接受主站 Origin；CSRF 绑定会话与 account/hakisub 作用域。SQLite 保存密码/答案哈希、会话 token 摘要、找回挑战、私人配置及持久限流；注册成功配额与插入同事务复检，哈希计算有单路与有界队列。
 
 `AccountAccess.vue` 定期/回到页面时刷新身份；App 仅在未入房且用户未手改显示名时填昵称，不更换 memberId。`RoomPresets.vue` 保存/同步/改名/加载/删除识别来源和布局，严格排除 API Key、ownerToken、成员token、音频字幕。个人中心链接携带的 preset UUID 仍由服务端按当前 UID 授权，加载不会自动入房或开麦。主站页面独立构建至 `accounts/dist/`，HakiSub 主体布局和字幕生命周期保留。`scripts/preview-accounts.mjs` 使用独立测试库、空Key内存网关和5179/8790回环端口，不连接现有8787或生产。
 
-UID、Room Owner、Member 三者独立：目前 UID 仅关联长期数据，房主仍由现有独立凭据确认；未来 nullable ownerUid 与 ownerHash 可并存，绑定必须验证本房管理凭据，不能按昵称、房间号或存档认领。房主暂停全房ASR/销毁、费用额度/熔断均未实施。新建可选 `compose.accounts.yaml` 和 Caddy 候选文件，实际生产配置未覆盖、服务未重启。Linux原生依赖、真实跨子域Cookie及生产费用保护另验；完整风险、数据表和方案见 [账号审查](ACCOUNT-SYSTEM-PLAN.md)，执行见 [账号部署](ACCOUNT-DEPLOYMENT.md)。
+UID、Room Owner、Member 三者独立：UID关联长期数据，ownerUid关联已绑定房间；未绑定房间继续使用独立匿名凭据。绑定必须同时验证账号会话和本房管理凭据，不能按昵称、房间号或存档认领。房主手动暂停全房豆包ASR已在本地实现，销毁、费用额度/熔断未实施。可选 `compose.accounts.yaml` 和 Caddy 候选文件尚未启用。Linux原生依赖、真实跨子域Cookie及生产费用保护另验；完整风险、数据表和方案见 [账号审查](ACCOUNT-SYSTEM-PLAN.md)，执行见 [账号部署](ACCOUNT-DEPLOYMENT.md)。
 
 房间URL及分享（2026-10-21）：`roomNavigation.ts`严格解析六位数字路径并构造只含origin和正式房间号的分享URL；App在服务器joined确认后从首页pushState，直达/别名路径则replaceState为规范的`/<code>/`。初始深链接及popstate只预填加入信息，不自动连接或开麦；后退/前进先清理成员会话、采集和字幕。pagehide保留路径以支持刷新，断线保留房间路径供重进，返回首页按钮才切换根路径。系统分享失败回退Clipboard，AbortError视为取消，全部受限时提供只读地址；异步结果通过操作编号避免离房后更新。模拟房间不提供联网分享入口。生产静态服务仅额外白名单匹配六位房间路径（可含尾斜线），仍拒绝其他未知路径，资源/API使用根路径。
 
@@ -26,9 +44,9 @@ UID、Room Owner、Member 三者独立：目前 UID 仅关联长期数据，房�
 
 房间流程改造（2026-10-20，已部署hakisub-20261020T133934Z并通过公网及真实服务重启验收）：默认online；`rememberedRooms.ts`只在浏览器保存房间码、显示名及创建者管理凭据，首页再次进入发起新的join并始终保持麦克风关闭。`roomGateway.mjs`在全员离开后保留房间，成员令牌仍立即撤销；重进不恢复音频或字幕。创建者随机凭据只在创建响应发给本人，服务端保存SHA256摘要，重新加入时校验，其他成员不能冒用配置权限。
 
-`RoomApiSettings.vue`在房间内使用原生模态dialog，提供密码输入、保存/移除、握手测试和状态刷新；关闭/离房清空输入并取消请求。`roomSettings.mjs`通过成员Bearer令牌、Origin和创建者权限绑定到当前房间，仅返回布尔状态/来源，不返回Key。房间配置操作串行化，本房任何成员开麦时拒绝变更，配置写入期间拒绝新开麦/ASR；不同房间独立。房间Key优先于旧服务端默认Key，旧本机设置API继续保留给模拟房间。
+`RoomApiSettings.vue`在房间内使用原生模态dialog，提供密码输入、保存/移除、握手测试、绑定及状态刷新；关闭/离房清空输入并取消请求。`roomSettings.mjs`通过成员Bearer、Origin和匿名创建者权限管理未绑定房间；绑定后走账号服务代理。每房管理互斥，配置写入期间阻止新豆包会话并清理旧会话；浏览器字幕广播不受该锁控制，不要求其他成员退出。仅返回状态，不返回Key。联网房间仅使用本房Key；旧本机设置API保留给模拟房间。
 
-`roomStore.mjs`持久化房间码、创建者摘要和加密Key，不持久化成员/识别文字/音频。AES-256-GCM每次独立随机nonce，以房间码为AAD防跨房间密文挪用；磁盘写入按全局队列串行、同目录临时文件原子替换，失败不覆盖旧配置。加密主密钥来自服务端环境或根.env（本机初始化带排他锁），数据默认secrets/rooms.json；容器通过环境注入主密钥、具名卷挂载/app/data，其他根目录继续只读。deploy/prepare-room-storage.sh仅在服务器生成主密钥和初始化本项目卷权限，不展示密钥。缺失/错误主密钥或损坏记录导致启动失败，避免静默丢失配置。房间及密钥恢复要求同时保留数据卷与主密钥，浏览器管理凭据目前无跨设备恢复功能；100房间上限包含空房。下述旧版销毁房间/统一Key说明均被本节替代。
+当前roomStore仅持久化房间元数据，不持久化Key、成员、识别文字或音频。旧版AES-256-GCM字段从不加载；错误/缺失加密主密钥不再阻止元数据读取，但损坏身份/别名/开关或冲突记录仍拒绝加载。改号只保留元数据与别名，不再解密/重加密Key。旧初始化脚本及生产卷不在本轮执行或修改。
 
 主站已上线（2026-10-20）：用户确认备案通过（鄂ICP备2026059859号-1），选择 `xdstar.work` 主站入口卡片链接 `hakisub.xdstar.work`。`deploy/xdstar/` 包含无脚本、无第三方字体的独立 HTML/CSS/SVG 主页；由同一 Caddy 只读挂载 `/srv/xdstar` 并提供文件服务，主站无需启动另一 Node 进程。子域名原样代理到回环18787，Origin只允许子域名，不共享主站状态，不新增iframe、音频采集或ASR接口。主站配置禁止脚本/表单/嵌入，应用的Worker/WASM策略不受该站头影响；打包脚本递归包含主页资源。用户已完成DNS并确认云防火墙放行；两站Let's Encrypt证书签发成功，可信HTTPS、HTTP跳转、VAD资源及公网WSS房间/合成字幕/隔离/清理均通过服务器外部验收。常驻应用已切换174817Z公网镜像，仍512MiB/0.75CPU、非root只读、回环18787；Caddy128MiB/0.25CPU、只读根目录与证书持久卷，管理API关闭。旧环境和镜像保留供回退，真实Key/麦克风/双设备及续期周期尚未验收。下述2026-10-16域名阻塞和私有部署为历史记录，最新状态见PUBLIC-DEPLOYMENT.md。
 
@@ -60,7 +78,7 @@ Dockerfile不在服务器构建前端；按锁文件安装Linux依赖，最终�
 
 src/roomClient.ts 处理创建/加入、成员快照、统一字幕及撤回事件、连接超时和清理。App.vue 按服务端 selfId 查找本人，不能用成员数组首位代表本人。联网模式与本地模拟分开；麦克风仍由用户主动开启。识别回调把统一 CaptionEvent 发到房间，服务端绑定 memberId 后广播，各页面交给原 captions.ts 维护 interim/final 和过期。成员关麦清理未确认字幕，离房移除该成员全部字幕；整个房间连接中断则停止本机采集并清空页面。
 
-asrSession.ts 将仅存在内存的房间令牌传给 doubaoAsrClient.ts，ASR 通过 /api/asr?session=令牌 绑定到已开麦成员。网关拒绝无效令牌、同一成员第二路连接及超出全局上限的连接，每路上游、超时、结果映射和用量独立。旧无令牌入口保留本机单设备兼容，与成员会话互斥。Key优先从当前房间读取，未设置时兼容旧服务端默认Key；尚无账户额度隔离。令牌是临时成员凭据，不是豆包 Key；部署时不应记录带查询参数的 ASR URL。
+asrSession.ts 将仅存在内存的房间令牌传给 doubaoAsrClient.ts，ASR 通过 /api/asr?session=令牌 绑定到已开麦成员。网关拒绝无效令牌、同一成员第二路、超出全局上限、房间暂停/锁定/缺Key的连接，每路上游、超时、结果映射和用量独立。旧无令牌入口只保留本机单设备兼容，与成员会话互斥。联网房间无默认Key回退；尚无账户额度隔离。令牌是临时成员凭据，不是豆包Key；部署时不应记录带查询参数的ASR URL。
 
 本地默认仍只监听127.0.0.1；已部署私有容器监听0.0.0.0，宿主发布限于127.0.0.1，Origin只接受SSH隧道的本机页面，并禁用无令牌入口和设置接口。公网Origin、HTTPS反向代理、正式用户/管理员授权和用量策略留待下一阶段。模拟测试覆盖真实本地双路WebSocket与假豆包上游、独立音频及结果、成员与房间隔离、满员、关麦离房和客户端/UI清理；容器实测不等于真实API、多设备、串音、额度或长时运行验收。
 

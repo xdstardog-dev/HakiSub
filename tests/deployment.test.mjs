@@ -83,6 +83,8 @@ try {
   const alice = await connect('/api/rooms'); alice.send({ type: 'create', name: 'Alice' })
   await waitFor(() => alice.events.some(event => event.type === 'joined'))
   const first = alice.events.find(event => event.type === 'joined')
+  const savedRoomKey = await fetch(`http://${address}/api/rooms/settings`, { method: 'POST', headers: { Origin: configuration.allowedOrigins[0], Authorization: `Bearer ${first.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', apiKey: 'fixture-private-room-key' }) })
+  assert.equal(savedRoomKey.status, 200, '并发测试显式配置本房Key，不借用服务器默认Key')
   const roomLimit = await connect('/api/rooms'); roomLimit.send({ type: 'create', name: 'SecondRoom' })
   await waitFor(() => roomLimit.events.some(event => event.type === 'error'))
   const members = [alice]
@@ -131,7 +133,11 @@ try {
       : { type: 'join', name: `Public${index}`, code: roomCodes[index % 2] }))
     await waitFor(() => events.some(event => event.type === 'joined'))
     const identity = events.find(event => event.type === 'joined')
-    if (index < 2) roomCodes.push(identity.code)
+    if (index < 2) {
+      roomCodes.push(identity.code)
+      const saved = await fetch(`http://${publicAddress}/api/rooms/settings`, { method: 'POST', headers: { Origin: 'https://captions.example', Authorization: `Bearer ${identity.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', apiKey: `fixture-public-room-${index}` }) })
+      assert.equal(saved.status, 200)
+    }
     socket.send(JSON.stringify({ type: 'mic', mic: true }))
     await waitFor(() => events.at(-1)?.members?.some(member => member.id === identity.memberId && member.mic))
     publicMembers.push({ socket, identity })

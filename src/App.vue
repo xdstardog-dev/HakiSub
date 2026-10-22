@@ -8,7 +8,7 @@ import { materialState } from './simulation/material'
 import MemberCaptionGrid from './components/MemberCaptionGrid.vue'
 import ApiSettings from './components/ApiSettings.vue'
 import RoomApiSettings from './components/RoomApiSettings.vue'
-import { loadRememberedRooms, rememberRoom, type RememberedRoom } from './rememberedRooms'
+import { loadRememberedRooms, rememberRoom, forgetRoomOwnership, type RememberedRoom } from './rememberedRooms'
 import { receiveCaption, expireCaptions, type Caption } from './captions'
 import { createRoomClient } from './roomClient'
 import { roomCodeFromPath, roomPath, roomShareUrl, shareRoomLink } from './roomNavigation'
@@ -21,6 +21,7 @@ const settingsOpen = ref(false)
 const roomMode = ref<'simulation' | 'online'>('online')
 const rememberedRooms = ref<RememberedRoom[]>(loadRememberedRooms())
 const roomSessionToken = ref('')
+const roomStatusVersion = ref(0)
 const connecting = ref(false), selfId = ref('')
 let roomClient: ReturnType<typeof createRoomClient> | undefined
 const joined = ref(false), mode = ref<'create' | 'join'>('create'), name = ref(''), code = ref(''), room = ref(''), error = ref('')
@@ -228,6 +229,13 @@ function enter() {
         rememberedRooms.value = rememberRoom(rememberedRooms.value, { code: roomCode, name: name.value.trim(), ownerToken: ownership?.ownerToken }, aliases)
         settingsOpen.value = mode.value === 'create'
         inputMode.value = 'microphone'; captions.value = []; joined.value = true; connecting.value = false
+        if (mode.value === 'create' && accountUser.value && ownership.ownerToken) {
+          const client = createAccountClient()
+          void client.bindRoom(roomCode, ownership.ownerToken).then(() => {
+            rememberedRooms.value = forgetRoomOwnership(rememberedRooms.value, roomCode)
+            accountMessage.value = '房间已绑定账号，可在个人中心跨设备管理。'
+          }).catch(() => { if (room.value === roomCode) error.value = '房间已创建，但账号绑定未完成；请在豆包配置中登录后重试绑定。' }).finally(() => client.cancel())
+        }
         const path = roomPath(roomCode)
         if (location.pathname !== path || location.search || location.hash) {
           if (roomCodeFromPath(location.pathname)) window.history.replaceState(null, '', path)
@@ -247,6 +255,14 @@ function enter() {
       onError(message) {
         error.value = message
         if (!joined.value) { connecting.value = false; roomClient?.close() }
+      },
+      onRoomStatus(status) {
+        roomStatusVersion.value++
+        if (status.bound && room.value) rememberedRooms.value = forgetRoomOwnership(rememberedRooms.value, room.value)
+        if (asrProvider.value === 'doubao' && (!status.asrEnabled || !status.configured)) {
+          asr.stop()
+          asrMessage.value = !status.asrEnabled ? '豆包 ASR 已被房主暂停' : '请房主配置本房间 API Key'
+        } else if (asrProvider.value === 'doubao' && !asrActive.value) asrMessage.value = '豆包 ASR 可用，请手动开启麦克风'
       },
       onClose() { leave(false); prepareRoomEntry(); error.value = '房间连接已断开，请重新加入；麦克风已停止。' },
     })
@@ -364,7 +380,7 @@ prepareRoomEntry()
         <div v-if="rememberedRooms.length" class="remembered-rooms" aria-label="保留的房间">
           <h3>你的房间</h3><p>所有人退出后仍可再次进入，不保留字幕。</p>
           <div v-for="saved in rememberedRooms" :key="saved.code" class="remembered-room">
-            <div><strong>房间 {{ saved.code }}</strong><small>{{ saved.ownerToken ? '由你创建 · 可管理豆包配置' : '之前加入的房间' }}</small></div>
+            <div><strong>房间 {{ saved.code }}</strong><small>{{ saved.ownerToken ? '本机匿名创建凭据 · 权限由服务器验证' : '之前加入的房间 · 不代表所有权' }}</small></div>
             <button :disabled="connecting" @click="reenterRoom(saved)">再次进入</button>
           </div>
           <small>房间入口保存在当前浏览器；清除浏览器数据会失去创建者管理身份。</small>
@@ -394,7 +410,7 @@ prepareRoomEntry()
       </header>
       <p v-if="shareMessage" class="share-message" role="status">{{ shareMessage }}</p>
       <input v-if="manualShare" class="manual-share" aria-label="房间分享链接" :value="shareUrl" readonly @focus="($event.target as HTMLInputElement).select()"/>
-      <RoomApiSettings v-if="settingsOpen && roomMode === 'online'" :token="roomSessionToken" @close="settingsOpen = false" />
+      <RoomApiSettings v-if="settingsOpen && roomMode === 'online'" :key="room + ':' + !!rememberedRooms.find(saved => saved.code === room)?.ownerToken" :token="roomSessionToken" :code="room" :status-version="roomStatusVersion" :owner-token="rememberedRooms.find(saved => saved.code === room)?.ownerToken" @bound="rememberedRooms = forgetRoomOwnership(rememberedRooms, room)" @close="settingsOpen = false" />
       <ApiSettings v-if="settingsOpen && roomMode === 'simulation'" @close="settingsOpen = false" />
       <div v-if="roomMode === 'simulation'" class="room-demo-controls">
         <label for="input-mode">输入</label>

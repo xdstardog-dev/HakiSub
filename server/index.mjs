@@ -1,10 +1,11 @@
 import { createAsrGateway } from './asrGateway.mjs'
 import { createApiKeyStore } from './apiKeyStore.mjs'
 import { fileURLToPath } from 'node:url'
-import { access } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
+import { parseEnv } from 'node:util'
 import { createStaticWebsite } from './staticWebsite.mjs'
 import { readRuntimeConfiguration } from './runtimeConfiguration.mjs'
-import { createRoomStore, getRoomEncryptionKey } from './roomStore.mjs'
+import { createRoomStore } from './roomStore.mjs'
 
 let configuration
 try { configuration = readRuntimeConfiguration() }
@@ -16,16 +17,20 @@ catch (error) { if (error.code !== 'ENOENT') { console.error('无法读取 .env�
 
 let roomStore
 try {
-  const encryptionKey = await getRoomEncryptionKey(fileURLToPath(new URL('../.env', import.meta.url)), process.env.HAKISUB_ROOM_ENCRYPTION_KEY)
-  roomStore = await createRoomStore(process.env.HAKISUB_ROOM_STORE_PATH ?? fileURLToPath(new URL('../secrets/rooms.json', import.meta.url)), encryptionKey)
-} catch { console.error('无法初始化房间资料，请检查数据目录权限和服务端房间加密主密钥。'); process.exit(1) }
+  roomStore = await createRoomStore(process.env.HAKISUB_ROOM_STORE_PATH ?? fileURLToPath(new URL('../secrets/rooms.json', import.meta.url)))
+} catch { console.error('无法初始化房间资料，请检查数据文件及目录权限。'); process.exit(1) }
 const production = process.argv.includes('--production')
 const websiteDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 if (production) {
   try { await access(new URL('../dist/index.html', import.meta.url)) }
   catch { console.error('请先运行 npm run build，再启动本机正式服务。'); process.exit(1) }
 }
-const gateway = createAsrGateway({ ...configuration, keyStore, roomStore, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
+let roomManagementSecret = process.env.HAKISUB_ROOM_MANAGEMENT_SECRET
+if (!roomManagementSecret) {
+  try { roomManagementSecret = parseEnv(await readFile(new URL('../.env', import.meta.url), 'utf8')).HAKISUB_ROOM_MANAGEMENT_SECRET }
+  catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取房间管理服务配置。') }
+}
+const gateway = createAsrGateway({ ...configuration, keyStore, roomStore, roomManagementSecret, diagnostics: { enabled: process.env.HAKISUB_ASR_DEBUG === '1' },
   serveWebsite: production ? createStaticWebsite(websiteDirectory) : undefined })
 let vite
 try {

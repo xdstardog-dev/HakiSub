@@ -16,12 +16,12 @@ function createView(fetchResponse) {
   const calls = [], timers = new Map()
   let unmount, next = 0
   const context = vm.createContext({ ...Vue, AbortController, Error,
-    defineProps: () => ({ token: 'fixture-session-token' }), defineEmits: () => () => {},
+    defineProps: () => ({ token: 'fixture-session-token' }), defineEmits: () => () => {}, accountCenterUrl: 'https://xdstar.work/account/',
     onMounted: () => {}, onUnmounted: callback => { unmount = callback },
     setTimeout: callback => { timers.set(++next, callback); return next }, clearTimeout: id => timers.delete(id),
     fetch: (url, options) => { calls.push({ url, options }); return fetchResponse(url, options) },
   })
-  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { configuration,apiKey,busy,message,failed,confirmDelete,requestConfiguration,emit };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { configuration,apiKey,busy,message,failed,confirmDelete,requestConfiguration,emit,props,accountCenterUrl };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
   return { state: context.view, calls, timers, unmount: () => unmount(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.view, render })) }
 }
 const owner = createView((_url, options) => json(options.method === 'POST' ? { ...status, configured: true, source: 'room', message: 'saved' } : status))

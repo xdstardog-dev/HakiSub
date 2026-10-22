@@ -13,6 +13,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test:accounts": "node tests/account-client.test.mjs && npm --prefix accounts test",
+    "test:room-management": "node accounts/tests/room-management.test.mjs && node tests/owned-rooms-view.test.mjs && node tests/room-key-memory.test.mjs",
     "build:accounts": "npm --prefix accounts run build",
     "preview:accounts": "node scripts/preview-accounts.mjs",
     "package:accounts": "node scripts/package-accounts.mjs",

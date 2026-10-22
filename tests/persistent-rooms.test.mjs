@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventEmitter, once } from 'node:events'
 import WebSocket from 'ws'
-import { createRoomStore, getRoomEncryptionKey } from '../server/roomStore.mjs'
+import { createRoomStore } from '../server/roomStore.mjs'
 import { createAsrGateway } from '../server/asrGateway.mjs'
 
 const directory = await mkdtemp(join(tmpdir(), 'hakisub-rooms-'))
@@ -20,8 +20,7 @@ class FakeUpstream extends EventEmitter {
   terminate() { this.readyState = 3 }
 }
 async function start() {
-  const encryptionKey = await getRoomEncryptionKey(environmentPath)
-  const store = await createRoomStore(dataPath, encryptionKey)
+  const store = await createRoomStore(dataPath)
   gateway = createAsrGateway({ apiKey: 'fixture-default-key', roomStore: {
     list: store.list, save: room => failSave ? Promise.reject(Error('fixture failure')) : store.save(room),
   }, probeRoomKey: async key => ({ ok: key === 'fixture-room-a', message: 'fixture handshake only' }),
@@ -43,9 +42,6 @@ async function settings(member, command, customOrigin = origin) {
 }
 try {
   await writeFile(environmentPath, '# fixture environment\nDOUBAO_API_KEY=fixture-existing\n')
-  const key = await getRoomEncryptionKey(environmentPath)
-  assert.equal(await getRoomEncryptionKey(environmentPath), key)
-  assert.match(await readFile(environmentPath, 'utf8'), /DOUBAO_API_KEY=fixture-existing/)
   await start()
   const alice = await connect({ type: 'create', name: 'Alice' })
   const bob = await connect({ type: 'join', name: 'Bob', code: alice.identity.code })
@@ -61,20 +57,22 @@ try {
   const publicStatus = await (await settings(bob)).json()
   assert.equal(publicStatus.configured, true); assert.equal(publicStatus.source, 'room'); assert.equal(publicStatus.readOnly, true)
   assert.equal(JSON.stringify(publicStatus).includes('fixture-room-a'), false)
-  assert.equal((await (await settings(other)).json()).source, 'server', '其他房间不继承本房间密钥')
+  assert.equal((await (await settings(other)).json()).source, 'none', '其他房间既不继承本房间密钥，也不使用服务器默认密钥')
   assert.equal((await (await settings(alice, { action: 'test' })).json()).ok, true)
   const stored = await readFile(dataPath, 'utf8')
   assert.equal(stored.includes('fixture-room-a'), false)
   assert.equal(stored.includes(alice.identity.ownerToken), false, '只持久化管理凭据摘要')
-  const wrong = Buffer.alloc(32, 7).toString('base64')
-  await assert.rejects(createRoomStore(dataPath, wrong), /无法读取房间资料/)
   failSave = true
-  assert.equal((await settings(alice, { action: 'save', apiKey: 'fixture-must-not-replace' })).status, 500)
-  failSave = false
+  assert.equal((await settings(alice, { action: 'save', apiKey: 'fixture-memory-only' })).status, 200, '设置Key不依赖磁盘')
+  assert.equal((await settings(alice, { action: 'asr', enabled: false })).status, 500)
   assert.equal(await readFile(dataPath, 'utf8'), stored)
+  assert.equal((await (await settings(alice)).json()).configured, false, '开关写入失败清掉Key')
+  assert.equal((await settings(alice, { action: 'delete' })).status, 200, '删除Key不依赖磁盘')
+  failSave = false
+  assert.equal((await settings(alice, { action: 'save', apiKey: 'fixture-room-a' })).status, 200)
   alice.send({ type: 'mic', mic: true })
   await waitFor(() => alice.events.at(-1)?.members?.some(member => member.mic))
-  assert.equal((await settings(alice, { action: 'delete' })).status, 409)
+  assert.equal((await settings(alice, { action: 'test' })).status, 200, '房主无需所有成员退出或关麦即可管理')
   const audio = new WebSocket(base.replace('http:', 'ws:') + `/api/asr?session=${alice.identity.token}`, { origin })
   clients.push(audio); await once(audio, 'open')
   assert.equal(upstreamKeys.at(-1), 'fixture-room-a')
@@ -91,18 +89,25 @@ try {
   assert.notEqual(returning.identity.token, identity.token)
   assert.equal(returning.events.some(event => event.type === 'caption'), false)
   assert.equal((await settings({ identity })).status, 403, '旧成员令牌不得在重启后复用')
-  assert.equal((await (await settings(returning)).json()).source, 'room')
+  assert.equal((await (await settings(returning)).json()).source, 'none')
+  assert.equal((await (await settings(returning)).json()).keyState, 'missing')
   returning.send({ type: 'mic', mic: true })
   await waitFor(() => returning.events.at(-1)?.members?.some(member => member.mic))
+  const deniedAudio = new WebSocket(base.replace('http:', 'ws:') + `/api/asr?session=${returning.identity.token}`, { origin })
+  clients.push(deniedAudio)
+  assert.match(await new Promise(resolve => deniedAudio.once('error', error => resolve(error.message))), /403/, '重启不得恢复Key或回退默认Key')
+  assert.equal((await settings(returning, { action: 'save', apiKey: 'fixture-room-a' })).status, 200)
   const restoredAudio = new WebSocket(base.replace('http:', 'ws:') + `/api/asr?session=${returning.identity.token}`, { origin })
   clients.push(restoredAudio); await once(restoredAudio, 'open')
-  assert.equal(upstreamKeys.at(-1), 'fixture-room-a', '重启后解密并使用原房间密钥')
+  assert.equal(upstreamKeys.at(-1), 'fixture-room-a', '合法房主重填后恢复识别')
   restoredAudio.terminate(); returning.send({ type: 'mic', mic: false })
   await waitFor(() => returning.events.at(-1)?.members?.every(member => !member.mic))
   await new Promise(resolve => setTimeout(resolve, 20))
   assert.equal((await settings(returning, { action: 'delete' })).status, 200)
-  assert.equal((await (await settings(returning)).json()).source, 'server')
-  console.log('通过：房间及创建者重启恢复、API Key加密持久化/密钥隔离/不回显、权限与Origin校验、忙碌保护、写入失败保留旧值、旧令牌失效。仅假上游，无真实API或麦克风。')
+  assert.equal((await (await settings(returning)).json()).source, 'none')
+  assert.equal((await (await settings(returning)).json()).keyState, 'deleted')
+  assert.equal(await readFile(environmentPath, 'utf8'), '# fixture environment\nDOUBAO_API_KEY=fixture-existing\n', '房间存储不修改服务端环境')
+  console.log('通过：房间身份重启恢复、Key仅内存/重启失效/合法房主重填、磁盘失败清Key且删除不依赖磁盘、隔离/权限/无默认回退。仅假上游。')
 } finally {
   clients.forEach(socket => socket.terminate())
   await gateway?.close()

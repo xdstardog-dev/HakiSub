@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { createAccountClient, accountCenterUrl } from '../accountClient'
 
-const props = defineProps<{ token: string }>()
-const emit = defineEmits<{ close: [] }>()
-type Configuration = { configured: boolean; readOnly: boolean; busy: boolean; source: 'room' | 'server' | 'none' }
+const props = defineProps<{ token: string; code?: string; ownerToken?: string; statusVersion?: number }>()
+const emit = defineEmits<{ close: []; bound: [] }>()
+type Configuration = { configured: boolean; readOnly: boolean; busy: boolean; source: 'room' | 'server' | 'none'; bound?: boolean; asrEnabled?: boolean; keyState?: string }
 const configuration = ref<Configuration | null>(null)
 const apiKey = ref(''), busy = ref(false), message = ref(''), failed = ref(false), confirmDelete = ref(false)
 const settingsDialog = ref<HTMLDialogElement | null>(null)
 let controller: AbortController | undefined, disposed = false
-async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
+let accountClient: ReturnType<typeof createAccountClient> | undefined
+let refreshAgain = false
+watch(() => props.statusVersion, () => { if (busy.value) refreshAgain = true; else void requestConfiguration() })
+async function bindAccount() {
+  if (!props.ownerToken || !props.code || busy.value) return
+  busy.value = true; message.value = ''; failed.value = false
+  try {
+    accountClient ??= createAccountClient()
+    await accountClient.bindRoom(props.code, props.ownerToken)
+    if (!disposed) { emit('bound'); message.value = '房间已绑定当前账号，原匿名凭据已撤销。' }
+  } catch (error) { if (!disposed) { failed.value = true; message.value = error instanceof Error ? error.message : '绑定失败，请重试。' } }
+  finally { if (!disposed) { busy.value = false; void requestConfiguration() } }
+}
+async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'asr') {
   if (busy.value || (action && (!configuration.value || configuration.value.readOnly))) return
   busy.value = true; message.value = ''; failed.value = false; confirmDelete.value = false
   const submittedKey = apiKey.value.trim()
@@ -16,10 +30,19 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
   controller = new AbortController()
   const timeout = setTimeout(() => controller?.abort(), 12000)
   try {
+    if (action && configuration.value?.bound) {
+      accountClient ??= createAccountClient()
+      const result = await accountClient.manageRoom(props.code ?? '', { action, ...(action === 'save' ? { apiKey: submittedKey } : {}), ...(action === 'asr' ? { enabled: !configuration.value.asrEnabled } : {}) })
+      if (!disposed) {
+        if (action === 'test') { failed.value = !result.ok; message.value = result.message ?? '' }
+        else { configuration.value = { ...result.room!, readOnly: false }; message.value = result.message ?? '' }
+      }
+      return
+    }
     const response = await fetch('/api/rooms/settings', {
       method: action ? 'POST' : 'GET', cache: 'no-store', signal: controller.signal,
       headers: { Authorization: `Bearer ${props.token}`, ...(action ? { 'Content-Type': 'application/json' } : {}) },
-      ...(action ? { body: JSON.stringify(action === 'save' ? { action, apiKey: submittedKey } : { action }) } : {}),
+      ...(action ? { body: JSON.stringify(action === 'save' ? { action, apiKey: submittedKey } : action === 'asr' ? { action, enabled: !configuration.value?.asrEnabled } : { action }) } : {}),
     })
     const result = await response.json()
     if (disposed) return
@@ -28,14 +51,22 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
     else {
       if (typeof result.configured !== 'boolean' || typeof result.readOnly !== 'boolean' || typeof result.busy !== 'boolean' || !['room', 'server', 'none'].includes(result.source)) throw Error('房间配置状态无效，请刷新。')
       configuration.value = result
+      if (result.bound) {
+        accountClient ??= createAccountClient()
+        const owned = (await accountClient.rooms()).rooms.find(room => room.code === props.code)
+        if (!disposed && owned) configuration.value = { ...owned, readOnly: false }
+      }
       message.value = result.message ?? ''
     }
   } catch (error) {
     if (!disposed) { failed.value = true; message.value = error instanceof Error && error.name !== 'AbortError' ? error.message : '请求超时，请刷新配置状态。' }
-  } finally { clearTimeout(timeout); if (!disposed) busy.value = false }
+  } finally {
+    clearTimeout(timeout)
+    if (!disposed) { busy.value = false; if (refreshAgain) { refreshAgain = false; void requestConfiguration() } }
+  }
 }
 onMounted(() => { settingsDialog.value?.showModal(); void requestConfiguration() })
-onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; settingsDialog.value?.close() })
+onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(); apiKey.value = ''; settingsDialog.value?.close() })
 </script>
 
 <template>
@@ -43,11 +74,15 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; set
     <div class="settings-heading"><h2 id="room-api-title">房间豆包配置</h2><button @click="emit('close')">收起配置</button></div>
     <p role="status">{{ configuration ? configuration.configured ? '已配置 API Key' : '尚未配置 API Key' : busy ? '正在读取配置…' : '配置状态暂不可用' }}</p>
     <template v-if="configuration">
-      <p v-if="configuration.source === 'server'" class="settings-note">当前使用服务器的默认配置。创建者可为此房间保存独立的 API Key。</p>
+      <p>豆包 ASR：{{ configuration.asrEnabled === false ? '已暂停' : '已开启（仍需本房间 Key）' }}</p>
+      <p v-if="configuration.keyState === 'deleted'">房主已删除 Key，豆包识别不可用。</p>
+      <p v-if="configuration.bound" class="settings-note">房间已绑定账号。<a :href="accountCenterUrl" target="_blank" rel="noopener noreferrer">打开个人中心</a>登录房主账号可跨设备管理。</p>
       <p v-if="configuration.readOnly" class="settings-note">由房间创建者管理配置。请使用创建房间的浏览器修改；其他成员只看到配置状态。</p>
       <template v-else>
-        <p class="settings-note">API Key 仅供本房间使用，加密保存在服务器。退出房间后保留，不回显给成员，也不保存在浏览器。</p>
-        <p v-if="configuration.busy" class="settings-note">请所有成员先关闭麦克风，再刷新状态修改配置。</p>
+        <p class="settings-note">API Key 仅保存在当前后端进程内存中。服务启动或重启后必须由合法房主重新填写，不回显、不写入磁盘或浏览器。</p>
+        <p class="settings-note">更换或删除 Key、切换 ASR 会停止本房间的豆包会话；成员之后需手动开麦。</p>
+        <button v-if="!configuration.bound && props.ownerToken" :disabled="busy" @click="bindAccount">绑定当前登录账号</button>
+        <button :disabled="busy || configuration.busy" @click="requestConfiguration('asr')">{{ configuration.asrEnabled === false ? '开启豆包 ASR' : '暂停豆包 ASR' }}</button>
         <form @submit.prevent="requestConfiguration('save')">
           <label for="room-api-key">{{ configuration.source === 'room' ? '更换房间 API Key' : '豆包 API Key' }}</label>
           <input id="room-api-key" v-model="apiKey" type="password" autocomplete="off" spellcheck="false" maxlength="2048" placeholder="粘贴豆包语音服务 API Key" :disabled="busy || configuration.busy">

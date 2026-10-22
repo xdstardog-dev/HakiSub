@@ -6,6 +6,7 @@ import staticFiles from '@fastify/static'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
+import { createRoomManagementClient } from './roomManagementClient.mjs'
 import { openAccountDatabase } from './database.mjs'
 import { createPasswordService, normalizeAnswer } from './passwords.mjs'
 import { createRequestSecurity, tokenHash, problem, normalizeUsername, requireText, requireNickname, requirePassword, requireQuestions, validatePreset } from './requestSecurity.mjs'
@@ -14,6 +15,7 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   const database = openAccountDatabase(configuration.databasePath)
   const passwords = passwordService ?? await createPasswordService(configuration.hashing, configuration.hashConcurrency, configuration.hashQueue)
   const security = createRequestSecurity(database, configuration, now)
+  const manageRoom = createRoomManagementClient(configuration)
   const app = Fastify({ logger: false, bodyLimit: 16384, requestTimeout: 15000, connectionTimeout: 15000, ajv: { customOptions: { removeAdditional: false } } })
   const secure = !configuration.development
   const sessionName = secure ? '__Host-xdstar_session' : 'xdstar_development_session'
@@ -95,6 +97,23 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   app.get(projectPath + '/identity', async request => {
     const user = lookupSession(request)
     return { user: user ? { uid: user.id, nickname: user.nickname } : null }
+  })
+  const forwardRoom = (request, command) => {
+    const user = needUser(request)
+    security.consume('room_management', security.subject(user.id), 60, 60000)
+    return manageRoom({ ...command, uid: user.id }, () => {
+      if (needUser(request).id !== user.id) throw problem(401, '登录状态已改变，请重新登录。')
+    })
+  }
+  app.get(projectPath + '/rooms', async request => forwardRoom(request, { action: 'list' }))
+  app.post(projectPath + '/rooms/:code/bind', { schema: bodySchema(['ownerToken']) }, async request => {
+    if (typeof request.body.ownerToken !== 'string' || !/^[a-f0-9-]{36}$/.test(request.body.ownerToken)) throw problem(400, '需要合法的原房主管理凭据。')
+    return forwardRoom(request, { code: request.params.code, action: 'bind', ownerToken: request.body.ownerToken })
+  })
+  app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled'], ['action']) }, async request => {
+    const { action, apiKey, enabled } = request.body
+    if (!['save', 'delete', 'test', 'asr'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined)) throw problem(400, '无效的房间管理操作。')
+    return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}) })
   })
   app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
     const ip = security.ipSubject(request)

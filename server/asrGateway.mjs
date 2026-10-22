@@ -7,12 +7,14 @@ import { createApiSettingsHandler, allowedAppOrigins } from './apiSettings.mjs'
 import { createAsrDiagnostics } from './asrDiagnostics.mjs'
 import { createRoomGateway } from './roomGateway.mjs'
 import { createRoomSettingsHandler } from './roomSettings.mjs'
+import { createRoomManagementHandler } from './roomManagement.mjs'
 
 export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url, options) => new WebSocket(url, options),
   startupTimeoutMs = 15000, idleTimeoutMs = 10000, maxSessionMs = 15 * 60 * 1000, diagnostics = {}, serveWebsite, maxAsrSessions = 8,
-  allowedOrigins = allowedAppOrigins, allowLegacyAsr = true, enableSettings = true, maxRooms = 100, roomStore, probeRoomKey } = {}) {
-  const rooms = createRoomGateway({ maxRooms, roomStore })
-  const roomSettingsHandler = createRoomSettingsHandler(rooms, { allowedOrigins, getDefaultKey: () => keyStore?.getKey() ?? apiKey, probe: probeRoomKey })
+  allowedOrigins = allowedAppOrigins, allowLegacyAsr = true, enableSettings = true, maxRooms = 100, roomStore, probeRoomKey, roomManagementSecret } = {}) {
+  const rooms = createRoomGateway({ maxRooms, roomStore, probe: probeRoomKey })
+  const roomSettingsHandler = createRoomSettingsHandler(rooms, { allowedOrigins })
+  const managementHandler = createRoomManagementHandler(rooms, roomManagementSecret)
   const usageStartedAt = new Date().toISOString()
   let totalSubmittedPcmBytes = 0, latestStatistics
   const settingsHandler = keyStore && enableSettings ? createApiSettingsHandler(keyStore, {
@@ -21,6 +23,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
       latest: latestStatistics?.snapshot() ?? null }),
   }) : undefined
   const server = createServer((request, response) => {
+    if (request.url?.startsWith('/internal/')) { void managementHandler(request, response); return }
     if (request.url === '/api/rooms/settings') { void roomSettingsHandler(request, response); return }
     if (request.url?.startsWith('/api/asr/settings') && settingsHandler) { void settingsHandler(request, response); return }
     if (request.url === '/api/asr/health') {
@@ -41,7 +44,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     const activeClients = [...sockets.clients].filter(client => !client.asrStopped)
     const legacyBusy = activeClients.some(client => !client.roomMember)
     if (url.pathname !== '/api/asr' || !allowedOrigins.includes(request.headers.origin) || settingsHandler?.isBusy() ||
-      (token ? !member || !member.mic || member.asr || member.room.settingsBusy || legacyBusy || activeClients.length >= maxAsrSessions : !allowLegacyAsr || activeClients.length >= 1)) {
+      (token ? !member || !member.mic || member.asr || member.room.settingsBusy || !member.room.asrEnabled || !member.room.apiKey || legacyBusy || activeClients.length >= maxAsrSessions : !allowLegacyAsr || activeClients.length >= 1)) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return
     }
     sockets.handleUpgrade(request, socket, head, client => {
@@ -53,7 +56,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
     })
   })
   sockets.on('connection', client => {
-    const sessionApiKey = client.roomMember?.room.apiKey || (keyStore?.getKey() ?? apiKey)
+    const sessionApiKey = client.roomMember ? client.roomMember.room.apiKey : (keyStore?.getKey() ?? apiKey)
     let upstream, stopped = false, ready = false, finishing = false, startupTimer, idleTimer, sessionTimer
     const sessionId = randomUUID()
     const statistics = createAsrDiagnostics(sessionId, diagnostics)
@@ -82,6 +85,7 @@ export function createAsrGateway({ apiKey = '', keyStore, connectUpstream = (url
       statistics.end()
     }
     const fail = message => { send({ type: 'error', message }); cleanup() }
+    client.stopRoomAsr = () => fail('房主已暂停或更新房间豆包配置，请检查状态后手动开麦。')
     client.on('error', cleanup)
     client.on('close', cleanup)
     if (!sessionApiKey.trim()) { fail(client.roomMember ? '尚未配置豆包 API Key，请房间创建者打开房间内的“豆包配置”并保存。' : '尚未配置豆包 API Key，请打开房间内的豆包配置。'); return }

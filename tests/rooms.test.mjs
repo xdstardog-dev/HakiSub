@@ -57,6 +57,10 @@ try {
   assert.equal(JSON.stringify(bob.events).includes(identity.token), false)
   const other = await connect(); other.send({ type: 'create', name: 'Other' })
   await waitFor(() => other.events.some(event => event.type === 'joined'))
+  for (const person of [alice, other]) {
+    const response = await fetch(base.replace('ws:', 'http:') + '/api/rooms/settings', { method: 'POST', headers: { Origin: origin, Authorization: `Bearer ${person.events.find(event => event.type === 'joined').token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', apiKey: 'fixture-room-only' }) })
+    assert.equal(response.status, 200)
+  }
   await reject('/api/asr?session=invalid')
   await reject(`/api/asr?session=${identity.token}`) // 未开麦
   alice.send({ type: 'mic', mic: true }); bob.send({ type: 'mic', mic: true })

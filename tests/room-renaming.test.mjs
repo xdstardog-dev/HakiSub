@@ -24,9 +24,9 @@ try {
   await store.save({ code: '985529', ownerHash, apiKey: 'fixture-room-key' })
   await store.save({ code: '123456', ownerHash, apiKey: 'fixture-other-key' })
   const original = await readFile(dataPath, 'utf8')
-  const manualEdit = JSON.parse(original); manualEdit.rooms[0].code = '114514'
+  const manualEdit = JSON.parse(original); manualEdit.rooms[0].code = '123456'
   await writeFile(invalidPath, JSON.stringify(manualEdit))
-  await assert.rejects(createRoomStore(invalidPath, key), /无法读取/, '直接改号码会破坏Key的AAD认证')
+  await assert.rejects(createRoomStore(invalidPath), /无法读取/, '重复房间号不能加载')
   for (const [source, target] of [['985529', '123456'], ['985529', '985529'], ['985529', 'bad'], ['999999', '114514']]) {
     await assert.rejects(store.renameRoom(source, target))
     assert.equal(await readFile(dataPath, 'utf8'), original, '非法或冲突目标不覆盖原资料')
@@ -44,11 +44,11 @@ try {
   assert.equal((applied.stdout + applied.stderr).includes(ownerToken), false)
   store = await createRoomStore(dataPath, key)
   const renamed = store.list().find(room => room.code === '114514')
-  assert.equal(renamed.apiKey, 'fixture-room-key'); assert.equal(renamed.ownerHash, ownerHash)
+  assert.equal(renamed.apiKey, undefined); assert.equal(renamed.ownerHash, ownerHash)
   assert.deepEqual(renamed.aliases, ['985529']); assert.equal(store.list().length, 2)
   assert.equal(store.list().some(room => room.code === '985529'), false)
   const migrated = JSON.parse(await readFile(dataPath, 'utf8'))
-  assert.notDeepEqual(migrated.rooms.find(room => room.code === '114514').encryptedKey, JSON.parse(original).rooms[0].encryptedKey)
+  assert.equal(migrated.rooms.some(room => 'encryptedKey' in room || 'apiKey' in room), false)
   assert.equal(JSON.stringify(migrated).includes('fixture-room-key'), false)
   for (const aliases of [['123456'], ['985529', '985529'], ['bad'], '985529']) {
     const invalid = structuredClone(migrated)
@@ -74,7 +74,7 @@ try {
   for (const [person, readOnly] of [[owner, false], [member, true]]) {
     const response = await fetch(base + '/api/rooms/settings', { headers: { Origin: origin, Authorization: `Bearer ${person.identity.token}` } })
     const status = await response.json()
-    assert.equal(status.configured, true); assert.equal(status.source, 'room'); assert.equal(status.readOnly, readOnly)
+    assert.equal(status.configured, false); assert.equal(status.source, 'none'); assert.equal(status.readOnly, readOnly)
     assert.equal(JSON.stringify(status).includes('fixture-room-key'), false)
   }
   owner.socket.send(JSON.stringify({ type: 'mic', mic: true }))
@@ -89,7 +89,7 @@ try {
   await store.renameRoom('114514', '114515')
   assert.deepEqual(store.list().find(room => room.code === '114515').aliases, ['985529', '114514'])
   await assert.rejects(store.save({ code: '985529', ownerHash, apiKey: '' }), '旧号码保留为别名，不能被新房间占用')
-  console.log('通过：房间换号/AAD重加密/房主保留/冲突失败不改资料/旧新码同房/持久别名/配置状态/字幕广播/管理员脚本幂等及不回显。未调用真实API。')
+  console.log('通过：房间换号/房主保留/冲突失败不改资料/旧新码同房/持久别名/Key不落盘/字幕广播/管理员脚本幂等。未调用真实API。')
 } finally {
   clients.forEach(socket => socket.terminate()); await gateway?.close()
   assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep) && basename(directory).startsWith('hakisub-rename-'))

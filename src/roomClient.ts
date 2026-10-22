@@ -8,6 +8,7 @@ type RoomCallbacks = {
   onDiscard: (memberId: string, utteranceId: string) => void
   onError: (message: string) => void
   onClose: () => void
+  onRoomStatus?: (status: { bound: boolean; asrEnabled: boolean; configured: boolean }) => void
 }
 export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/rooms`)) {
   let socket: WebSocket | undefined, token = ''
@@ -43,6 +44,7 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
           else if (event.type === 'caption') callbacks.onCaption(event)
           else if (event.type === 'discard') callbacks.onDiscard(event.memberId, event.utteranceId)
           else if (event.type === 'error') callbacks.onError(event.message)
+          else if (event.type === 'room-status') callbacks.onRoomStatus?.(event)
         } catch { close(); callbacks.onError('房间消息无法解析，请重新加入。'); callbacks.onClose() }
       }
       socket.onerror = () => callbacks.onError('无法连接房间服务。')
