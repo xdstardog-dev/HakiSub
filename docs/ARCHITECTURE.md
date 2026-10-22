@@ -1,5 +1,7 @@
 # HakiSub 架构
 
+ASR 并发配置（2026-10-22）：`runtimeConfiguration.mjs` 三种部署模式默认均为 8 路，`HAKISUB_MAX_ASR_SESSIONS` 仍只接受 1～8，Compose 与发布示例同步默认 8。此上限为网关跨房间的全局有效识别连接数，每成员一路、无令牌入口限制、Origin、Key、超时和停止清理逻辑不变。线上原镜像已通过显式环境配置从 2 改为 8，无需发布本地其他功能。部署模拟覆盖默认八路、显式两路覆盖、跨房间第九路拒绝、同成员重复拒绝以及关麦后释放名额；后文默认两路是历史记录。
+
 统一账号（2026-10-21，本地完成，未部署）：`accounts/server/` 是独立 Fastify/SQLite 服务，使用成熟 Cookie/CORS/CSRF 插件、Argon2id 与 better-sqlite3，不修改实时网关或豆包协议。主站专属 `__Host-xdstar_session` Cookie（无Domain）只发送给主站；HakiSub 的 `accountClient.ts` 通过精确 Origin 凭据 CORS 请求最小身份和本人存档，不读取 username 或长期认证 token。账号设置只接受主站 Origin；CSRF 绑定会话与 account/hakisub 作用域。SQLite 保存密码/答案哈希、会话 token 摘要、找回挑战、私人配置及持久限流；注册成功配额与插入同事务复检，哈希计算有单路与有界队列。
 
 `AccountAccess.vue` 定期/回到页面时刷新身份；App 仅在未入房且用户未手改显示名时填昵称，不更换 memberId。`RoomPresets.vue` 保存/同步/改名/加载/删除识别来源和布局，严格排除 API Key、ownerToken、成员token、音频字幕。个人中心链接携带的 preset UUID 仍由服务端按当前 UID 授权，加载不会自动入房或开麦。主站页面独立构建至 `accounts/dist/`，HakiSub 主体布局和字幕生命周期保留。`scripts/preview-accounts.mjs` 使用独立测试库、空Key内存网关和5179/8790回环端口，不连接现有8787或生产。

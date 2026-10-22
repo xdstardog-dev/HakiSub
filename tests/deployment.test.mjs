@@ -7,9 +7,12 @@ import { createAsrGateway } from '../server/asrGateway.mjs'
 const local = readRuntimeConfiguration({})
 assert.equal(local.host, '127.0.0.1'); assert.equal(local.port, 8787)
 assert.equal(local.allowLegacyAsr, true); assert.equal(local.enableSettings, true)
+assert.equal(local.maxAsrSessions, 8)
+assert.equal(readRuntimeConfiguration({ HAKISUB_DEPLOYMENT_MODE: 'private-test' }).maxAsrSessions, 8)
 const configuration = readRuntimeConfiguration({
   HAKISUB_DEPLOYMENT_MODE: 'private-test', HAKISUB_HOST: '0.0.0.0',
   HAKISUB_ALLOWED_ORIGINS: 'http://localhost:18787,http://127.0.0.1:18787',
+  HAKISUB_MAX_ASR_SESSIONS: '2',
 })
 assert.equal(configuration.allowLegacyAsr, false); assert.equal(configuration.enableSettings, false)
 assert.equal(configuration.maxAsrSessions, 2); assert.equal(configuration.maxRooms, 1)
@@ -27,7 +30,7 @@ const publicConfiguration = readRuntimeConfiguration({
 assert.equal(publicConfiguration.enableSettings, false)
 assert.equal(publicConfiguration.allowLegacyAsr, false)
 assert.equal(publicConfiguration.maxRooms, 100)
-assert.equal(publicConfiguration.maxAsrSessions, 2)
+assert.equal(publicConfiguration.maxAsrSessions, 8)
 assert.deepEqual(publicConfiguration.allowedOrigins, ['https://captions.example'])
 for (const origin of [undefined, '', '*', 'http://captions.example', 'https://localhost', 'https://127.0.0.1', 'https://captions.example/path', 'https://user:password@captions.example', 'https://*.example']) {
   assert.throws(() => readRuntimeConfiguration({ HAKISUB_DEPLOYMENT_MODE: 'public', HAKISUB_ALLOWED_ORIGINS: origin }))
@@ -99,8 +102,10 @@ try {
   clients.forEach(client => client.terminate())
   await gateway.close()
 }
+const publicUpstreams = []
 const publicGateway = createAsrGateway({ ...publicConfiguration,
-  keyStore: { getKey: () => '', status: () => ({ configured: false }), save: () => storeChanges++ },
+  keyStore: { getKey: () => 'fixture-not-a-key', status: () => ({ configured: true }), save: () => storeChanges++ },
+  connectUpstream: () => { const upstream = new FakeUpstream(); publicUpstreams.push(upstream); return upstream },
 })
 publicGateway.server.listen(0, '127.0.0.1'); await once(publicGateway.server, 'listening')
 const publicAddress = `127.0.0.1:${publicGateway.server.address().port}`
@@ -115,14 +120,37 @@ try {
     publicClients.push(socket)
     assert.match(await new Promise(resolve => socket.on('error', error => resolve(error.message))), /403/)
   }
-  for (let index = 0; index < 2; index++) {
+  const publicMembers = [], roomCodes = []
+  for (let index = 0; index < 9; index++) {
     const socket = new WebSocket(`ws://${publicAddress}/api/rooms`, { origin: 'https://captions.example' })
     publicClients.push(socket)
+    const events = []
+    socket.on('message', packet => events.push(JSON.parse(packet)))
     await once(socket, 'open')
-    const joined = once(socket, 'message')
-    socket.send(JSON.stringify({ type: 'create', name: `Public${index}` }))
-    assert.equal(JSON.parse((await joined)[0]).type, 'joined')
+    socket.send(JSON.stringify(index < 2 ? { type: 'create', name: `Public${index}` }
+      : { type: 'join', name: `Public${index}`, code: roomCodes[index % 2] }))
+    await waitFor(() => events.some(event => event.type === 'joined'))
+    const identity = events.find(event => event.type === 'joined')
+    if (index < 2) roomCodes.push(identity.code)
+    socket.send(JSON.stringify({ type: 'mic', mic: true }))
+    await waitFor(() => events.at(-1)?.members?.some(member => member.id === identity.memberId && member.mic))
+    publicMembers.push({ socket, identity })
   }
+  const connectPublicAsr = async (index, rejected = false) => {
+    const socket = new WebSocket(`ws://${publicAddress}/api/asr?session=${publicMembers[index].identity.token}`, { origin: 'https://captions.example' })
+    publicClients.push(socket)
+    if (rejected) assert.match(await new Promise(resolve => socket.once('error', error => resolve(error.message))), /403/)
+    else await once(socket, 'open')
+  }
+  for (let index = 0; index < 8; index++) await connectPublicAsr(index)
+  assert.equal(publicUpstreams.length, 8, '公网默认允许八路独立成员识别')
+  await connectPublicAsr(0, true)
+  await connectPublicAsr(8, true)
+  assert.equal(publicUpstreams.length, 8, '同成员重复连接与跨房间第九路仍被拒绝')
+  publicMembers[0].socket.send(JSON.stringify({ type: 'mic', mic: false }))
+  await waitFor(() => publicUpstreams[0].readyState === 3)
+  await connectPublicAsr(8)
+  assert.equal(publicUpstreams.length, 9, '关麦释放名额后等待成员可以连接')
   assert.equal(storeChanges, 0)
 } finally {
   publicClients.forEach(client => client.terminate())

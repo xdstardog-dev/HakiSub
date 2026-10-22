@@ -544,3 +544,13 @@ HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独
 日期：2026-10-21（Asia/Shanghai）
 
 按用户要求整理当前工作区提交到原GitHub仓库：包含此前房间持久化/独立URL/语音恢复/部署文档，以及本轮统一账号的源码、测试、锁文件和候选配置。提交前检查Git纳入范围与真实本机密钥值的匹配，不显示密钥；现有.env、.env.local、数据库、依赖、构建目录、截图和镜像/发布包继续保留本地，不强制添加忽略文件。新增SQLite/DB日志及backups目录忽略规则，防止数据库移到其他目录后意外入库。测试结果沿用本轮已通过的npm test、npm run build、npm run test:accounts、npm run build:accounts及官方运行依赖审计0项；此次仅更新Git排除规则与提交记录，没有修改运行逻辑或生产环境。提交/推送的最终哈希与结果以实际Git操作为准。
+
+日期：2026-10-22（Asia/Shanghai）
+
+任务：用户要求调整尚未修改的服务器两路 ASR 限制。只读检查线上根.env及运行容器均为2、public模式、healthy；没有将用户反馈直接视为已证明的所有波动原因。
+
+修改：runtimeConfiguration三模式默认、compose.yaml默认、deploy/release.env.example统一为8；仍允许显式1～8配置，保留每成员一路及既有权限、Origin、Key、15分钟单连接、音频/VAD/字幕/恢复/清理逻辑。部署测试保留显式两路限制覆盖，新增公网默认八路跨房间独立接入、重复成员和第九路拒绝、关麦释放名额。README、ARCHITECTURE和部署手册同步。
+
+验证：npm test全套通过、npm run build通过（因既有Node子进程/esbuild沙箱限制，在获准沙箱外执行）。模拟仅使用假上游与临时数据，未调用真实豆包或麦克风。没有实施此前缓存和内存审查建议。
+
+线上：通过既有hakisub-server SSH别名管理；首次临时环境预检被sudo环境过滤导致差异校验停止，尚未修改；改用sudo env后确认有效Compose配置仅ASR上限变化。备份服务器根.env至/srv/projects/hakisub/images/asr-concurrency-20261022T145508Z/environment.before（目录0700、文件0600），原位原子替换2为8，仅重建hakisub服务，保留回退配置。未触发部署回退；镜像仍hakisub-20261020T173624Z，镜像摘要及挂载不变，Caddy容器ID不变。运行容器内readRuntimeConfiguration结果8，healthy，服务器外部可信HTTPS首页和健康接口200。未读取/输出真实Key或字幕、未部署本地其他功能、未编辑DEEPSEEK-MEMORY.md、未提交或推送Git。真实多人识别与长期稳定性仍待用户实测。

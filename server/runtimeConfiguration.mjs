@@ -34,7 +34,7 @@ export function readRuntimeConfiguration(environment = process.env) {
   return {
     host, port: integer('HAKISUB_PORT', 8787, 65535), allowedOrigins: [...new Set(origins)],
     allowLegacyAsr: mode === 'local', enableSettings: mode === 'local',
-    maxAsrSessions: integer('HAKISUB_MAX_ASR_SESSIONS', mode === 'local' ? 8 : 2, 8),
+    maxAsrSessions: integer('HAKISUB_MAX_ASR_SESSIONS', 8, 8),
     maxRooms: privateTest ? 1 : 100,
   }
 }

@@ -1,5 +1,7 @@
 # HakiSub 受控测试部署执行手册
 
+2026-10-22 配置更新：当前代码、Compose 和发布示例的 ASR 默认上限统一为8；仍可用 `HAKISUB_MAX_ASR_SESSIONS=2` 显式保留两路受控测试。以下默认两路描述属于历史部署记录。当前公网实际调整及验证见 [公网部署](PUBLIC-DEPLOYMENT.md)。
+
 状态（2026-10-16）：私有测试版已部署，容器healthy，本机SSH隧道HTTP检查通过；豆包Key为空，真实语音验收待完成。后续由Codex通过Windows原生OpenSSH直接管理，服务器文件删除、服务重启与开放端口按用户要求先确认。本文保留首次部署流程供审计，不应对已运行服务重复执行。
 
 2026-10-16 实际执行：用户授权优先复用服务器现有阿里云加速器，失败再本地构建、SSH上传。Codex使用Windows系统OpenSSH，核对原有known_hosts与现有密钥路径，通过本机标准ssh-add窗口解锁现有私钥，未读取或输出私钥内容；启用本机Windows ssh-agent为自动启动。先执行whoami/hostname确认admin与目标主机，成功后新建用户级 `hakisub-server` 别名并验证登录，不改服务器SSH登录配置或覆盖密钥。后续镜像拉取、上传、Docker管理与日志检查均由Codex直接完成。用户另行明确批准了容器启动、服务器回环映射与本机隧道。

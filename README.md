@@ -1,5 +1,7 @@
 # HakiSub 实时字幕
 
+ASR 并发调整（2026-10-22，已在线生效）：网关总上限由 2 路提高到 8 路，跨所有房间合计，每成员仍最多一路有效识别。本地运行默认、Compose 默认及发布示例统一为 8；已有环境显式设置会覆盖默认值。线上仅将 `HAKISUB_MAX_ASR_SESSIONS` 改为 8 并重建应用，镜像、房间数据、Key 和 Caddy 保持不变。8 路假上游接入、第 9 路拒绝和关麦释放名额已验证，真实豆包额度及多人讲话稳定性需实测。
+
 统一账号系统（2026-10-21，本地实现，未部署）：新增 `accounts/` 的 xdstar.work 注册/登录、独立昵称、三道密保找回、个人中心及服务端房间配置存档；HakiSub 保留游客、原房主凭据与原 ASR 权限。使用 Fastify 安全插件、Argon2id 和 SQLite，组件选择见 [开源复用说明](accounts/THIRD-PARTY.md)。先阅读 [审查方案](docs/ACCOUNT-SYSTEM-PLAN.md) 和 [账号开发/部署手册](docs/ACCOUNT-DEPLOYMENT.md)。本地先 `npm ci --prefix accounts`，然后 `npm run test:accounts`、`npm run build:accounts`；`npm run preview:accounts` 提供空 Key 的隔离双站预览。账号不会获得 API Key、付费许可或旧房间管理权；Linux/真实跨子域和生产费用保护需另验，当前线上版本仍见下文。
 
 房间链接（2026-10-21）：加入或创建真实联网房间后，地址自动变为 `/<六位房间号>/`，例如 [114514 房间](https://hakisub.xdstar.work/114514/)。直达或刷新会预填加入房间，填写名称即可进入，麦克风仍需手动开启。房间左上角的分享图标优先打开系统分享，不支持时复制链接；复制受限时显示可手动复制的地址。链接仅含房间号，不携带房主凭据或 API Key。返回首页、浏览器前进/后退会清理当前房间及麦克风；本地模拟仍保留原流程。
