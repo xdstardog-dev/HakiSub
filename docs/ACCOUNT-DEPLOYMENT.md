@@ -1,4 +1,57 @@
-# 账号系统本地验收与生产前操作
+# 账号系统部署、验收与恢复
+
+## Star-Hub 实际上线记录（2026-10-23，Asia/Shanghai）
+
+本节为当前生产事实，后续较早日期的“本地未部署”“待授权”等内容保留为历史记录，不代表当前状态。用户已明确授权北京时间 01:48 起执行备份、配套上线、必要配置切换和正式站验收；本次未重复部署前全面审查。启动时工作区干净，GitHub main 已是 `d1f237ba9bdbedb43c8d80e1822d38d3512fa4ad`，包含 `52b9788`，无需推送或合并，也未丢弃工作区修改。
+
+### 实际版本与网络
+
+| 项目 | 已运行配置 |
+| --- | --- |
+| 发布目录 | `/srv/projects/hakisub/images/deploy-20261022T1748Z` |
+| HakiSub 镜像 | `hakisub-test:deploy-20261022T1748Z`，镜像配置 SHA-256 `ab5a455ac2eff5ec661cd8180fea56d2c5d53e4c86da433248a40569fc55dee6` |
+| 账号镜像 | `xdstar-accounts:deploy-20261022T1748Z`，镜像配置 SHA-256 `89dd2b54c983b0b6954580f325c078dfbaa9fd0331934c9c3fedaacc5a726881` |
+| Node | 复用原已验证的官方 Node 22.23.3 Linux 基础镜像；原生依赖在隔离 Linux 构建阶段安装 |
+| 账号入口 | `https://xdstar.work/account/`，主站代理 account 及 projects/hakisub API 至回环 18788 |
+| 房间入口 | `https://hakisub.xdstar.work/`，原代理结构及回环 18787 保留 |
+| 私有通信 | 原 `hakisub-test_default` 网络，账号访问 `http://hakisub:8787`，独立随机服务签名密钥 |
+| 持久数据 | 原 `hakisub-test_hakisub_room_data` 未替换；新增独立 `hakisub-test_xdstar_account_data`，node 用户及 0700 卷目录 |
+
+白名单源码包 SHA-256 为 `44d4def30e149439f804bd4ca6dc93ad50bb9e25c9416564bf96451b637ed17a`，只含发布文件和逐项校验清单，不含生产凭据、数据库或 Windows node_modules。首轮账号原生依赖构建缺少 Python，已在一次性构建阶段补齐 python3/make/g++ 后成功；未安装到宿主机或运行时镜像。Linux SQLite integrity_check 与 Argon2 hash/verify 冒烟通过。两端镜像 revision 标签均与目标 main 相符。
+
+服务管理密钥及账号签名密钥仅在服务器生成，分别注入受限 env；原有历史解密密钥和配置保留，不用于恢复房间 Key。Caddy 候选配置 validate、Compose config --quiet 均通过后，依次启用账号、切换 HakiSub，再重建原 Caddy。两个业务容器健康检查通过，端口均只绑定 127.0.0.1，未开放额外公网端口；域名、原静态主站及 TLS 结构保留。Caddy 覆盖 X-XDstar-Client-IP；受信 peer `172.18.0.1` 已通过正式请求和持久限流哈希对比验证，伪造来源头无效。公网内部管理路径明确 404，Origin/CSRF 缺失或错误请求被拒绝。
+
+### 备份、迁移与恢复证据
+
+切换前备份位于发布目录 `backup/production-before.tar.enc`，包括原 rooms.json、env、部署/代理配置、原镜像标识及匹配历史密钥；当时不存在账号服务或账号数据库。备份采用 OpenSSL AES-256-CBC/PBKDF2 加密，发布/备份目录 0700，归档与恢复口令文件 0600；口令仅在服务器 `secrets/deploy-20261022T1748Z-backup.key`。已实际解密到隔离内存副本，读取归档并逐项恢复核对房间、别名及配置，确认后才切换。归档 SHA-256 `682b50a168d0792bf638d754b71a4e74605f7b82e4d59a06a91bdf58567ae232`。
+
+上线后逐间比对原 19 间房的 code、ownerHash、ownerUid、aliases、asrEnabled，全部一致；114514 的 985529 别名保留。只有本次自建合成房间 698553 增加，最终共 20 间。首次元数据成功保存将旧文件转为 v3，逐项确认只含元数据白名单，没有 Key/密文字段；旧 Key 从启动起即不被加载，未等待迁移写入才撤销。没有认领或修改原有匿名房间，也没有删除/重建旧卷、空库覆盖或 down -v。
+
+上线后另用 SQLite 在线 backup API 生成一致性快照，和当前房间及配置一起加密为 `backup/production-after.tar.enc`，SHA-256 `e65347bcf4500485f6236de1e86df3910884aac7c03992b209a45ddd647fa91f`。已在服务器隔离目录实际恢复 SQLite 并重新打开，integrity_check=ok，两合成账号存在，测试房间 ownerUid 与账号记录相符。临时明文副本已清理。证据为发布目录 `backup/verified.json`、`verified-after.json`、`activated.json`。此为同机备份，尚无异机副本，不能覆盖整机丢失风险；后续应由用户指定加密异机存储。
+
+### 本次测试及实际边界
+
+本地重新执行 npm test、npm run test:accounts、npm run test:room-management 全通过；两端构建通过。自动测试覆盖重启缺 Key、旧加密数据忽略、磁盘失败、房主撤权、并发及正在运行会话清理，均用模拟豆包。日志在本地忽略目录 artifacts/deploy-*-test.log；构建日志位于服务器发布目录。
+
+正式 HTTPS 使用明确标注的两个合成账号及自建房间验收：注册、独立客户端登录、host-only Secure/HttpOnly Cookie、UID 与原合法凭据绑定、无需原客户端或入房即可读取并管理；其他账号、游客、普通成员、旧 ownerToken 不能越权，客户端注入 UID 被拒绝。合成 Key 保存不回显，远程暂停向在线成员广播且新 ASR 握手返回 403，恢复后可修改状态；删除后 source=none，无默认 Key 回退。原 114514/985529 均可通过 WSS 加入同房，未获得原房主管理权限。两个 HTTPS 页面及账号健康接口正常，/.env 与 /internal/* 均 404。
+
+正式浏览器完成账号登录、个人中心自有房间展示、合成 Key 保存后输入清空、ASR 开启/暂停、确认删除后显示“房主已删除”并禁用测试入口。最终测试房间为暂停、无 Key；截图本地 `artifacts/production-account-review.png`，接口断言报告 `artifacts/production-room-review-result.json`。浏览器操作曾因工具响应慢超时，经重新读取页面状态后完成；未修改生产安全策略来绕过工具限制。注册与完整越权矩阵通过正式 HTTPS 独立客户端执行，不冒称所有分支均由 UI 点选完成。
+
+仍待：用户提供可用测试 Key 后的真实豆包连接、真实音频、多人讲话稳定性、手机与物理双设备，以及真实上游运行中远程暂停的现场验证。本次没有调用付费豆包、没有自动开麦；独立 Cookie 会话和模拟上游不能替代这些验收。生产磁盘故障/断电未注入，覆盖来自隔离专项；未为单独验证重启而再次重启生产。后端每次重启都会清空所有房间 Key，房主须重新填写。
+
+### 可执行最小回滚及恢复路径
+
+旧镜像 `hakisub-test:hakisub-20261020T173624Z`、原配置加密备份及两个数据卷均保留。**旧后端不能直接读取 v3，且可能恢复旧磁盘 Key；禁止直接改回旧镜像、改 version、覆盖当前房间文件或账号库。** 优先保留本轮授权后端和元数据，向前修复。
+
+账号路由故障时，已准备服务器受限脚本 `images/deploy-20261022T1748Z/rollback-starhub-proxy.py`。它只从原加密备份提取 Caddyfile，执行 Caddy validate 后原子恢复旧代理并只重建 Caddy；不还原数据、不切回旧识别后端。执行将短暂断开 WSS，账号入口撤下，账号服务及数据库保留；HakiSub 仍保留新版 UID/内存 Key 安全边界。脚本已做语法检查，**未实际执行回滚**：
+
+```sh
+sudo -n python3 /srv/projects/hakisub/images/deploy-20261022T1748Z/rollback-starhub-proxy.py
+```
+
+重新启用新版路由可将同目录 `Caddyfile.new` 经 validate 后复制回 `deploy/caddy/Caddyfile`，使用原四份 Compose 文件、public-web/accounts profiles，执行 `up -d --no-deps --no-build --pull never --force-recreate caddy`。应用正常重建也只使用这组配置，保持原卷；每次网关重建后重新填房间 Key。完整数据恢复仅在停写维护窗口：先另存当前元数据/账号一致性快照；解密备份到新隔离目录/卷，验证房间身份和 SQLite，再选择匹配 v3 的后端；恢复账号库时撤销 sessions/recovery_challenges。不得把切换前快照直接覆盖新 UID 绑定或新账号，完整旧后端回退须另行决定权限和付费关闭策略。
+
+以下为历史开发和部署前说明；与本节不一致时，以本节和当前源代码为准。
 
 > 2026-10-23 本地规则更新：所有真实联网房间Key仅存在当前HakiSub后端进程内存中，启动或重启后统一未配置。旧加密Key不解密、不加载。元数据读取v1/v2/v3、写v3。此规则取代此前Key加密持久化、blocked及重启失败锁说明；未部署生产。
 
