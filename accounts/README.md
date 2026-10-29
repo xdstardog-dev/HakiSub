@@ -1,6 +1,8 @@
 # XDstar 统一账号服务
 
-## 账号工作台 UI（2026-10-29，本地未部署）
+## 账号工作台 UI（2026-10-29，已部署）
+
+北京时间19:43上线 `account-workspace-20261029T1139Z`，功能提交 `bb5447d`，入口 https://xdstar.work/account/ 。仅账号前端镜像更新并重建账号容器，原后端、依赖、数据库v2及持久卷保留，HakiSub/Caddy未重启。公网正式Chrome完成375/768/1440px、注册往返/完成、UID登录/退出、五个页面、抽屉覆盖/遮罩/Escape/焦点恢复及真实跨子域Cookie/CORS验收；自检新增合成账号，不改原资料或房间。备份和独立UI回滚见 [发布手册](../docs/ACCOUNT-DEPLOYMENT.md)。下方“合成浏览器验收”指开发阶段，不能代替真机或真实豆包。
 
 前端继续复用 `accountApi.js` 和 `QuestionFields.vue`，不更改账号/房间接口或数据库。`AccountApp.vue` 管理认证及五个独立页面：总览、我的房间、房间存档、个人资料、安全设置；`AccountNavigation.vue` 共用桌面和手机导航，`OwnedRooms.vue` 提供房间摘要、列表和单房间管理。总览及列表不渲染 Key 输入；只有进入单房间管理并点击“显示”才读取已有 Key 原文，返回/切页/刷新/退出均丢弃显示状态，迟到响应不能重新展示旧 Key。
 

@@ -703,3 +703,13 @@ OwnedRooms.vue：房间卡片先显示房号、Key/ASR状态及管理/进入入�
 测试：accounts/tests/interaction.test.mjs新增两步注册验证/往返/失败重试/单次提交、分区导航、昵称草稿、独立验证密码、退出/身份迟到隔离；tests/owned-rooms-view.test.mjs改用SFC解析避免嵌套template截断，新增列表/详情分离及迟到Key丢弃，纳入账号默认测试。新增可选accounts/tests/workspace-browser.mjs及根test:accounts:browser脚本，使用正式构建、本机Playwright/Chrome、临时回环静态服务和合成API，不读.env或生产数据。375/768/1440px均覆盖两步注册/错误重试/导出、登录/刷新/恢复、五个页面、Key设置替换/按需显示隐藏/测试/确认删除/保存失败刷新、ASR、存档改名加载链接/删除刷新、资料与安全、退出；验证抽屉不挤压内容、遮罩/关闭/Escape、焦点约束恢复、滚动恢复、桌面固定栏和手机/桌面切换，无横向溢出和页面脚本异常。截图在ignored artifacts/account-workspace/。
 
 最终通过：npm run test:accounts；npm run test:room-management；npm test全套；npm run build:accounts；npm run build（vue-tsc/Vite）；npm run test:accounts:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs；git diff --check。初次构建esbuild和全量测试中room-renaming CLI子进程被沙箱权限阻止，放开本地子进程权限后重跑通过；浏览器脚本的遮罩点击避开滚动条、保存完成等待条件已修正并全量重跑通过。维护根README、accounts/README、ARCHITECTURE和本日志，无新运行依赖、提交、推送或部署。真实手机/iOS Safari、生产跨子域Cookie、真实Key/麦克风/豆包仍未验收，模拟成功不代替这些项目。当前无已知阻塞。
+
+## 2026-10-29 · 账号工作台 GitHub 与生产发布（已完成）
+
+用户随后明确授权“上传至GitHub与服务器”，取代上一阶段不部署/不推送限制。本地main和GitHub原90dfdda一致，审核13项变更，无凭据/数据库/临时工具进入Git；提交bb5447df91bf339f92247f7e2d4b270be6984706并正常推送main，无强推。此前账号测试、房主管理、全量npm test、两端构建及三视口合成浏览器均通过；本次发布重新构建账号前端，产物index-C3UESmQU.js与index-DBkiAsm5.css。
+
+发布account-workspace-20261029T1139Z：白名单32项包SHA256=0acd5f9ff07a4fba3002d2fd22de8732571f61d50d65d9780f34e87c9705612a，服务器校验后解压独立目录。核对原账号后端哈希及依赖配置一致，复用原Linux账号镜像，仅替换dist；无网络/只读/内存数据库隔离健康和静态文件冒烟通过。切换前在线SQLite一致性快照与房间/env/代理配置加密并实际解密核验，口令仅服务器，未下载生产数据。北京时间19:43:06仅重建accounts，镜像ID sha256:035e12bb80e211b9774299f41bf04c73a9980ec58c15c8430a026369965d9f5f。HakiSub网关和Caddy容器ID未变，无网关重启导致的Key清空；原23房、4账号内部ID/UID、schema2、卷、后端、秘密环境、代理/端口保持，SQLite integrity/foreign_key检查通过。
+
+正式HTTPS三项账号资源匹配构建；真实Chrome 375/768/1440px完成两步注册往返和完成、五页导航、覆盖抽屉/遮罩/Escape/焦点恢复/背景锁定、刷新会话、UID登录/退出及HakiSub子域凭据CORS身份读取，无页面JS异常；Cookie主站host-only/Secure/HttpOnly/SameSite=Lax。新增合成账号workspace_probe_20261029（工作台上线自检（合成）），随机凭据只存在测试内存，不改原资料或房间，无新房间，最终5账号/23房。此账号无绑定房间，生产未执行Key/ASR管理，完整流程依靠已通过的本地合成接口及权限专项；没有真实Key、ASR或麦克风。报告/截图上传服务器verification/，本地ignored artifacts发布目录保留副本。
+
+前/后/最终备份SHA256分别7333997a5134e03bc44c1d74237f0a41d522ac4c4d98619daebd501c0f61527b、93a0937603b6e2314e11e88c9eaa8b5c3f070da1fa05548e71da3d63ab10e762、eba7dacd39c59491d23378ba37c3f80e7fc00ff6eff98abb0a708c3916cf4565，均实际解密和SQLite核验。准备只回退账号镜像、不回退数据库或重启网关/Caddy的rollback命令，未实际执行。README、账号README、ARCHITECTURE、ACCOUNT-DEPLOYMENT及本日志补充上线事实；DEEPSEEK-MEMORY未编辑。物理手机与真实音频/豆包仍另验。

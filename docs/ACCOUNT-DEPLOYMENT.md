@@ -1,5 +1,29 @@
 # 账号系统部署、验收与恢复
 
+## 账号工作台 UI 上线（2026-10-29，Asia/Shanghai）
+
+用户在本地重构验收后明确要求“上传至GitHub与服务器”。正常提交并推送GitHub main：`bb5447df91bf339f92247f7e2d4b270be6984706`，包含13项账号前端、测试和文档变更，无强推。沿用此前已通过的`npm test`、账号/房主管理测试与两端构建，发布前重新生成账号正式构建，JS为`index-C3UESmQU.js`、CSS为`index-DBkiAsm5.css`。发布包白名单32项，SHA256 `0acd5f9ff07a4fba3002d2fd22de8732571f61d50d65d9780f34e87c9705612a`，不含凭据、数据库或node_modules。
+
+发布目录 `/srv/projects/hakisub/images/account-workspace-20261029T1139Z`。原账号后端逐项哈希与依赖配置核对一致，复用已验证的`xdstar-accounts:interaction-20261025T1510Z` Linux镜像及原生依赖，仅替换`/app/dist`，无网络构建。新镜像为`xdstar-accounts:account-workspace-20261029T1139Z`，镜像ID `sha256:035e12bb80e211b9774299f41bf04c73a9980ec58c15c8430a026369965d9f5f`，镜像配置摘要 `22fb7060527386cb971072eda3757d44cdd5213fc179b0ee055e0ea10274aa47`。隔离只读/无网络/内存SQLite容器验证账号健康、HTML/JS/CSS和新导航样式后才切换。
+
+北京时间19:43:06仅将根.env的XDSTAR_ACCOUNT_RELEASE改为本发布名，以原四份Compose配置执行`up -d --no-deps --no-build --pull never accounts`。账号容器健康；HakiSub网关仍为`captions-20261029T0853Z`且容器ID未变，Caddy容器ID未变，因此未因本次发布重启网关或清空房间内存Key。账号后端、数据库v2、原账号持久卷、秘密环境、代理及回环端口/资源限制保留。原23间房元数据逐项匹配，4个原账号内部ID/公开UID映射保留，SQLite integrity_check=ok、foreign_key_check无异常。
+
+加密备份均位于本发布`backup/`，AES-256-CBC/PBKDF2，目录0700、归档/口令0600，口令仅服务器`secrets/account-workspace-20261029T1139Z-backup.key`。SQLite使用在线backup API一致性快照，连同房间、env和部署/代理配置加密，实际解密逐字节核验并在服务器隔离内存目录打开SQLite检查；没有下载生产数据库或凭据。
+
+- 切换前 `production-before.tar.enc`：`7333997a5134e03bc44c1d74237f0a41d522ac4c4d98619daebd501c0f61527b`。
+- 切换后 `production-after.tar.enc`：`93a0937603b6e2314e11e88c9eaa8b5c3f070da1fa05548e71da3d63ab10e762`。
+- 公网验收后 `production-final.tar.enc`：`eba7dacd39c59491d23378ba37c3f80e7fc00ff6eff98abb0a708c3916cf4565`。
+
+正式HTTPS的账号HTML/JS/CSS共3项与本地构建逐字节匹配，HakiSub HTML保持原构建，健康正常，/.env、内部管理、Vue源文件路径404。正式Chrome通过375/768/1440px：真实两步注册往返与完成、五个工作台页面、手机抽屉不挤压内容、背景锁定/遮罩/Escape/焦点恢复、刷新保持登录、六位UID登录与退出；浏览器Cookie确认主站host-only、Secure/HttpOnly/SameSite=Lax，并从真实HakiSub子域凭据fetch确认身份CORS正常，页面无JS异常。新增`workspace_probe_20261029`合成自检账号，显示名“工作台上线自检（合成）”；随机密码和答案仅测试进程内存，不写报告、不输出。无新房间，未修改原账号/房间设置，最终5账号/23房。证据在`verification/public-browser.json`和三视口截图，本地ignored artifacts同名发布目录有副本。该生产自检账号没有房间，单房间Key/ASR完整交互由本地合成接口与房主管理专项覆盖，不冒称生产Key操作已实测。真实物理手机、Key/麦克风/豆包未验收。
+
+账号独立回滚已准备，未实际执行；失败切换路径会自动调用同一回滚：
+
+```sh
+sudo -n python3 /srv/projects/hakisub/images/account-workspace-20261029T1139Z/publish-account-workspace.py rollback
+```
+
+它只恢复账号镜像`interaction-20261025T1510Z`及对应发布变量，保留当前账号库/UID/存档/会话和房间数据，不降schema、不恢复旧快照、不重启网关/Caddy。不要使用10月25日schema降级脚本撤销本次UI。备份仍是同机加密副本。发布回执为prepared.json、activated.json、verified-after.json、verified-final.json。
+
 ## 打字、回应和素材音效上线（2026-10-29，Asia/Shanghai）
 
 用户明确授权“上传至GitHub+同步到服务器”。已将此前已上线但未提交的账号交互修复、本轮打字/回应/音效、原本未推送的文档提交一并正常推送GitHub main；功能代码为`b8afe0ca719b15a3b8126b20fae3b051864492c9`。发布前扫描66个变更文件，未发现凭据/数据库/临时工具进入Git。`npm test`、`npm run build`、`npm run test:accounts`、`npm run test:room-management`、`npm run build:accounts`全部通过；最终Vite产物为`index-DRecb3bU.js`与`index-CC_Vion2.css`。
