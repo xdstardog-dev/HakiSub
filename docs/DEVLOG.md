@@ -689,3 +689,17 @@ HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独
 公网TLS/HTTPS校验28个页面/音效/账号文件哈希一致（14个MP3 MIME正确）；账号健康/匿名身份和内部/源文件404通过。公网WSS创建2间合成房间377573/275696，实际打字、typing成员状态、扩展回应、身份防伪/跨房目标拒绝、八人广播/第九人拒绝、无历史补发通过。正式Chrome隔离浏览器跨端打字、右键个人词库、谢谢气泡、疑问MP3试听及离房通过，未调用ASR/麦克风。结束关闭客户端，最终23房/4账号；没有更改原房间权限或创建账号。
 
 发布目录/srv/projects/hakisub/images/captions-20261029T0853Z。前/后/最终加密备份SHA256分别30361ee1b78847c1ccfa64b89d8d340ae55078e1b91bbd336c4dc7fa24081992、decf97cfe2b4e4b5bbe692148332416f4499b01c94bd846b1a40cb68b8d77b60、1538c2598fb52e2598193e111f42fa0784dc4ab7f59d8f60169cb9db9c97ef60，全部核验解密及SQLite，密钥仅服务器，未下载生产数据/凭据。回滚脚本只切回上一网关镜像，保留当前数据/账号/代理，已准备但未执行。公网/浏览器报告与截图已同步verification/，本机也在ignored artifacts发布目录；README、ARCHITECTURE、ACCOUNT-DEPLOYMENT和本日志补充上线事实。未编辑DEEPSEEK-MEMORY。真实手机、系统输入法、扬声器听感与麦克风/豆包仍另行人工验收。
+
+## 2026-10-29 · XDstar 账号工作台 UI 重构（本地完成，未部署）
+
+用户要求将统一账号长页面改为工作台，禁止部署、提交或推送。开始检查时 git status 为空，实际前端路径为 accounts/src/，复用现有 accountApi.js、QuestionFields.vue、认证/恢复/存档/房间 manage API；未修改服务器、数据库、HakiSub src/ 客户端、权限、ASR、Key持久规则或 DEEPSEEK-MEMORY。
+
+AccountApp.vue：去除宣传分栏和三项认证Tab，居中登录卡片带注册/忘记密码链接；注册分账号信息和三道密保两步，前端先验证，最后一次提交原接口。返回上一步和注册失败保留输入，复用问题编辑、建议选择、答案导出与说明。登录后五个页面为总览、我的房间、房间存档、个人资料、安全设置。总览只展示欢迎、HakiSub项目卡和最多三个房间摘要；资料区区别昵称、登录账号、六位UID和注册日期，昵称草稿不被同UID刷新覆盖；安全区分开密码与密保当前密码。请求失败保留账号表单，成功按操作清理，离页/退出/过期清理敏感状态；身份请求使用代次隔离迟到响应，网络错误不伪装成退出。
+
+新增 AccountNavigation.vue 共用导航，桌面240px固定侧栏，主内容自适应/最大1180px；900px及以下是原生模态dialog左侧抽屉，85vw/上限320px、顶层遮罩、背景inert和焦点约束，支持遮罩/关闭/Escape/导航自动关闭。保存并恢复body样式、滚动位置与触发焦点，切回桌面及卸载释放锁；支持aria-current、标题焦点、可见焦点和减少动画。style.css保持米白/浅绿/深绿，统一卡片、表单、状态和危险按钮。
+
+OwnedRooms.vue：房间卡片先显示房号、Key/ASR状态及管理/进入入口，不渲染Key输入。选中后仅挂载一间房间，按ASR、Key、安全说明分区；保留设置/替换/查看/隐藏/测试/确认删除Key及ASR开关。列表、模式/UID切换、刷新及卸载清理敏感显示和删除确认；迟到reveal不能重新显示已离开房间的Key。管理401通知根组件清理会话，失败丢弃旧房间状态并支持刷新重试。
+
+测试：accounts/tests/interaction.test.mjs新增两步注册验证/往返/失败重试/单次提交、分区导航、昵称草稿、独立验证密码、退出/身份迟到隔离；tests/owned-rooms-view.test.mjs改用SFC解析避免嵌套template截断，新增列表/详情分离及迟到Key丢弃，纳入账号默认测试。新增可选accounts/tests/workspace-browser.mjs及根test:accounts:browser脚本，使用正式构建、本机Playwright/Chrome、临时回环静态服务和合成API，不读.env或生产数据。375/768/1440px均覆盖两步注册/错误重试/导出、登录/刷新/恢复、五个页面、Key设置替换/按需显示隐藏/测试/确认删除/保存失败刷新、ASR、存档改名加载链接/删除刷新、资料与安全、退出；验证抽屉不挤压内容、遮罩/关闭/Escape、焦点约束恢复、滚动恢复、桌面固定栏和手机/桌面切换，无横向溢出和页面脚本异常。截图在ignored artifacts/account-workspace/。
+
+最终通过：npm run test:accounts；npm run test:room-management；npm test全套；npm run build:accounts；npm run build（vue-tsc/Vite）；npm run test:accounts:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs；git diff --check。初次构建esbuild和全量测试中room-renaming CLI子进程被沙箱权限阻止，放开本地子进程权限后重跑通过；浏览器脚本的遮罩点击避开滚动条、保存完成等待条件已修正并全量重跑通过。维护根README、accounts/README、ARCHITECTURE和本日志，无新运行依赖、提交、推送或部署。真实手机/iOS Safari、生产跨子域Cookie、真实Key/麦克风/豆包仍未验收，模拟成功不代替这些项目。当前无已知阻塞。

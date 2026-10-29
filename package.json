@@ -15,6 +15,7 @@
     "test:room-interactions": "node tests/room-interactions.test.mjs && node tests/caption-grid.test.mjs && node tests/reaction-settings.test.mjs && node tests/sound-settings.test.mjs && node tests/typing-composer.test.mjs && node tests/demo.test.mjs",
     "test:room-interactions:browser": "node tests/room-interactions-browser.mjs",
     "test:accounts": "node tests/account-client.test.mjs && npm --prefix accounts test",
+    "test:accounts:browser": "node accounts/tests/workspace-browser.mjs",
     "test:room-management": "node accounts/tests/room-management.test.mjs && node tests/owned-rooms-view.test.mjs && node tests/room-key-memory.test.mjs",
     "build:accounts": "npm --prefix accounts run build",
     "preview:accounts": "node scripts/preview-accounts.mjs",

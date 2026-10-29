@@ -1,5 +1,13 @@
 # HakiSub 实时字幕
 
+## XDstar 账号工作台（2026-10-29，本地完成，未部署）
+
+账号前端 `accounts/src/` 已改为居中登录卡片、两步注册和独立找回入口；登录后分为总览、我的房间、房间存档、个人资料、安全设置。总览只展示项目与最多三个房间摘要；完整房间列表先选择房间，再进入 Key 与 ASR 管理。原有账号 API、三道密保及导出、UID/会话、房间权限、Key 操作和存档能力保留，未修改 HakiSub 字幕客户端及后端。
+
+桌面使用 240px 固定侧栏；900px 及以下使用覆盖式模态导航抽屉，宽度 85vw、上限 320px，支持遮罩/Escape/关闭按钮、焦点约束及恢复、背景滚动锁定和视口切换。米白与浅绿品牌配色保留。注册往返步骤与提交失败保留内容；离开页面或退出清理密码、答案与 Key 显示。
+
+本地验证：`npm run test:accounts`、`npm run test:room-management`、`npm test`、`npm run build:accounts`、`npm run build`；构建后可运行 `npm run test:accounts:browser -- <本机已有的Playwright模块名或file: URL>`，覆盖 375/768/1440px，使用合成接口，截图输出至 `artifacts/account-workspace/`。启动现有隔离预览用 `npm run preview:accounts`，详见 [账号说明](accounts/README.md)。本次没有部署、提交或推送；真实手机、生产跨域 Cookie、真实 Key/麦克风/豆包另行验收。
+
 > 2026-10-29 17:04（北京时间）已上线 [HakiSub 正式站](https://hakisub.xdstar.work/)，代码提交 `b8afe0c`，发布 `captions-20261029T0853Z`：三态打字、右键/长按回应、个人词库、全局音效及14个可替换MP3已配套更新。原21间房及4个账号身份保留，账号服务和Caddy未重启；公网HTTPS/WSS及实际浏览器验收通过。网关重启按既有规则清空房间内存Key，房主需重新填写。备份、回滚及验收见 [部署记录](docs/ACCOUNT-DEPLOYMENT.md)。下方较早“本地未部署”开发记录描述当时阶段。
 
 ## 打字模式与快捷回应（2026-10-29，已部署）
