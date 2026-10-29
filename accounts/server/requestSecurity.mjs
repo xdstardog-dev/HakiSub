@@ -10,7 +10,7 @@ export function requireText(value, minimum, maximum, label) {
 }
 export function requireNickname(value) { return requireText(typeof value === 'string' ? value.trim() : value, 1, 20, '用户昵称') }
 export function requirePassword(body) {
-  const password = requireText(body.password, 12, 128, '密码')
+  const password = requireText(body.password, 8, 128, '密码')
   if (password !== body.confirmPassword) throw problem(400, '两次输入的密码不一致。')
   return password
 }

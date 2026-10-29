@@ -1,5 +1,31 @@
 # 账号系统部署、验收与恢复
 
+## 交互修复上线（2026-10-25，Asia/Shanghai）
+
+按用户指定23:10开始，23:23切换 `interaction-20261025T1510Z`。网关/账号镜像为 `hakisub-test:interaction-20261025T1510Z`、`xdstar-accounts:interaction-20261025T1510Z`；基于上一版已验证Linux镜像及原生依赖叠加本次服务和构建文件。本地修改尚未提交Git。Caddy、服务密钥、端口、持久卷均保留。本次重启清空内存Key，房主需重填。
+
+发布目录 `/srv/projects/hakisub/images/interaction-20261025T1510Z`；`source/RELEASE.json` 包含46项文件校验。无密钥白名单包SHA-256：`a2c4b4ea978470ae9dd786e0ced5bd4151a56413fe24143999f59701594b2568`。镜像config摘要：网关 `4c4a0626a32896ad3fe130595a2d2e90326a536d67789abfa2ae7d420805dc65`；账号 `ce5720baed3894fcfcaf2529ba2e2f7af0cdf65380aa78185c2a161d422c3ad4`。
+
+上线前在线SQLite backup API快照与房间/环境/代理配置加密为 `backup/production-before.tar.enc`，SHA-256 `5157ade9d8fbc3f570519cd872bd0b4427ad76607c389acd51eeba7f7c254fd8`；AES-256-CBC/PBKDF2口令仅服务器 `secrets/interaction-20261025T1510Z-backup.key`。目录0700、归档/口令0600。先解密逐字节核验，再在无网络、只读根目录的新版Linux容器中对真实副本执行v1→v2，比较全部旧列，保留ID、密码哈希、会话和关联；临时明文副本清除。首次Docker cp无法读取tmpfs快照，改为容器内读取，未输出数据库到终端或本机。
+
+上线后核对原3个账号、20间房全部旧数据、密保/存档/项目关联保留；所有公开UID六位且唯一，SQLite integrity_check=ok、foreign_key_check无异常。两个服务healthy，仅回环映射；代理及服务密钥和备份一致。新增合成验收账号 `interaction_probe_20261025` 与房间 `367398`，最终该房间暂停且Key已删除，现共4个账号、21间房。没有修改原房间的权限。上线后再生成并实际解密核验 `backup/production-after.tar.enc`，SHA-256 `b0a1d1b55a17aab1811ca34185da37dc30f242c8c3188975beeb96f31c576f89`。证据为发布目录 `backup/verified.json`、`activated.json`、`verified-after.json`。备份仍只在同机。
+
+本地 `npm test`、`npm run test:accounts`、`npm run test:room-management`、`npm run build`、`npm run build:accounts` 全通过。首次沙箱阻止Node/esbuild子进程，获准正常环境重跑通过。专项覆盖八位数字密码注册/修改/恢复、账号/UID登录、UID占用、v1迁移重开关联、显示/明文/导出、房主显密、绑定撤权、游客/成员/跨账号拒绝、掩码拒绝及清理。
+
+公网可信HTTPS/WSS实测：两端HTML/JS/CSS与本地构建逐字节一致，八位密码、账号/UID登录、匿名及绑定房主跨客户端显密、游客/成员/旧凭据/退出后拒绝、掩码保存拒绝、状态及成员广播无Key、删除及内网路径404。首轮验收脚本未带刚获取的CSRF Cookie而403，修正脚本顺序后全部通过，未放宽服务保护。报告为本地 `artifacts/INTERACTION-PUBLIC-VERIFICATION.json`。
+
+隔离浏览器实际完成保存合成Key→掩码保留→显示→隐藏，并核对账号设置和安全码导出入口。生产浏览器导航两次超时，不能称生产UI点击/手机真机已验收；正式资源及接口通过独立客户端验收。未调用真实豆包、未开麦克风，也未做付费握手。
+
+### 本次最小回滚
+
+脚本已准备，未实际执行：
+
+```sh
+sudo -n python3 /srv/projects/hakisub/images/interaction-20261025T1510Z/activate.py --rollback
+```
+
+脚本停止账号写入，使用原镜像SQLite将版本门槛2降回1，保留新增列、UID映射及全部当前数据，再恢复之前 `deploy-20261022T1748Z` 的两镜像/发布标识并检查健康。旧版界面将显示内部UUID，八位密码仍能登录；再次升级会保留映射并补齐旧版新增用户的空UID。不覆盖账号库、不还原旧房间快照、不恢复磁盘Key、不改变Caddy或卷。完整灾难恢复需停写后先将加密备份恢复到隔离位置验证，禁止直接覆盖当前数据。
+
 ## Star-Hub 实际上线记录（2026-10-23，Asia/Shanghai）
 
 本节为当前生产事实，后续较早日期的“本地未部署”“待授权”等内容保留为历史记录，不代表当前状态。用户已明确授权北京时间 01:48 起执行备份、配套上线、必要配置切换和正式站验收；本次未重复部署前全面审查。启动时工作区干净，GitHub main 已是 `d1f237ba9bdbedb43c8d80e1822d38d3512fa4ad`，包含 `52b9788`，无需推送或合并，也未丢弃工作区修改。

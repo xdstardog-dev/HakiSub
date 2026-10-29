@@ -1,10 +1,12 @@
 import type { CaptionEvent } from './captionEvents'
+import type { MemberMode, RoomReaction } from './roomInteractions'
 
-export type RoomMember = { id: string; name: string; mic: boolean; color: string }
+export type RoomMember = { id: string; name: string; mic: boolean; color: string; mode?: MemberMode }
 type RoomCallbacks = {
   onJoined: (code: string, memberId: string, ownership: { ownerToken?: string; isOwner: boolean; aliases: string[] }) => void
   onMembers: (members: RoomMember[]) => void
   onCaption: (event: CaptionEvent) => void
+  onReaction?: (event: RoomReaction) => void
   onDiscard: (memberId: string, utteranceId: string) => void
   onError: (message: string) => void
   onClose: () => void
@@ -42,6 +44,7 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
           }) }
           else if (event.type === 'members') callbacks.onMembers(event.members)
           else if (event.type === 'caption') callbacks.onCaption(event)
+          else if (event.type === 'reaction') callbacks.onReaction?.(event)
           else if (event.type === 'discard') callbacks.onDiscard(event.memberId, event.utteranceId)
           else if (event.type === 'error') callbacks.onError(event.message)
           else if (event.type === 'room-status') callbacks.onRoomStatus?.(event)

@@ -607,3 +607,73 @@ HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独
 正式浏览器登录后显示个人中心自有房间；合成Key保存后输入清空、开启/暂停、确认删除显示房主已删除均通过。主站登录后子域正确显示合成昵称并预填自建房号，加入后默认不开麦并显示ASR已被房主暂停。截图及接口报告在忽略目录artifacts/production-*；浏览器工具慢响应曾超时，重新观察状态后完成，没有削弱CSP等安全配置。最终自建房暂停、无Key。没有真实付费Key/云端调用或真实麦克风；手机、物理双设备、多人语音、真实上游会话中断尚待验，不能以独立会话或假上游替代。
 
 本次重新运行npm test、npm run test:accounts、npm run test:room-management全通过；npm run build及npm run build:accounts通过。专项包含重启、旧密钥迁移、实际磁盘失败、并发及上游清理，均为隔离/模拟，不在生产注入磁盘故障或为测试反复重启。更新README、ARCHITECTURE、ACCOUNT-SYSTEM-PLAN、ACCOUNT-DEPLOYMENT与本日志。本次源码未变更，部署文档留在本地工作区；发布版本仍明确为d1f237b。最小代理回滚脚本已保存服务器、语法检查通过但未执行，保留新授权后端/两个数据卷；禁止将v3直接交给旧网关或恢复旧Key。完整部署/备份校验和及回滚命令见ACCOUNT-DEPLOYMENT本期记录。
+
+日期：2026-10-25（Asia/Shanghai）
+
+任务：按用户指定于23:10开始修复密码、豆包Key、安全码及UID交互，并直接同步生产。
+
+实际修改：密码统一最低8位、支持纯数字；注册/登录/找回/改密及Key输入增加显示切换。Key草稿、配置掩码和临时原文分离，保存后保留掩码，禁止空草稿/星号误存；显密经当前房主/Origin/CSRF/HMAC校验，绑定后原匿名凭据、游客、普通成员及其他账号不能读取，状态和成员广播不含原文，隐藏/刷新/卸载清除。密保答案作为安全码默认明文，可下载当次填写内容，历史哈希不可恢复。账号库v2增加唯一六位公开UID，账号/UID均可登录和启动找回；保留内部UUID、全部会话/外键、房间ownerUid及存档关联，处理数字账号/UID冲突。
+
+主要文件：accounts/server/{database,accountServer,requestSecurity,roomManagementClient}.mjs；accounts/src/{AccountApp,OwnedRooms,QuestionFields}.vue和style.css；server/{roomGateway,roomManagement,roomSettings,apiSettings}.mjs；src/accountClient.ts及两个设置组件；相关专项测试。新增accounts/tests/interaction.test.mjs并纳入账号测试。维护README、accounts/README、ARCHITECTURE、ACCOUNT-DEPLOYMENT和本日志；未编辑DEEPSEEK-MEMORY。
+
+验证：npm test（含最终完整重跑）、npm run test:accounts、npm run test:room-management、npm run build、npm run build:accounts全部通过；补充本机Key显密鉴权/掩码拒绝及显示状态回归。受限环境首次Node/esbuild子进程EPERM，正常权限重跑通过。新增八位数字密码注册/改密/恢复、账号/短UID登录、UID占用、旧库迁移/重开关联、显示按钮、明文安全码下载；假上游测试覆盖房主/越权/广播/清理。隔离浏览器实际完成Key保存→掩码→显示→隐藏，核对密码按钮和安全码导出入口；截图artifacts/interaction-account-preview.png。生产浏览器导航两次超时，未称正式UI点击/手机已验收。
+
+部署：北京时间23:23运行interaction-20261025T1510Z，两端源自已验证Linux依赖镜像，仅叠加本次代码和构建。Caddy、密钥、端口和数据卷保留。上线前加密一致性备份并实际解密核验，在无网络Linux副本对真实库做v1→v2迁移；上线后原3个账号/20间房及密保/存档/项目关联逐项保留，SQLite integrity=ok、foreign_key_check无异常，服务healthy且仅回环。再次在线备份并验证解密恢复。备份和保留当前数据的回滚脚本在/srv/projects/hakisub/images/interaction-20261025T1510Z，回滚未执行，完整校验和和操作见ACCOUNT-DEPLOYMENT。
+
+公网可信HTTPS/WSS验收通过两端HTML/JS/CSS逐字节一致、八位密码、账号/UID登录、匿名及绑定房主显密、普通成员/游客/原凭据/退出后拒绝、星号保存拒绝、状态/广播无Key、删除及内部路径404。首轮脚本因CSRF Cookie顺序而403，修正脚本后全部通过，无服务安全策略变更。只新增合成验收账号interaction_probe_20261025与房间367398，最后暂停且Key已删除；现4个账号、21间房。报告artifacts/INTERACTION-PUBLIC-VERIFICATION.json。生产原Key随本次网关重启按现有规则清空，房主需重新填写。未调用真实豆包、付费握手或麦克风，真实API/手机/物理多设备待单独验收。源码未提交或推送Git；生产以文件清单和镜像标识记录实际版本。
+
+## 2026-10-29 · 打字模式与快捷回应（本地完成，未部署）
+
+基于现有卡片、麦克风/ASR、房间成员与字幕 WebSocket 实现，无新增依赖或独立聊天系统。工作区开始即有账号/Key等未提交变更；本次仅增量修改相关房间代码与文档，保留已有改动，未编辑 DEEPSEEK-MEMORY。
+
+修改：src/App.vue、src/components/MemberCaptionGrid.vue、src/roomClient.ts，新增 src/roomInteractions.ts；server/roomGateway.mjs 增加成员 mode、打字校验/限流和回应校验/广播；package.json 增加测试入口并纳入全套。自己的按钮按开麦→闭麦→打字→开麦循环，默认闭麦；停止采集及旧 ASR 代次回调，保留 Final、撤回 Interim。私有草稿在模式间保留，Enter/Shift+Enter 与 composition/isComposing/229/结束保护处理中文选字；服务端按连接身份校验最多1000 UTF-16长度和1秒冷却，确认回包走原 captions.ts 生命周期，确认前新编辑不被清除，离房清空。
+
+五种回应按目标成员广播，校验同房在线目标、非自身与固定类型，1.5秒冷却；独立有界气泡2.6秒清理，不改变字幕。桌面左键/移动端500ms长按分开，移动/取消撤销长按并屏蔽合成点击与系统contextmenu；自己的输入不受影响。用户操作尝试解锁轻量Web Audio提示音，播放受限或失败不传播错误，离房关闭音频上下文。
+
+测试变更：新增 tests/room-interactions.test.mjs（真实回环HTTP/WebSocket双房间/八成员、身份伪造/目标隔离/五种类型/内容边界/限流恢复/不补发历史、音频失败模拟）及 tests/room-interactions-browser.mjs（构建网页、隔离桌面/移动上下文及假Web Speech）。扩展 tests/demo.test.mjs、tests/caption-grid.test.mjs、tests/rooms.test.mjs。更新 tests/vad-browser-smoke.mjs 的三态入口，并修复旧脚本在loading时提前发音频的问题，隔离账号身份请求；VAD生产实现未改。维护 README、ARCHITECTURE 和本日志。
+
+实际验证：最终 npm test、npm run build（vue-tsc + Vite）、npm run test:room-management、git diff --check 全部通过；npm test 已含新增房间消息联调与原有模拟/浏览器ASR/豆包协议/房主权限/断线恢复回归。初次沙箱禁止esbuild及既有换号CLI子进程，正常权限重跑通过。最终构建上的 npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs 通过，覆盖三态、私有草稿、IME合成事件/换行、跨上下文同步、桌面回应、移动轻触/长按/contextmenu取消、气泡过期、八人移动输入/发送按钮可见、语音模拟广播/关麦撤回、草稿保留与离房。实际 node tests/vad-browser-smoke.mjs 使用同一Playwright模块通过真实模型WASM静音推理、合成麦克风采集/停止/模型失败资源释放及零云端连接。浏览器联调初次为测试脚本错误定位配置弹窗关闭按钮，修正为“收起配置”后通过。VAD旧烟测初次未识别loading消息且把账号身份请求当成外部语音请求，修正隔离后通过。
+
+人工未验收：两台物理设备/真实网络的打字和回应，系统中文输入法，iOS Safari/Android长按系统菜单与软键盘、真机提示音限制、真实麦克风/浏览器识别/豆包ASR效果及三态释放。移动视口、IME合成事件、假ASR和合成麦克风不替代这些真实验收。没有调用真实豆包API或物理麦克风；没有部署、提交或推送生产变更。
+
+## 2026-10-29 · 右键回应与全局悬浮打字窗（本地完成，未部署）
+
+按用户后续更正，桌面快捷回应由左键改为 contextmenu 右键，左键不弹回应菜单；手机继续500ms长按。触屏系统contextmenu仅阻止原生菜单，不提前打开或重定位；自己卡片/输入框保留原生编辑菜单。更新 MemberCaptionGrid.vue、卡片测试、真实浏览器联调和 README/ARCHITECTURE，原先开发记录中的“左键”为当时实现。
+
+按用户新要求，移除卡片内的textarea，新增 src/components/TypingComposer.vue；卡片只保留打开入口，App.vue管理悬浮输入窗显隐和既有私有草稿。输入窗全局fixed，桌面居中偏下，触屏贴可见视口底部留12px；监听visualViewport.resize/scroll及window.resize，按可见视口宽高与offsetTop/offsetLeft跟随键盘升降和iOS聚焦平移，无API时使用窗口尺寸，限制窗口宽高并考虑safe-area。打开时聚焦且preventScroll；发送按钮阻止pointerdown转移焦点，连续输入不收键盘。收起/Escape/模式切换/离房卸载输入窗及其监听；收起和模式切换保留草稿，发送确认和离房仍按原规则处理。IME/229/compositionend保护、Enter发送与Shift+Enter换行集中在新组件中。没有新增聊天历史、供应商结构或网络协议。
+
+新增 tests/typing-composer.test.mjs，纳入 npm test 和 test:room-interactions；更新 tests/caption-grid.test.mjs 为本人入口/卡片无输入框/右键/触屏原生菜单保护测试，扩展 tests/room-interactions-browser.mjs 验证全局输入、左键不弹/右键回应、可见视口模拟键盘升降/平移/恢复、八人房间发送、发送焦点保持和收起后草稿恢复。package.json、README、ARCHITECTURE和本日志已更新。
+
+实际结果：npm test全套、最终npm run build（vue-tsc/Vite）、新增悬浮组件模拟测试和git diff --check通过。最终构建上的 npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs 通过实际Chrome桌面/移动上下文、双房间/八成员联调和上述交互。软键盘测试通过模拟visualViewport变化完成，未使用物理手机或系统输入法，真实iOS Safari/Android键盘动画/安全区及真机长按仍待人工验收；未调用真实麦克风/豆包。保留工作区已有修改，未编辑DEEPSEEK-MEMORY，未部署、提交或推送。
+
+## 2026-10-29 · 个人回应词库与菜单设置（本地完成，未部署）
+
+按用户截图修改：闹麻了移除“（娱乐）”；快捷回应菜单底部改为左侧完整取消触点、右侧设置。新增 src/components/ReactionSettings.vue，原生dialog展示“你需要哪五个词汇？”，从固定词库勾选1～5项；选满禁用未选项并提示先取消再替换，独立草稿支持恢复默认/取消/保存。默认仍为赞同、反对、疑问、收到、闹麻了。词库扩展谢谢、抱歉、请慢一点、请再说一遍、稍等一下、没听清、明白了、没关系，共13项，不提供自定义文字。
+
+修改 src/roomInteractions.ts 增加词库、默认列表/上限、偏好去重/白名单/数量归一化和安全localStorage读写；仅存选项类型，键hakisub.reaction-selection.v1，无成员身份/字幕/密钥。App.vue保存个人选择并传给MemberCaptionGrid.vue；卡片只渲染所选最多5项，设置独立于被回应目标。保存即更新，刷新/换房保留，其他成员菜单不变，不做账号/跨设备同步。损坏或受限存储回退默认，写入失败仍在当前页面生效并提示。收到回应始终按完整词库渲染，不受接收者选项限制。server/roomGateway.mjs配套扩展13项白名单，身份、同房目标校验和1.5秒冷却保留，新的短语使用“发送者 对 目标：词汇”气泡。未修改ASR或字幕生命周期。
+
+新增 tests/reaction-settings.test.mjs，扩展 tests/caption-grid.test.mjs、tests/room-interactions.test.mjs、tests/room-interactions-browser.mjs，纳入package.json测试入口。实际 npm test全套、npm run build（vue-tsc/Vite）、git diff --check通过。真实本地双房间/八成员WebSocket遍历完整前端词库验证服务端白名单一致、发送者防伪/目标隔离/限流/不补发历史；单测验证5项上限/空选择/独立草稿/默认恢复/取消保存/持久化/损坏与受限存储/弹窗清理。实际Chrome浏览器脚本通过左右取消/设置位置、默认无娱乐括号、选满限制/替换、个人配置刷新恢复、不同浏览器偏好隔离、未选择新词的接收者仍显示广播，以及移动390×844设置窗口边界和保存3项、原有右键/长按/全局输入/IME/模拟键盘/ASR回归。浏览器命令：npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs。
+
+更新 README、ARCHITECTURE和本日志，保留已有工作区修改，未编辑DEEPSEEK-MEMORY，无新增依赖、生产部署、提交或推送。现有本地开发网关需重启npm run dev加载扩展白名单，未主动打断用户现有测试会话。真实iOS/Android/物理多设备/系统IME及麦克风豆包仍另行人工验收；本次仅移动视口、合成事件与假ASR，不代表真机完成。
+
+## 2026-10-29 · 全局快捷回应音效入口（本地完成，未部署）
+
+用户询问现有音效并要求全局音效。原实现已在收到每个有效回应时尝试播放约100ms统一提示音，但无可见入口。本次复用原引擎，在房间顶部新增“音效：开/关”，新增 src/components/SoundSettings.vue 原生dialog，支持统一开关、0～100%音量、试听和播放状态。默认开启60%，同房所有回应（包括别人对别人、自己的回包）均由同一引擎处理，闭麦/打字有效；只控制当前设备，不替其他成员修改。试听只发本机音频，不发回应、不启动采集。
+
+修改 src/roomInteractions.ts：增加音效偏好校验和hakisub.sound-preferences.v1浏览器存储，仅bool/音量，损坏/不可读回退默认，写失败仍本页生效并提示；原createReactionSound增加配置/状态/布尔播放结果，映射音量增益，最多3个音符叠加，关闭和零音量静音，修改配置/离房立即停止旧音符并断开节点。捕获resume对应context，离房后迟到解锁不补播；拒绝授权/不支持/节点设备失败隔离为状态，房间与字幕不受影响。App.vue统一接收/应用设置、解锁/试听/状态及离房关闭，保留原字幕、ASR、WebSocket、成员和词库行为。没有新增依赖或服务端协议。
+
+新增 tests/sound-settings.test.mjs 并纳入 package.json 的npm test/test:room-interactions，覆盖实际Vue模板、开关/音量入口/试听/受限提示、偏好保存与损坏/受限存储回退、增益映射、静音/停止旧音符、叠加上限、迟到授权/拒绝/不支持/设备失败及清理。扩展 tests/room-interactions-browser.mjs，在隔离Chrome桌面/移动上下文上包装原生Web Audio的Oscillator.start统计成功启动，验证本机试听不发送消息、25%设置、关闭后仍显示气泡、同房无关旁观成员也播放、跨房不播放、开关/音量刷新恢复，以及原有词库/右键/长按/全局输入/IME/假ASR/八人房间回归。浏览器命令 npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs 实际通过。
+
+实际 npm test全套、npm run build（vue-tsc/Vite）、音效模拟测试及真实Chrome联调通过；维护README、ARCHITECTURE和本日志。保留工作区已有修改，未编辑DEEPSEEK-MEMORY、未部署/提交/推送，本项前端刷新即可，无需为音效单独重启网关。原生音频启动不等于物理扬声器出声/听感已确认，真实手机自动播放限制和扬声器/耳机试听仍需人工验收；未调用物理麦克风或真实豆包。
+
+## 2026-10-29 · 可替换 MP3 素材音效（本地完成，未部署）
+
+用户要求从网络挑选音效并改为可自行替换的MP3槽位。已核实Kenney官方Interface Sounds 1.0页面标注CC0，按官网当前公开下载流程取得实际ZIP（旧直链先返回网页，改用页面download-link及正常Referer后成功），原包SHA256=f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232。官方地址 https://kenney.nl/assets/interface-sounds ，授权 https://creativecommons.org/publicdomain/zero/1.0/ 。从100个原OGG中选择14个短音效，使用一次性FFmpeg/libmp3lame转为单声道44.1kHz/96kbps MP3，将原信号峰值调整至约-12dBFS；转码工具只在ignored artifacts/sound-material-source内，不进入依赖、构建或部署包。
+
+新增 public/sounds/reactions/：default.mp3通用和agree/disagree/question/received/fun/thanks/sorry/slower/repeat/wait/unclear/understood/okay.mp3，每种回应一个真实填充文件，总60497字节；slots.json提供可编辑文件名映射，README.md给出替换表/统一映射/刷新或重构建步骤，LICENSE.kenney.txt保留原包授权，SOURCES.json保留原包/原文件/转码文件哈希及处理来源。后续覆盖同名MP3不改业务代码，也可改slots.json指向同目录自定义英文文件名；初始是界面音效，不是人声配音。
+
+新增 src/reactionSound.ts，把原roomInteractions.ts中的振荡器播放替换为独立文件加载/AudioBufferSource引擎，原类型/词库/偏好仍在roomInteractions。只同源读取配置和MP3，不访问外站；配置白名单文件名/16KiB，音频有界读取1MiB/单请求5秒/解码后0～5秒校验，Promise去重下载解码，专属素材不可用回退通用MP3，通用也失败则静音且房间气泡不受影响。全局音量和浏览器权限逻辑保留，加载+播放最多3项；配置变化/静音/离房停止声音，静音/离房取消请求，操作代次防止迟到授权/下载/解码补播。close释放节点、缓存和AudioContext。App.vue按reaction类型异步播放，不阻塞房间消息或字幕；SoundSettings.vue增加通用/逐项试听下拉与加载状态。server/staticWebsite.mjs补audio/mpeg、application/json和text/plain MIME，Vite/public及现有dist打包自动包含全部素材。
+
+测试修改：tests/sound-settings.test.mjs扩展实际MP3标头/授权/槽位覆盖、同文件并发去重、缺失/坏文件/过大/过长回退、超时/静音/离房中止和迟到解码；tests/static-website.test.mjs验证MP3/JSON MIME/no-cache；tests/demo.test.mjs接入新播放模块，房间联调保留通信/IME验证并把音频失败清理放在独立测试。tests/room-interactions-browser.mjs真实Chrome从正式静态服务解码全部14个MP3，验证200/MIME/非静音/时长/峰值，统计原生BufferSource.start确认默认/指定疑问素材试听和实际回应播放，保留桌面/移动双房间/八成员、静音/音量/旁观成员/跨房/偏好、词库/打字/假ASR回归。测试不锁死原素材哈希或14个不同文件，允许以后改名、统一映射或替换自己的有效MP3。
+
+实际 npm test全套、npm run build（vue-tsc/Vite）、git diff --check通过；public及dist均核对14个MP3、60497字节。最终 node tests/sound-settings.test.mjs 和 npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs 通过。维护根README、ARCHITECTURE和本日志，保留已有工作区修改，未编辑DEEPSEEK-MEMORY，无新增运行依赖、生产部署、提交或推送。真实扬声器/耳机音量听感、iOS/Android及物理多设备仍待人工试听；本次只证明浏览器解码/音频启动与模拟清理，没有调用真实麦克风或豆包API。

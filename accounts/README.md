@@ -1,6 +1,6 @@
 # XDstar 统一账号服务
 
-独立于实时语音网关的 Fastify + SQLite 服务，页面使用现有 Vue/Vite 工具链。只在本地完成实现，未部署生产。设计与风险见 [审查方案](../docs/ACCOUNT-SYSTEM-PLAN.md)，执行与验收见 [账号部署手册](../docs/ACCOUNT-DEPLOYMENT.md)。
+独立于实时语音网关的 Fastify + SQLite 服务，页面使用现有 Vue/Vite 工具链。2026-10-25已部署 `interaction-20261025T1510Z`：最低8位密码、保密输入显示开关、六位公开UID及账号/UID登录、明文密保答案和当次内容下载。数据库v2保留内部UUID和全部关联，历史答案哈希不可还原。设计与风险见 [审查方案](../docs/ACCOUNT-SYSTEM-PLAN.md)，迁移、备份与验收见 [账号部署手册](../docs/ACCOUNT-DEPLOYMENT.md)。
 
 **Windows 本地 PowerShell，项目根 `F:\hakiSub`：**
 

@@ -1,5 +1,37 @@
 # HakiSub 架构
 
+## 打字与快捷回应（2026-10-29，本地，未部署）
+
+沿用 `MemberCaptionGrid.vue` 卡片、`App.vue` 每成员 ASR 会话、`roomClient.ts` 和 `/api/rooms`，不引入聊天系统。保留 `mic` 字段及旧 ASR 消息；成员广播新增 `mode: microphone | muted | typing`。`mic` 开关同步 mode，`mode` 只接受 muted/typing 并关闭当前成员 ASR。客户端切换前停止采集和 ASR，保留已确认字幕、丢弃 Interim；ASR 回调增加会话代次校验，停止后的旧回调不能修改新会话或打字状态。房间/识别来源/模拟功能继续使用既有生命周期。
+
+打字草稿在 App 内存保存，逐字输入不发网络。`typed-caption` 带 UUID 句子请求 ID 和文字；网关按连接身份验证 typing 状态、非空/1000 UTF-16 长度/控制字符以及每连接 1 秒间隔，广播普通 `caption(final)`，句子 ID 加入服务端成员命名空间。UI 统一交给未改动的 `captions.ts`，等待自己的回包确认再清空对应草稿，期间新编辑不会被旧确认覆盖；错误或 10 秒未确认保留草稿。切换模式保留草稿，离房/断线清空。
+
+卡片仅发送本人 `editTyped` 入口事件，App 按当前 typing 状态挂载 `TypingComposer.vue`。输入窗使用全局 fixed 定位，桌面位于页面中下方，触屏在可见视口底部留 12px 间隔；监听 `visualViewport.resize/scroll`，以 height/width/offsetTop/offsetLeft 跟随软键盘及 iOS 聚焦平移，没有该 API 则跟随 window.resize。宽高限制在可见区域内，考虑 safe-area，textarea 使用16px字体避免手机聚焦放大。打开时 preventScroll 聚焦，发送按钮阻止 pointerdown 转移焦点以维持键盘；收起/切换模式/离房卸载并清理监听，草稿继续按 App 生命周期管理。textarea 使用 composition 标志、isComposing、旧 keyCode 229 和 compositionend 后 50ms 保护处理选字事件顺序；Shift+Enter 保留换行。此输入窗只编辑待发送字幕，不展示聊天历史。
+
+`reaction` 只发送 targetId 与固定词库中的类型；网关完全从 socket 取 senderId，验证目标是本房在线其他成员，每连接 1.5 秒限流，服务端分配事件 UUID 后只广播本房。回应不依赖 mic、字幕或布局，成员列表仍是唯一目标来源。客户端在独立有界数组保存最多 24 条事件，每卡最多显示最新 3 个气泡，共用 50ms 时钟在收到后 2.6 秒移除，不进入字幕生命周期。离房、目标离线清理。两类新消息继承现有总流量/载荷/Origin/背压/会话撤销保护，不写磁盘，也不向新加入者补发。
+
+回应菜单最多显示个人选择的5项，底部左取消、右设置。`ReactionSettings.vue` 使用原生dialog和独立选择草稿，从13项固定词库勾选1～5项，选满禁用未选项，支持恢复默认/取消/保存。App管理本人偏好并传给卡片；`roomInteractions.ts` 提供词库、默认5项、去重/白名单/数量归一化及 `hakisub.reaction-selection.v1` 本地存储，仅保存回应类型，不含成员身份或消息。存储损坏/不可用时回退默认，保存失败仍在当前页面生效并提示。个人选择不发网络、不开启账号同步，其他成员无论自己是否勾选都按完整词库渲染收到的回应。网关白名单与词库配套扩展，真实WebSocket测试遍历全部13种，原发送者/房间/限流校验保留；前后端需配套更新并重启网关。
+
+`roomInteractions.ts` 集中 UI 事件类型、固定选项、边界常量、IME判断、回应/音效偏好校验及浏览器存储；实际音频素材加载和播放独立在 `reactionSound.ts`。卡片桌面通过 contextmenu 右键打开回应，手机 Pointer Events 长按500ms打开，左键/轻触不绑定回应；移动超过10px/结束/取消撤销定时器。触屏系统contextmenu仅preventDefault，不提前打开或重定位；其他卡片配合touch-callout和user-select防止系统菜单，自己的textarea保留原生编辑菜单。菜单固定在视口内，可取消/Escape/外部点击关闭，卸载移除监听器与定时器。
+
+全局音效入口在房间顶部，`SoundSettings.vue` 使用原生dialog提供即时开关、音量、按槽位试听及加载/就绪/受限/静音状态。App持有设备级 `SoundPreferences`，所有有效回应统一经过同一音频引擎，不按卡片/目标/麦克风状态过滤，但把reaction类型交给对应MP3槽位。`hakisub.sound-preferences.v1`只持久化enabled和0～100音量；读取校验/损坏回退默认开启60%，写失败仅提示本页已生效，无房间协议或账号同步。音量线性映射到素材增益，最多3个加载中或播放中的声音；关闭/零音量不加载播放，配置变化立即停止旧声音，离房/卸载释放全部节点与AudioContext。resume与异步加载/解码均检查context和操作代次，迟到授权/下载/解码不补播；拒绝/不支持/设备失败均返回状态，不向字幕或WebSocket抛错。试听不发房间消息、不启动采集。
+
+`public/sounds/reactions/`提供14个已填充MP3和运行时`slots.json`，默认通用文件加13种回应。只允许同目录ASCII MP3文件名，禁止远程URL、其他目录与任意供应商结构；配置缺失或损坏回退约定文件名。fetch同源/no-cache，配置限16KiB，音频流有界读取1MiB、单请求5秒超时，decodeAudioData后验证0～5秒；专属素材缺失/损坏/超限回退通用MP3，通用也失败则静音并提示。Promise缓存去重相同文件下载/解码，刷新或离房清理；取消请求和过期任务不会晚到播放。server/staticWebsite.mjs增加audio/mpeg与JSON/TXT MIME，构建和现有打包自动包含public复制的dist素材。原WebAudio振荡器已移除，使用AudioBufferSourceNode播放本地下载素材；没有运行时FFmpeg或第三方请求。
+
+素材来自Kenney官方Interface Sounds 1.0（CC0），原包License.txt随目录保留，SOURCES.json记录原包SHA256、原文件名/哈希、转码后哈希及增益调整；原OGG经一次性FFmpeg/libmp3lame转为单声道44.1kHz/96kbps MP3，原信号峰值统一约-12dBFS，总60497字节。README给出槽位替换、统一映射、刷新/重新构建步骤。tests/sound-settings.test.mjs验证实际MP3槽位/配置、异步去重、回退/边界/超时/取消/迟到解码，以及音量/静音/授权/设备失败模拟；Chromium脚本从正式静态服务读取并解码全部14个素材，核对MIME/时长/非静音/峰值，统计原生BufferSource.start验证默认/逐项试听、同房旁观成员播放、跨房隔离及偏好恢复，不把调用成功等同于物理听感验收。
+
+验证入口：`npm test` 包括新增真实双房间/八成员 WebSocket 完整词库联调、卡片模板与事件、个人回应选择/上限/持久化/存储失败、悬浮输入窗及键盘视口/IME 模拟、App/ASR 生命周期、提示音失败模拟；`npm run test:room-interactions:browser -- <playwright>` 使用构建产物和临时网关验证菜单取消/设置布局、个人词库选项/刷新恢复/成员偏好隔离/新词广播、桌面右键/左键不弹菜单、移动长按、全局输入窗、模拟软键盘视口升降平移、八人发送、IME 合成事件和语音模拟回归。物理多设备、真实软键盘/系统 IME、真实音频与 ASR 单独人工验收。
+
+## 公开 UID 与交互（2026-10-25，已部署）
+
+`interaction-20261025T1510Z` 于北京时间23:23配套上线。账号库事务迁移至v2，增加唯一 `users.public_uid`，给旧账号分配100000～999999的六位字符串，避开现有数字账号名；注册也拒绝占用已分配UID的账号名。公开身份仅返回短UID，账号/UID均经密码验证登录和启动找回，账号限流归一到内部ID。`users.id`、全部外键、会话和房间 `ownerUid` 继续使用原UUID，服务签名授权只取服务端会话中的内部ID，无需修改房间所有权或重新绑定。密码统一8～128字符，Argon2id、Origin/CSRF、限流和会话撤销保留。
+
+密码字段提供独立显示开关，切页/提交结束清理输入及开关。当前安全码是三道密保答案，默认明文，只导出本地当次填写内容；后端继续只存哈希，不新增可逆密保存储。
+
+Key输入分开保存草稿、配置状态掩码、临时查看原文；保存后清除草稿并显示 `********`。空草稿和全星号不得提交，服务端也拒绝全星号。新增 `reveal` 经现有POST/Origin/CSRF/HMAC和当前房主校验，仅点击时返回原文，不进入成员广播、普通状态、日志、磁盘或浏览器持久存储。账号代理在上游返回后再次验证会话；匿名凭据绑定后被撤权，游客/成员/其他账号不能查看。隐藏、刷新、卸载和账号切换清理原文。只读成员没有输入和显示按钮；本机设置沿用本机Origin/令牌保护，环境只读Key不提供查看。
+
+生产原3个账号、20间房及密保/存档/项目关联经备份副本迁移和上线逐项核对保留。SQLite integrity_check与foreign_key_check通过。回滚与验收见ACCOUNT-DEPLOYMENT；真实豆包、麦克风与手机另验。后文记录此前阶段。
+
 > 2026-10-23 生产状态：Star-Hub 已运行 main `d1f237b`，包含 `52b9788`，发布 `deploy-20261022T1748Z`。账号服务与 HakiSub 独立进程，分别仅回环映射 18788/18787，同一私有 Docker 网络通过 HMAC 管理通信；原 Caddy 提供主站与子域 HTTPS，公网 `/internal`、`/internal/*` 明确返回 404。主站会话 Cookie 为 host-only、Secure、HttpOnly，通过主站 BFF 校验 UID，子域不持有账号凭据。UID/房主/别名/ASR 开关持久化，房间 Key 仅内存，启动后全部缺 Key，旧磁盘 Key 永不恢复、无默认回退。生产原有 19 间房元数据保留，首次成功元数据写入已迁移为 v3；详见 ACCOUNT-DEPLOYMENT 的本期记录。后文早期“本地未部署”字样仅描述当时阶段。
 
 ## UID 房主与远程房间管理（2026-10-22，本地未部署）

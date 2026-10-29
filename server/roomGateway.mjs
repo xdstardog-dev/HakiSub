@@ -17,7 +17,8 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
     socket.send(JSON.stringify(event))
   }
   const broadcast = (room, event) => { for (const member of room.members.values()) send(member.socket, event) }
-  const publishMembers = room => broadcast(room, { type: 'members', members: [...room.members.values()].map(({ id, name, mic }) => ({ id, name, mic, color: '' })) })
+  const publishMembers = room => broadcast(room, { type: 'members', members: [...room.members.values()].map(({ id, name, mic, mode }) => ({ id, name, mic, mode, color: '' })) })
+  const reactionTypes = new Set(['agree', 'disagree', 'question', 'received', 'fun', 'thanks', 'sorry', 'slower', 'repeat', 'wait', 'unclear', 'understood', 'okay'])
   sockets.on('connection', socket => {
     let member, room, messages = 0, windowStart = Date.now(), messageQueue = Promise.resolve()
     socket.alive = true
@@ -48,7 +49,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
           }
           if (room.members.size >= 8) { fail('房间已满，最多允许 8 人。'); return }
           const owner = !room.ownerUid && (!!ownerToken || verifyOwnerToken(room, event.ownerToken))
-          member = { id: randomUUID(), token: randomUUID(), name: event.name.trim(), mic: false, socket, room, owner, asr: undefined }
+          member = { id: randomUUID(), token: randomUUID(), name: event.name.trim(), mic: false, mode: 'muted', socket, room, owner, asr: undefined, lastTypedAt: 0, lastReactionAt: 0 }
           room.members.set(member.id, member); sessions.set(member.token, member)
           clearTimeout(timeout)
           send(socket, { type: 'joined', code: room.code, aliases: room.aliases ?? [], memberId: member.id, token: member.token, isOwner: owner, ...(ownerToken ? { ownerToken } : {}) })
@@ -58,8 +59,29 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
         }
         if (event.type === 'mic' && typeof event.mic === 'boolean') {
           member.mic = event.mic
+          member.mode = event.mic ? 'microphone' : 'muted'
           if (!member.mic) member.asr?.terminate()
           publishMembers(room)
+        } else if (event.type === 'mode' && ['muted', 'typing'].includes(event.mode)) {
+          member.mic = false; member.mode = event.mode
+          member.asr?.terminate()
+          publishMembers(room)
+        } else if (event.type === 'typed-caption') {
+          if (member.mode !== 'typing' || typeof event.utteranceId !== 'string' || !/^[a-f0-9-]{36}$/.test(event.utteranceId) ||
+            typeof event.text !== 'string' || !event.text.trim() || event.text.length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(event.text)) {
+            fail('打字内容无效：请在打字模式输入 1～1000 个字符。'); return
+          }
+          if (Date.now() - member.lastTypedAt < 1000) { fail('打字发送过快，请稍后再试。'); return }
+          member.lastTypedAt = Date.now()
+          // 与语音共用字幕事件和生命周期；连接身份限定句子命名空间。
+          broadcast(room, { type: 'caption', memberId: member.id, utteranceId: `typed-${member.id}-${event.utteranceId}`, text: event.text.trim(), state: 'final' })
+        } else if (event.type === 'reaction') {
+          if (!reactionTypes.has(event.reaction) || typeof event.targetId !== 'string' || event.targetId === member.id || !room.members.has(event.targetId)) {
+            fail('无效的回应类型或目标成员。'); return
+          }
+          if (Date.now() - member.lastReactionAt < 1500) { fail('回应发送过快，请稍后再试。'); return }
+          member.lastReactionAt = Date.now()
+          broadcast(room, { type: 'reaction', id: randomUUID(), senderId: member.id, targetId: event.targetId, reaction: event.reaction })
         } else if (event.type === 'caption' && member.mic && typeof event.utteranceId === 'string' && event.utteranceId.length <= 160 && typeof event.text === 'string' && event.text.length <= 4000 && ['interim', 'final'].includes(event.state)) {
           // 身份由连接决定，不接受客户端指定其他成员的 memberId。
           broadcast(room, { type: 'caption', memberId: member.id, utteranceId: event.utteranceId, text: event.text, state: event.state })
@@ -104,6 +126,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
     try {
       authorize()
       const { action } = command
+      if (action === 'reveal') return { apiKey: room.apiKey }
       if (action === 'test') {
         if (!room.apiKey) throw problem(400, '请先保存本房间 API Key。')
         const result = await probe(room.apiKey)
@@ -112,7 +135,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
       let changes
       if (action === 'save') {
         const key = typeof command.apiKey === 'string' ? command.apiKey.trim() : ''
-        if (!key || key.length > 2048 || /[^\x21-\x7e]|["'`#\\]/.test(key)) throw problem(400, 'API Key 格式无效，请重新复制完整密钥。')
+        if (!key || /^\*+$/.test(key) || key.length > 2048 || /[^\x21-\x7e]|["'`#\\]/.test(key)) throw problem(400, 'API Key 格式无效，请重新复制完整密钥。')
         changes = { apiKey: key, keyState: 'configured' }
       } else if (action === 'delete') changes = { apiKey: '', keyState: 'deleted' }
       else if (action === 'asr' && typeof command.enabled === 'boolean') changes = { asrEnabled: command.enabled }

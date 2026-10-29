@@ -27,7 +27,7 @@ export function createRoomManagementHandler(rooms, secret, now = Date.now) {
           !/^[a-f0-9-]{36}$/.test(envelope.nonce) || used.has(envelope.nonce) || used.size >= 10000) { reply(403, { message: '服务请求已失效。' }); return }
       used.set(envelope.nonce, envelope.issuedAt + 10001)
       const command = envelope.command
-      if (!command || typeof command.uid !== 'string' || !/^[a-f0-9-]{36}$/.test(command.uid) || !['list', 'bind', 'save', 'delete', 'test', 'asr'].includes(command.action) ||
+      if (!command || typeof command.uid !== 'string' || !/^[a-f0-9-]{36}$/.test(command.uid) || !['list', 'bind', 'save', 'delete', 'test', 'asr', 'reveal'].includes(command.action) ||
           (command.action !== 'list' && (typeof command.code !== 'string' || !/^\d{6}$/.test(command.code)))) { reply(400, { message: '无效的管理请求。' }); return }
       reply(200, await rooms.manageAccount(command))
     } catch (error) { reply(error.statusCode ?? 500, { message: error.statusCode ? error.message : '房间管理服务暂时不可用。' }) }

@@ -17,10 +17,10 @@ function view(request) {
     onMounted() {}, onUnmounted(callback) { unmount = callback }, watch(_getter, callback) { changed = callback },
     accountRequest: async (...args) => { calls.push(args); return request(...args) },
   })
-  vm.runInContext(script + '\nglobalThis.model = {props, rooms, keys, busy, error, message, deleting, refresh, manage};', context)
+  vm.runInContext(script + '\nglobalThis.model = {props, rooms, keys, revealedKeys, visibleKeys, editingKeys, editKey, toggleKey, busy, error, message, deleting, refresh, manage};', context)
   return { state: context.model, calls, unmount: () => unmount(), changeUser: () => changed(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.model, render })) }
 }
-const owner = view(async (_url, method, body) => method === 'POST' ? body.action === 'test' ? { ok: true, message: '连接测试通过' } : { room: { ...configured, asrEnabled: false }, message: '已保存' } : { rooms: [configured] })
+const owner = view(async (_url, method, body) => method === 'POST' ? body.action === 'reveal' ? { apiKey: 'synthetic-input-key' } : body.action === 'test' ? { ok: true, message: '连接测试通过' } : { room: { ...configured, asrEnabled: false }, message: '已保存' } : { rooms: [configured] })
 await owner.state.refresh()
 assert.match(await owner.html(), /我的 HakiSub 房间|房主 · 当前账号/)
 assert.match(await owner.html(), /https:\/\/hakisub.xdstar.work\/114514\//)
@@ -29,6 +29,12 @@ await owner.state.manage(configured, 'save')
 assert.equal(owner.calls.at(-1)[2].apiKey, 'synthetic-input-key')
 assert.equal(Object.keys(owner.state.keys.value).length, 0)
 assert.doesNotMatch(await owner.html(), /synthetic-input-key/)
+assert.match(await owner.html(), /value="\*{8}"/)
+await owner.state.toggleKey(configured)
+assert.equal(owner.state.revealedKeys.value['114514'], 'synthetic-input-key')
+assert.match(await owner.html(), /type="text"/)
+await owner.state.toggleKey(configured)
+assert.equal(owner.state.revealedKeys.value['114514'], undefined)
 await owner.state.manage(configured, 'asr')
 assert.equal(owner.calls.at(-1)[2].enabled, false)
 assert.match(await owner.html(), /开启豆包 ASR/)

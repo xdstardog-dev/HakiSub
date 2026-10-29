@@ -24,6 +24,7 @@ export function createRoomManagementClient({ roomGatewayUrl, roomManagementSecre
         headers: { 'Content-Type': 'application/json', 'X-HakiSub-Signature': signature }, body })
       const result = await response.json()
       if (!response.ok) throw Object.assign(Error(result.message ?? '房间操作失败。'), { statusCode: [400, 403, 404, 409, 500].includes(response.status) ? response.status : 503 })
+      revalidate()
       return result
     } catch (error) { if (error.statusCode) throw error; throw unavailable() }
     finally { clearTimeout(timer) }

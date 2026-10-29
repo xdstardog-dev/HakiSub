@@ -31,7 +31,7 @@ function accountClient(server, ip) {
     const response = await server.app.inject({ method, url, remoteAddress: ip, headers: { origin: accountOrigin, cookie: [...cookies.values()].join('; '),
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }), ...extra }, ...(payload === undefined ? {} : { payload }) })
     for (const value of [response.headers['set-cookie'] ?? []].flat()) { const entry = value.split(';')[0]; cookies.set(entry.split('=')[0], entry) }
-    return { status: response.statusCode, body: response.json() }
+    return { status: response.statusCode, body: response.json(), headers: response.headers }
   }
   const write = async (url, payload) => {
     const csrf = await request(url.startsWith(prefix) ? prefix + '/csrf' : '/api/account/csrf')
@@ -108,6 +108,8 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     const userA = await a.write('/api/account/register', registration('fixture_alice'))
     const userB = await b.write('/api/account/register', registration('fixture_bob'))
     assert.equal(userA.status, 201); assert.equal(userB.status, 201)
+    const internalA = accounts.database.prepare('SELECT id FROM users WHERE public_uid=?').get(userA.body.user.uid).id
+    const internalB = accounts.database.prepare('SELECT id FROM users WHERE public_uid=?').get(userB.body.user.uid).id
     assert.equal((await guest.request(prefix + '/rooms')).status, 401)
     assert.equal((await guest.bind('114514', ownerToken)).status, 401)
     assert.equal((await a.request(prefix + '/rooms/114514/manage', 'POST', { action: 'delete' })).status, 403, 'CSRF required')
@@ -120,6 +122,7 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     assert.equal((await (await anonymousSettings(original)).json()).configured, false, '旧有效密文绝不能恢复为凭据')
     await rejectedAudio(original)
     assert.equal((await anonymousSettings(original, { action: 'save', apiKey: 'synthetic-room-legacy' })).status, 200)
+    assert.equal((await (await anonymousSettings(original, { action: 'reveal' })).json()).apiKey, 'synthetic-room-legacy')
     const emptyLegacy = await room({ type: 'join', code: '222222', ownerToken })
     assert.equal((await (await anonymousSettings(emptyLegacy)).json()).keyState, 'missing')
     await rejectedAudio(emptyLegacy)
@@ -133,6 +136,9 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     assert.equal((await b.bind('114514', ownerToken)).status, 409)
     assert.equal((await a.bind('114514', ownerToken)).status, 409)
     assert.equal((await anonymousSettings(original, { action: 'delete' })).status, 403, '绑定后已连接旧房主也撤权')
+    assert.equal((await anonymousSettings(original, { action: 'reveal' })).status, 403)
+    assert.equal((await b.manage('114514', { action: 'reveal' })).status, 403)
+    assert.equal((await guest.manage('114514', { action: 'reveal' })).status, 401)
     const oldToken = await room({ type: 'join', code: '114514', ownerToken })
     assert.equal(oldToken.identity.isOwner, false)
     assert.equal((await anonymousSettings(oldToken, { action: 'asr', enabled: false })).status, 403)
@@ -146,6 +152,11 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     assert.equal(owned.body.rooms[0].asrEnabled, true)
     assert.equal(JSON.stringify(owned.body).includes(ownerToken), false)
     assert.equal(JSON.stringify(owned.body).includes('synthetic-room-legacy'), false)
+    const shown = await anotherDevice.manage('114514', { action: 'reveal' })
+    assert.equal(shown.body.apiKey, 'synthetic-room-legacy')
+    assert.equal(shown.headers['cache-control'], 'no-store')
+    assert.equal((await anotherDevice.manage('114514', { action: 'save', apiKey: '********' })).status, 400)
+    assert.equal(original.events.some(event => JSON.stringify(event).includes('synthetic-room-legacy')), false)
     const probe = await anotherDevice.manage('114514', { action: 'test' })
     assert.equal(probe.body.ok, true); assert.equal(JSON.stringify(probe.body).includes('synthetic-room-legacy'), false)
     const originalAudio = await audio(original), otherAudio = await audio(anonymous)
@@ -184,10 +195,10 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     assert.equal(persisted.includes('encryptedKey'), false)
     assert.notEqual(JSON.parse(persisted).rooms.find(item => item.code === '114514').ownerHash, ownerHash, '绑定时原摘要永久撤销')
     assert.deepEqual(accounts.database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%room%'").all().map(row => row.name), ['hakisub_room_presets'], '账号库只有既有偏好存档，没有Key或所有权镜像')
-    const command = { action: 'list', uid: userA.body.user.uid }, packet = await signed(command)
+    const command = { action: 'list', uid: internalA }, packet = await signed(command)
     assert.equal((await fetch(base + '/internal/rooms/manage', packet)).status, 200)
     assert.equal((await fetch(base + '/internal/rooms/manage', packet)).status, 403, '重放被拒绝')
-    assert.equal((await fetch(base + '/internal/rooms/manage', { ...packet, body: packet.body.replace(userA.body.user.uid, userB.body.user.uid) })).status, 403)
+    assert.equal((await fetch(base + '/internal/rooms/manage', { ...packet, body: packet.body.replace(internalA, internalB) })).status, 403)
     assert.equal((await fetch(base + '/internal/rooms/manage', await signed(command, { issuedAt: Date.now() - 20000 }))).status, 403)
     assert.equal((await fetch(base + '/internal/rooms/manage', { ...await signed(command), headers: { 'Content-Type': 'application/json' } })).status, 403)
     assert.equal((await fetch(base + '/internal/rooms/manage', { ...await signed(command), headers: { ...(await signed(command)).headers, Origin: accountOrigin } })).status, 403)
@@ -239,7 +250,7 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     failSave = false
     assert.equal((await restoredDevice.request(prefix + '/rooms')).body.rooms[0].keyState, 'deleted')
     const afterDelete = (await createRoomStore(path, encryptionKey)).list().find(item => item.code === '114514')
-    assert.equal(afterDelete.keyState, undefined); assert.equal(afterDelete.apiKey, undefined); assert.equal(afterDelete.ownerUid, userA.body.user.uid)
+    assert.equal(afterDelete.keyState, undefined); assert.equal(afterDelete.apiKey, undefined); assert.equal(afterDelete.ownerUid, internalA)
     await restoredDevice.write('/api/account/logout', {})
     assert.equal((await restoredDevice.manage('114514', { action: 'asr', enabled: true })).status, 401)
     const noService = createRoomManagementClient({ roomGatewayUrl: base, roomManagementSecret: secret }, async () => { throw Error('synthetic offline') })

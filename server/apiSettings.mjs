@@ -70,9 +70,10 @@ export function createApiSettingsHandler(store, { isRecognizing = () => false, p
         finally { response.off('close', cancel) }
       } else {
         if (store.status().readOnly) { reply(409, { message: '当前由进程环境变量配置，请移除该环境变量后重启再修改。' }); return }
+        if (command.action === 'reveal') { reply(200, { apiKey: store.getKey() }); return }
         if (command.action !== 'delete' && (command.action !== 'save' || typeof command.apiKey !== 'string' || !command.apiKey.trim())) { reply(400, { message: '请输入 API Key 后保存。' }); return }
         const key = command.action === 'delete' ? '' : command.apiKey.trim()
-        if (key.length > 2048 || /[^\x21-\x7e]|["'`#\\]/.test(key)) { reply(400, { message: 'API Key 格式无效，请重新复制完整密钥。' }); return }
+        if (/^\*+$/.test(key) || key.length > 2048 || /[^\x21-\x7e]|["'`#\\]/.test(key)) { reply(400, { message: 'API Key 格式无效，请重新复制完整密钥。' }); return }
         await store.save(key)
         reply(200, { ...store.status(), message: key ? '已保存，下次开启识别时生效。' : '已删除本地 API Key。' })
       }

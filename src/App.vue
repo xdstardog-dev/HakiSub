@@ -6,16 +6,21 @@ import { buildScenario, STRESS_DURATION_MS, type ScenarioKey } from './simulatio
 import { expandScenario } from './simulation/engine'
 import { materialState } from './simulation/material'
 import MemberCaptionGrid from './components/MemberCaptionGrid.vue'
+import TypingComposer from './components/TypingComposer.vue'
+import ReactionSettings from './components/ReactionSettings.vue'
+import SoundSettings from './components/SoundSettings.vue'
 import ApiSettings from './components/ApiSettings.vue'
 import RoomApiSettings from './components/RoomApiSettings.vue'
 import { loadRememberedRooms, rememberRoom, forgetRoomOwnership, type RememberedRoom } from './rememberedRooms'
 import { receiveCaption, expireCaptions, type Caption } from './captions'
-import { createRoomClient } from './roomClient'
+import { createRoomClient, type RoomMember } from './roomClient'
+import { loadSoundPreferences, normalizeSoundPreferences, saveSoundPreferences, loadReactionSelection, normalizeReactionSelection, saveReactionSelection, QUICK_REACTIONS, REACTION_COOLDOWN_MS, REACTION_DURATION_MS, TYPED_CAPTION_LIMIT, TYPED_CAPTION_COOLDOWN_MS, type SoundPreferences, type SoundState, type ReactionType, type RoomReaction, type VisibleReaction } from './roomInteractions'
+import { createReactionSound, type SoundSlot } from './reactionSound'
 import { roomCodeFromPath, roomPath, roomShareUrl, shareRoomLink } from './roomNavigation'
 import AccountAccess from './components/AccountAccess.vue'
 import RoomPresets from './components/RoomPresets.vue'
 import { createAccountClient, type AccountIdentity, type RoomPresetConfiguration } from './accountClient'
-type Member = { id: string; name: string; mic: boolean; color: string }
+type Member = RoomMember
 const glasses = ref(location.pathname === '/glasses')
 const settingsOpen = ref(false)
 const roomMode = ref<'simulation' | 'online'>('online')
@@ -30,6 +35,74 @@ const shareUrl = computed(() => room.value ? roomShareUrl(room.value, location.o
 let shareOperation = 0
 const members = ref<Member[]>([]), captions = ref<Caption[]>([])
 const now = ref(Date.now())
+const typedDraft = ref(''), typedSending = ref(false)
+const typingEditorOpen = ref(false)
+const reactionSettingsOpen = ref(false), selectedReactions = ref<ReactionType[]>(loadReactionSelection())
+function updateReactionSelection(selection: ReactionType[]) {
+  selectedReactions.value = normalizeReactionSelection(selection)
+  if (!saveReactionSelection(selectedReactions.value)) error.value = '回应设置已应用，但本浏览器未能保存；刷新后可能恢复默认。'
+  reactionSettingsOpen.value = false
+}
+const reactions = ref<VisibleReaction[]>([])
+const nextReactionAt = ref(0), nextTypedAt = ref(0)
+const soundPreferences = ref(loadSoundPreferences()), soundSettingsOpen = ref(false), soundStorageFailed = ref(false)
+const reactionSound = createReactionSound(undefined, soundPreferences.value)
+const soundState = ref<SoundState>(reactionSound.getState())
+const soundEnabled = computed(() => soundPreferences.value.enabled && soundPreferences.value.volume > 0)
+async function unlockSound() { await reactionSound.unlock(); soundState.value = reactionSound.getState() }
+function openSoundSettings() { soundSettingsOpen.value = true; void unlockSound() }
+function updateSoundPreferences(preferences: SoundPreferences) {
+  soundPreferences.value = normalizeSoundPreferences(preferences)
+  reactionSound.configure(soundPreferences.value)
+  soundStorageFailed.value = !saveSoundPreferences(soundPreferences.value)
+  soundState.value = reactionSound.getState()
+  if (soundEnabled.value) void unlockSound()
+}
+async function playReactionSound(slot: SoundSlot) {
+  const playing = reactionSound.play(slot)
+  soundState.value = reactionSound.getState()
+  await playing
+  soundState.value = reactionSound.getState()
+}
+async function previewSound(slot: SoundSlot = 'default') {
+  if (await reactionSound.unlock()) await playReactionSound(slot)
+  soundState.value = reactionSound.getState()
+}
+let pendingTyped: { id: string; text: string } | undefined
+let typedSendTimer: ReturnType<typeof setTimeout> | undefined
+function finishTypedSend() { clearTimeout(typedSendTimer); pendingTyped = undefined; typedSending.value = false }
+function receiveReaction(event: RoomReaction) {
+  const sender = members.value.find(member => member.id === event.senderId)
+  const target = members.value.find(member => member.id === event.targetId)
+  const option = QUICK_REACTIONS.find(option => option.type === event.reaction)
+  if (!joined.value || !sender || !target || !option || reactions.value.some(reaction => reaction.id === event.id)) return
+  const message = ['agree', 'disagree', 'question', 'received'].includes(option.type) ? `${option.emoji} ${sender.name} ${option.label}了 ${target.name}` : `${option.emoji} ${sender.name} 对 ${target.name}：${option.label}`
+  reactions.value = [...reactions.value, { ...event, message, expiresAt: Date.now() + REACTION_DURATION_MS }].slice(-24)
+  void playReactionSound(event.reaction)
+}
+function sendReaction(targetId: string, reaction: ReactionType) {
+  if (!joined.value || !me.value || targetId === me.value.id || !members.value.some(member => member.id === targetId) || !QUICK_REACTIONS.some(option => option.type === reaction)) return
+  if (Date.now() < nextReactionAt.value) { error.value = '回应发送过快，请稍后再试。'; return }
+  if (roomMode.value === 'online') {
+    if (!roomClient?.send({ type: 'reaction', targetId, reaction })) { error.value = '房间未连接，回应未发送。'; return }
+  } else receiveReaction({ id: crypto.randomUUID(), senderId: me.value.id, targetId, reaction })
+  nextReactionAt.value = Date.now() + REACTION_COOLDOWN_MS; error.value = ''
+}
+function sendTypedCaption() {
+  if (!joined.value || me.value?.mode !== 'typing' || typedSending.value) return
+  if (!typedDraft.value.trim() || typedDraft.value.length > TYPED_CAPTION_LIMIT) { error.value = '请输入 1～1000 个字符。'; return }
+  if (Date.now() < nextTypedAt.value) { error.value = '打字发送过快，请稍后再试。'; return }
+  const id = crypto.randomUUID(), text = typedDraft.value
+  if (roomMode.value === 'online') {
+    if (!roomClient?.send({ type: 'typed-caption', utteranceId: id, text })) { error.value = '房间未连接，草稿已保留。'; return }
+    pendingTyped = { id: `typed-${me.value.id}-${id}`, text }; typedSending.value = true
+    typedSendTimer = setTimeout(() => { finishTypedSend(); error.value = '未收到发送确认，请检查连接；草稿已保留。' }, 10000)
+  } else {
+    receiveCaption(captions.value, me.value.id, `typed-${id}`, text.trim(), 'final', Date.now())
+    typedDraft.value = ''
+  }
+  nextTypedAt.value = Date.now() + TYPED_CAPTION_COOLDOWN_MS; error.value = ''
+}
 const adaptiveCards = ref(false)
 const accountUser = ref<AccountIdentity | null>(null), presetsOpen = ref(false), accountMessage = ref('')
 let displayNameEdited = false
@@ -111,6 +184,7 @@ const asrCallbacks: CaptionCallbacks = {
     asrMessage.value = message
     if (inputMode.value === 'microphone' && me.value) {
       me.value.mic = state === 'listening' || (asrProvider.value === 'doubao' && state === 'reconnecting')
+      if (me.value.mode !== 'typing') me.value.mode = me.value.mic || state === 'starting' ? 'microphone' : 'muted'
       if (roomMode.value === 'online') roomClient?.send({ type: 'mic', mic: me.value.mic })
     }
   },
@@ -138,14 +212,23 @@ const asrCallbacks: CaptionCallbacks = {
   },
 }
 let currentAsrSession: AsrSession | undefined
+let asrGeneration = 0
 const asr = {
   start() {
     if (!me.value) return
     if (asrProvider.value === 'doubao') clearMicUsage()
-    currentAsrSession = createAsrSession(asrProvider.value, me.value.id, asrCallbacks, roomClient?.getToken())
+    const generation = ++asrGeneration
+    // 停止后到达的旧回调不能关掉新会话，或把打字模式改回麦克风状态。
+    const callbacks: CaptionCallbacks = {
+      onState: (...args) => { if (generation === asrGeneration) asrCallbacks.onState(...args) },
+      onCaption: event => { if (generation === asrGeneration) asrCallbacks.onCaption(event) },
+      onDiscard: (...args) => { if (generation === asrGeneration) asrCallbacks.onDiscard(...args) },
+      onUsage: usage => { if (generation === asrGeneration) asrCallbacks.onUsage?.(usage) },
+    }
+    currentAsrSession = createAsrSession(asrProvider.value, me.value.id, callbacks, roomClient?.getToken())
     currentAsrSession.start()
   },
-  stop() { currentAsrSession?.stop(); currentAsrSession = undefined },
+  stop() { currentAsrSession?.stop(); currentAsrSession = undefined; asrGeneration++ },
 }
 function changeAsrProvider(event: Event) {
   asr.stop()
@@ -160,9 +243,10 @@ function changeInputMode(event: Event) {
   pending = []; scenarioRunning.value = false; simulationStarted.value = null
   captions.value = []; error.value = ''
   inputMode.value = (event.target as HTMLSelectElement).value === 'microphone' ? 'microphone' : 'simulation'
-  members.value.forEach(member => member.mic = inputMode.value === 'simulation')
+  members.value.forEach(member => { member.mic = inputMode.value === 'simulation'; member.mode = member.mic ? 'microphone' : 'muted' })
 }
 function toggleRealMic() {
+  if (me.value?.mode === 'typing') return
   if (asrActive.value) asr.stop()
   else if (joined.value && inputMode.value === 'microphone') asr.start()
 }
@@ -195,11 +279,27 @@ function setMemberCount(event: Event) {
   error.value = ''
 }
 function toggleMemberMic(id: string) {
-  if (inputMode.value === 'microphone') {
-    if (id === me.value?.id) toggleRealMic()
+  const member = members.value.find(member => member.id === id)
+  if (!member) return
+  if (id === me.value?.id) {
+    typingEditorOpen.value = false
+    if (member.mode === 'typing') {
+      member.mode = 'microphone'
+      if (inputMode.value === 'microphone') asr.start()
+      else member.mic = true
+    } else if (member.mic || (inputMode.value === 'microphone' && asrActive.value)) {
+      if (inputMode.value === 'microphone') asr.stop()
+      member.mic = false; member.mode = 'muted'
+      if (roomMode.value === 'online') roomClient?.send({ type: 'mode', mode: 'muted' })
+    } else {
+      asr.stop()
+      member.mic = false; member.mode = 'typing'
+      if (roomMode.value === 'online') roomClient?.send({ type: 'mode', mode: 'typing' })
+    }
+    if (!member.mic) captions.value = captions.value.filter(c => c.memberId !== id || c.state === 'final')
     return
   }
-  const member = members.value.find(member => member.id === id)
+  if (inputMode.value === 'microphone') return
   if (member) {
     member.mic = !member.mic
     if (!member.mic) captions.value = captions.value.filter(c => c.memberId !== id || c.state === 'final')
@@ -209,6 +309,7 @@ function enter() {
   error.value = ''
   if (!name.value.trim()) { error.value = '请先填写你的显示名称。'; return }
   if (mode.value === 'join' && !/^\d{6}$/.test(code.value)) { error.value = '请输入 6 位数字房间码。'; return }
+  void unlockSound()
   if (roomMode.value === 'online') {
     if (connecting.value) return
     connecting.value = true
@@ -244,16 +345,24 @@ function enter() {
       },
       onMembers(next) {
         members.value = next
+        if (me.value?.mode !== 'typing') typingEditorOpen.value = false
         captions.value = captions.value.filter(caption => next.some(member => member.id === caption.memberId && (member.mic || caption.state === 'final')))
+        reactions.value = reactions.value.filter(reaction => next.some(member => member.id === reaction.targetId))
       },
       onCaption(event) {
         if (joined.value) receiveCaption(captions.value, event.memberId, event.utteranceId, event.text, event.state, Date.now())
+        if (event.memberId === selfId.value && event.utteranceId === pendingTyped?.id) {
+          if (typedDraft.value === pendingTyped.text) typedDraft.value = ''
+          finishTypedSend()
+        }
       },
+      onReaction: receiveReaction,
       onDiscard(memberId, utteranceId) {
         captions.value = captions.value.filter(caption => caption.memberId !== memberId || caption.id !== utteranceId || caption.state === 'final')
       },
       onError(message) {
         error.value = message
+        finishTypedSend()
         if (!joined.value) { connecting.value = false; roomClient?.close() }
       },
       onRoomStatus(status) {
@@ -291,10 +400,10 @@ function runSimulation() {
   simulationStarted.value = start
   if (scenario.value === 'stress' || scenario.value === 'eight') {
     while (members.value.length < 8) addMember()
-    members.value.forEach(member => member.mic = true)
+    members.value.forEach(member => { member.mic = true; member.mode = 'microphone' })
   } else if (scenario.value === 'script') {
     while (members.value.length < Math.min(8, materialPack.characters.length)) addMember()
-    members.value.forEach(member => member.mic = true)
+    members.value.forEach(member => { member.mic = true; member.mode = 'microphone' })
   }
   // 场景只描述“谁在什么时间说什么”，这里把成员槽位解析成真实成员，再交给调度队列。
   const firstActiveIndex = first ? members.value.indexOf(first) : 0
@@ -316,6 +425,9 @@ function leave(updateLocation = true) {
   connecting.value = false; selfId.value = ''; roomSessionToken.value = ''; settingsOpen.value = false
   clearMicUsage()
   joined.value = false; members.value = []; captions.value = []; pending = []
+  finishTypedSend(); typedDraft.value = ''; typingEditorOpen.value = false; reactions.value = []; nextReactionAt.value = 0; nextTypedAt.value = 0; reactionSound.close()
+  reactionSettingsOpen.value = false
+  soundSettingsOpen.value = false; soundState.value = reactionSound.getState()
   scenarioRunning.value = false; simulationStarted.value = null; error.value = ''
   shareOperation++; sharing.value = false; shareMessage.value = ''; manualShare.value = false; copied.value = false
   if (updateLocation && location.pathname !== '/') {
@@ -333,11 +445,18 @@ function tick() {
   now.value = Date.now()
   while (pending.length && pending[0]!.at <= now.value) pending.shift()!.run()
   captions.value = expireCaptions(captions.value, now.value)
+  reactions.value = reactions.value.filter(reaction => reaction.expiresAt > now.value)
   if (now.value >= simulationEnd && (scenario.value !== 'stress' || !captions.value.length)) scenarioRunning.value = false
 }
 // Each final has its own immutable deadline; the shared clock never resets it.
 const timer = setInterval(tick, 50)
+function unlockReactionSound() { if (joined.value && soundEnabled.value) void unlockSound() }
+window.addEventListener('pointerdown', unlockReactionSound)
+window.addEventListener('keydown', unlockReactionSound)
 onUnmounted(() => {
+  finishTypedSend(); reactionSound.close()
+  window.removeEventListener('pointerdown', unlockReactionSound)
+  window.removeEventListener('keydown', unlockReactionSound)
   presetLinkClient?.cancel()
   asr.stop(); roomClient?.close(); clearInterval(timer); pending = []
   shareOperation++
@@ -406,7 +525,7 @@ prepareRoomEntry()
           </button>
           <div><h1>字幕房间</h1><button class="copy-room" @click="copyCode" aria-label="复制房间码">{{ room }} · {{ copied ? '已复制' : '复制房间码' }}</button></div>
         </div>
-        <div class="room-actions"><AccountAccess @identity="updateAccountIdentity" /><button @click="presetsOpen = true">个人存档</button><button @click="settingsOpen = !settingsOpen" :aria-expanded="settingsOpen">豆包配置</button><button class="room-exit" @click="leave()">返回首页</button></div>
+        <div class="room-actions"><AccountAccess @identity="updateAccountIdentity" /><button aria-label="全局音效设置" :aria-expanded="soundSettingsOpen" @click="openSoundSettings">音效：{{ soundEnabled ? '开' : '关' }}</button><button @click="presetsOpen = true">个人存档</button><button @click="settingsOpen = !settingsOpen" :aria-expanded="settingsOpen">豆包配置</button><button class="room-exit" @click="leave()">返回首页</button></div>
       </header>
       <p v-if="shareMessage" class="share-message" role="status">{{ shareMessage }}</p>
       <input v-if="manualShare" class="manual-share" aria-label="房间分享链接" :value="shareUrl" readonly @focus="($event.target as HTMLInputElement).select()"/>
@@ -447,10 +566,13 @@ prepareRoomEntry()
       <p v-else class="room-grid-note">普通话 · {{ roomMode === 'online' ? '每人独立开麦，字幕同步到同房成员' : '仅“我”接收真实语音' }} · {{ asrProvider === 'doubao' ? '本地检测到说话后上传至豆包，按服务用量计费' : '音频可能发送至浏览器语音服务' }}</p>
       <label class="layout-experiment"><input v-model="adaptiveCards" type="checkbox" />{{ adaptiveCards ? '动态自适应布局（实验）' : '固定等分布局（原版）' }}</label>
       <section class="room-stage" aria-label="房间内容">
-        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :starting-member-id="asrState === 'starting' ? me?.id : undefined" :live-input="inputMode === 'microphone'" :online-room="roomMode === 'online'" @toggle-mic="toggleMemberMic" />
+        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :starting-member-id="asrState === 'starting' ? me?.id : undefined" :live-input="inputMode === 'microphone'" :online-room="roomMode === 'online'" :typed-draft="typedDraft" :reactions="reactions" :reaction-cooldown-until="nextReactionAt" :selected-reactions="selectedReactions" @edit-typed="typingEditorOpen = true" @react="sendReaction" @reaction-settings="reactionSettingsOpen = true" @toggle-mic="toggleMemberMic" />
       </section>
+      <TypingComposer v-if="typingEditorOpen && me?.mode === 'typing'" v-model:draft="typedDraft" :sending="typedSending" :now="now" :cooldown-until="nextTypedAt" @send="sendTypedCaption" @close="typingEditorOpen = false" />
+      <ReactionSettings v-if="reactionSettingsOpen" :selected="selectedReactions" @save="updateReactionSelection" @close="reactionSettingsOpen = false" />
+      <SoundSettings v-if="soundSettingsOpen" :preferences="soundPreferences" :state="soundState" :storage-failed="soundStorageFailed" @update="updateSoundPreferences" @preview="previewSound" @close="soundSettingsOpen = false" />
       <p v-if="error" class="room-error error" role="alert">{{ error }}</p>
-      <p v-if="inputMode === 'microphone'" class="room-grid-note" :class="{ error: asrState === 'error' }" role="status">{{ asrMessage }}</p>
+      <p v-if="inputMode === 'microphone'" class="room-grid-note" :class="{ error: asrState === 'error' }" role="status">{{ me?.mode === 'typing' ? '打字模式 · 点击自己的字幕区域输入；切换模式保留草稿，离房清空' : asrMessage }}</p>
       <p v-if="inputMode === 'microphone' && asrProvider === 'doubao' && micStartedAt !== null" class="room-grid-note" aria-label="本次开麦音频用量">
         本次开麦 {{ formatUsageDuration(micOpenSeconds) }} · 提交 {{ formatUsageDuration(usageTotals.submitted) }} · 发送完成 {{ formatUsageDuration(usageTotals.completed) }} · 豆包返回 {{ usageTotals.returnedSegments ? formatUsageDuration(usageTotals.returned) : '尚无时长' }}
         <small>豆包返回的是响应中的音频时长，不是账单计费时长；本次数据仅存页面内存。</small>
@@ -458,7 +580,7 @@ prepareRoomEntry()
       <p class="room-grid-note">{{ stressProgress || '确认后按字数显示 3 / 6 / 10 秒，再渐隐 2 秒 · 无历史回看' }}</p>
       <div class="room-bottom-bar">
         <div><strong>{{ inputMode === 'simulation' ? '模拟测试' : '真实麦克风' }}</strong><small>{{ inputMode === 'simulation' ? '未采集音频' : asrProvider === 'doubao' ? '豆包 ASR 2.0 · 普通话' : '浏览器语音识别 · zh-CN' }}</small></div>
-        <button v-if="inputMode === 'microphone'" class="room-self-mic" :aria-pressed="asrState === 'listening' || asrState === 'reconnecting'" :aria-busy="asrState === 'starting'" @click="toggleRealMic">{{ asrState === 'starting' ? '取消开启' : asrActive ? '关闭麦克风' : '开启麦克风' }}</button>
+        <button v-if="inputMode === 'microphone' && me" class="room-self-mic" :aria-pressed="asrState === 'listening' || asrState === 'reconnecting'" :aria-busy="asrState === 'starting'" @click="toggleMemberMic(me.id)">{{ asrState === 'starting' ? '取消开启' : me.mode === 'typing' ? '开启麦克风' : asrActive ? '关闭麦克风' : '切换打字' }}</button>
         <button v-else-if="me" class="room-self-mic" :aria-pressed="me.mic" @click="toggleMemberMic(me.id)">{{ me.mic ? '关闭我的麦克风' : '开启我的麦克风' }}</button>
       </div>
     </main>

@@ -23,7 +23,7 @@ function createView(fetchResponse) {
     setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer }, clearTimeout: id => timers.delete(id),
     fetch: (url, options) => { calls.push({ url, options }); return fetchResponse(url, options, calls.length) },
   })
-  vm.runInContext(ts.transpile(script + '\nglobalThis.settings = { configuration,managedByServer,serverConfigured,configurationState,configurationLabel,apiKey,message,failed,busy,confirmDelete,keyInput,requestConfiguration,emit };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+  vm.runInContext(ts.transpile(script + '\nglobalThis.settings = { configuration,revealedKey,keyVisible,editingKey,editKey,toggleKey,managedByServer,serverConfigured,configurationState,configurationLabel,apiKey,message,failed,busy,confirmDelete,keyInput,requestConfiguration,emit };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
   assert.equal(typeof mount, 'function')
   const state = context.settings
   return {

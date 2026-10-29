@@ -1,0 +1,138 @@
+{
+  "pack": "Kenney Interface Sounds 1.0",
+  "author": "Kenney",
+  "source": "https://kenney.nl/assets/interface-sounds",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "retrievedOn": "2026-10-29",
+  "archiveSha256": "f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232",
+  "conversion": "FFmpeg/libmp3lame; mono 44100Hz 96kbps; source peak normalized to -12dBFS; no runtime encoder dependency",
+  "files": [
+    {
+      "slot": "default",
+      "file": "default.mp3",
+      "original": "Audio/pluck_001.ogg",
+      "sourceSha256": "be97ec4893a02d6eccfb678daa76c83e34cb2583b834ec2593d2641def739fa4",
+      "mp3Sha256": "b493f06cd5980de7ec8318bb3a798b5fc78c838f599d20110aca6c7f069f613d",
+      "bytes": 2239,
+      "gainAdjustmentDb": -12.0
+    },
+    {
+      "slot": "agree",
+      "file": "agree.mp3",
+      "original": "Audio/confirmation_001.ogg",
+      "sourceSha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a",
+      "mp3Sha256": "7f2a3502a586e189624a4657f9dacdad0aa941fe6ee76a019f9b12d48304e66f",
+      "bytes": 4433,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "disagree",
+      "file": "disagree.mp3",
+      "original": "Audio/error_004.ogg",
+      "sourceSha256": "0b574cea597d96507e782ae9764f88482ce49f46e931e57054bf7150047f2d69",
+      "mp3Sha256": "092b16858a6130c9565bb49d255b026dafdf6b5d750b26787cf57c224cf26254",
+      "bytes": 1925,
+      "gainAdjustmentDb": -10.7
+    },
+    {
+      "slot": "question",
+      "file": "question.mp3",
+      "original": "Audio/question_001.ogg",
+      "sourceSha256": "abb8f9e4eb2071491b0b15f84ee302386b1847609310c1b000ae174639a6cc5a",
+      "mp3Sha256": "4a8520303e1bf9a1087de9b804f5c1df8b2758721f1f2a59ab60b0db492a5b7c",
+      "bytes": 6941,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "received",
+      "file": "received.mp3",
+      "original": "Audio/confirmation_002.ogg",
+      "sourceSha256": "33b17a9a9a2397c62b285c52c33a907fdffb476909c99e42dde603f6a7a8b12c",
+      "mp3Sha256": "c7bca7dc9ce8c7ecbe6ccf9a5a7b50d2480295a6bb67a38b8481c5e8eb220921",
+      "bytes": 7568,
+      "gainAdjustmentDb": -11.0
+    },
+    {
+      "slot": "fun",
+      "file": "fun.mp3",
+      "original": "Audio/bong_001.ogg",
+      "sourceSha256": "d21d0f0b782445db579d11e2506b24cd1ac9d664ee33aeaf807761aa7b6fd710",
+      "mp3Sha256": "f350864611ee3870d6b662ce24d70d50ff9e1f781cc069ddbb1d005e1cf05cdb",
+      "bytes": 2552,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "thanks",
+      "file": "thanks.mp3",
+      "original": "Audio/confirmation_003.ogg",
+      "sourceSha256": "3091bf0be0497f825769ee0733ca7bdc3bcd59bd6c6e8f2ba8f93d580ff38022",
+      "mp3Sha256": "ab3247b224a190bd7d5bbe73b9a6060ae9d3d838119b9b0e06cc7dac437b86d6",
+      "bytes": 4747,
+      "gainAdjustmentDb": -11.0
+    },
+    {
+      "slot": "sorry",
+      "file": "sorry.mp3",
+      "original": "Audio/back_001.ogg",
+      "sourceSha256": "07db973f79f6ae0f2edc34561e7592e24d0577455919fb602cb8ecc0da991dcf",
+      "mp3Sha256": "bdc5b15210ca5603916a3b1d06280459148591ee2a038b47b5dc7a9bf87414dc",
+      "bytes": 1612,
+      "gainAdjustmentDb": -11.0
+    },
+    {
+      "slot": "slower",
+      "file": "slower.mp3",
+      "original": "Audio/minimize_001.ogg",
+      "sourceSha256": "8481912bc7fa5828924a00ef15b6cd613b994956e0817bd3122065c9b2896d2d",
+      "mp3Sha256": "8b8a37439dc2f3867f9b5157a38957a9e295cc4dbf803be782245ede0a4f98fb",
+      "bytes": 4120,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "repeat",
+      "file": "repeat.mp3",
+      "original": "Audio/switch_001.ogg",
+      "sourceSha256": "3b74efad87f1e69dbd1d05c5ad952ab90859b5a3d11da6ec5bd79b4f03b42afa",
+      "mp3Sha256": "02c9a375140d422f6b7e2c17c446dcbc85066497268af74a23d3e4b57ba6f1bc",
+      "bytes": 8195,
+      "gainAdjustmentDb": -11.0
+    },
+    {
+      "slot": "wait",
+      "file": "wait.mp3",
+      "original": "Audio/tick_001.ogg",
+      "sourceSha256": "9d057b918024c787bbe6c00beed13a7ef72a3fa0c259add3cef36582792f4230",
+      "mp3Sha256": "24b38a1fb44666db26a8a8787af6085efc851218dd7771b47011878a143a32a0",
+      "bytes": 1298,
+      "gainAdjustmentDb": -11.2
+    },
+    {
+      "slot": "unclear",
+      "file": "unclear.mp3",
+      "original": "Audio/question_003.ogg",
+      "sourceSha256": "00bafc564e29c12e99da584864a750260e7110378251d63d3aa5b3d727836efe",
+      "mp3Sha256": "52804ab7b5da69d295dd5db9d1657b4a66fb0f1aaca9f0c78869b9f46fb203b9",
+      "bytes": 5060,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "understood",
+      "file": "understood.mp3",
+      "original": "Audio/confirmation_004.ogg",
+      "sourceSha256": "568967a3d9f8a8f6af54ea01729c4882284308f2a27d78c07ffd7ee0d6951661",
+      "mp3Sha256": "ebbad64a77e02b18d389cc363d38098109f04502208829dea0536449d55d7845",
+      "bytes": 6941,
+      "gainAdjustmentDb": -11.1
+    },
+    {
+      "slot": "okay",
+      "file": "okay.mp3",
+      "original": "Audio/pluck_002.ogg",
+      "sourceSha256": "c977fe249ff42d1c93a552b33abc13a8399df3879fa510475426e5c4bbac1da9",
+      "mp3Sha256": "113b78b1e0c8f17f3cf3db1f8c0c36f71bf065812dd5b9230c121fd8ef5a58a2",
+      "bytes": 2866,
+      "gainAdjustmentDb": -11.5
+    }
+  ]
+}

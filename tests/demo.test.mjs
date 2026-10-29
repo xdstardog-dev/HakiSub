@@ -15,6 +15,8 @@ const sessionModel = source('../src/asrSession.ts').replace(/^import .*$/gm, '')
 const model = source('../src/captions.ts').replace(/^export /gm, '')
 const rememberedModel = source('../src/rememberedRooms.ts').replace(/^export /gm, '')
 const navigationModel = source('../src/roomNavigation.ts').replace(/^export /gm, '')
+const interactionsModel = source('../src/roomInteractions.ts').replace(/^export /gm, '')
+const reactionSoundModel = source('../src/reactionSound.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 let time = 1_800_000_000_000
 const timers = []
 let cleanup
@@ -34,14 +36,14 @@ let doubaoCallbacks, doubaoStopped = false, doubaoRoomToken, roomCallbacks, room
 const roomConnections = []
 const context = vm.createContext({ createRoomClient: callbacks => {
   roomCallbacks = callbacks
-  return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event) }, getToken: () => 'self-room-token', close() { roomClosed = true } }
+  return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event); return true }, getToken: () => 'self-room-token', close() { roomClosed = true } }
 }, createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
   doubaoRoomToken = roomToken
   doubaoCallbacks = callbacks
   return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
 }, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: pageLocation, URL, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
-const exported = 'globalThis.demo = {room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,shareCurrentRoom,sharing,shareMessage,manualShare};'
-vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+const exported = 'globalThis.demo = {typedDraft,typedSending,sendTypedCaption,sendReaction,reactions,room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,shareCurrentRoom,sharing,shareMessage,manualShare};'
+vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
 assert.equal(d.roomMode.value, 'online', '默认进入真实联网房间流程')
@@ -82,7 +84,9 @@ assert.equal(d.captions.value[0].id, 'next')
 d.toggleMemberMic(a); d.recognize(a, 'muted', '不应该出现', 'final'); assert.equal(d.captions.value.length, 2)
 advance(4000); assert.equal(d.captions.value.length, 0)
 d.toggleMemberMic(a)
+d.toggleMemberMic(a) // 闭麦 → 打字 → 开麦。
 d.recognize(a, 'cancelled', '未完成', 'interim'); d.toggleMemberMic(a); assert.equal(d.captions.value.length, 0)
+d.toggleMemberMic(a)
 d.toggleMemberMic(a)
 for (let n = 1; n <= 8; n++) {
   d.setMemberCount({ target: { value: String(n) } })
@@ -261,9 +265,50 @@ roomCallbacks.onCaption({ memberId: 'other', utteranceId: 'two', text: '别人�
 assert.deepEqual(Array.from(d.captions.value, caption => caption.memberId), ['self', 'other'])
 roomCallbacks.onDiscard('self', sentCaption.utteranceId)
 assert.equal(d.captions.value.length, 1)
+
+// 三态循环、草稿私有/确认后清空、停止旧识别及独立回应生命周期。
+d.toggleMemberMic('self')
+assert.equal(d.me.value.mode, 'muted'); assert.equal(doubaoStopped, true)
+d.toggleMemberMic('self')
+assert.equal(d.me.value.mode, 'typing'); assert.equal(d.me.value.mic, false)
+const beforeDraft = roomSent.length
+d.typedDraft.value = '中文草稿\n第二行'
+assert.equal(roomSent.length, beforeDraft, '输入过程不发房间消息')
+d.sendTypedCaption()
+assert.equal(d.typedSending.value, true)
+const sentTyped = roomSent.at(-1)
+assert.equal(sentTyped.type, 'typed-caption')
+assert.equal(d.captions.value.length, 1, '等待回包才显示打字字幕')
+d.typedDraft.value = '继续写的新草稿'
+roomCallbacks.onCaption({ memberId: 'self', utteranceId: `typed-self-${sentTyped.utteranceId}`, text: sentTyped.text, state: 'final' })
+assert.equal(d.typedDraft.value, '继续写的新草稿', '确认旧消息不能清除新编辑')
+assert.equal(d.typedSending.value, false)
+assert.equal(d.captions.value.at(-1).holdMs, 3000)
+advance(1000); d.sendTypedCaption()
+const secondTyped = roomSent.at(-1)
+roomCallbacks.onCaption({ memberId: 'self', utteranceId: `typed-self-${secondTyped.utteranceId}`, text: secondTyped.text, state: 'final' })
+assert.equal(d.typedDraft.value, '')
+d.typedDraft.value = '切换时保留'
+const oldAsrCallbacks = doubaoCallbacks
+oldAsrCallbacks.onState('listening', '迟到回调')
+oldAsrCallbacks.onResult('late', '迟到的语音', 'final')
+assert.equal(d.me.value.mode, 'typing'); assert.equal(roomSent.at(-1), secondTyped)
+d.toggleMemberMic('self')
+assert.equal(d.me.value.mode, 'microphone'); assert.equal(d.me.value.mic, true)
+assert.equal(d.typedDraft.value, '切换时保留')
+d.sendReaction('other', 'agree')
+assert.equal(roomSent.at(-1).reaction, 'agree')
+const reactionCount = roomSent.length
+d.sendReaction('other', 'fun'); assert.equal(roomSent.length, reactionCount)
+const captionCount = d.captions.value.length
+roomCallbacks.onReaction({ id: 'r', senderId: 'self', targetId: 'other', reaction: 'agree' })
+roomCallbacks.onReaction({ id: 'r', senderId: 'self', targetId: 'other', reaction: 'agree' })
+assert.equal(d.reactions.value.length, 1); assert.equal(d.captions.value.length, captionCount)
+advance(2600); assert.equal(d.reactions.value.length, 0)
 d.changeInputMode({ target: { value: 'simulation' } })
 assert.equal(d.inputMode.value, 'microphone', '联网模式不混入模拟成员')
 roomCallbacks.onClose()
+assert.equal(d.typedDraft.value, ''); assert.equal(d.reactions.value.length, 0)
 assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(roomClosed, true)
 assert.equal(d.captions.value.length, 0); assert.match(d.asrState.value, /idle/)
 const migrationOwner = '11111111-1111-1111-1111-111111111111'

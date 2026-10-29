@@ -130,10 +130,11 @@ try {
 const source = readFileSync(new URL('../src/roomClient.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const context = vm.createContext({ setTimeout, clearTimeout })
 vm.runInContext(ts.transpile(source + '\nglobalThis.factory = createRoomClient', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
-let fake, joined, members, caption, discarded, closed = 0, error
+let fake, joined, members, caption, reaction, discarded, closed = 0, error
 const client = context.factory({
   onJoined: (...args) => joined = args, onMembers: value => members = value,
   onCaption: value => caption = value, onDiscard: (...args) => discarded = args,
+  onReaction: value => reaction = value,
   onClose: () => closed++, onError: value => error = value,
 }, () => fake = { readyState: 1, bufferedAmount: 0, sent: [], send(data) { this.sent.push(JSON.parse(data)) }, close() { this.closed = true } })
 client.connect('create', 'Alice', ''); fake.onopen()
@@ -145,6 +146,7 @@ emit({ type: 'joined', code: '114514', memberId: 'alice', token: 'ephemeral', al
 assert.deepEqual(Array.from(joined[2].aliases), ['985529'])
 emit({ type: 'members', members: [{ id: 'alice' }] }); assert.equal(members[0].id, 'alice')
 emit({ type: 'caption', memberId: 'alice', text: '你好' }); assert.equal(caption.text, '你好')
+emit({ type: 'reaction', id: 'r', senderId: 'bob', targetId: 'alice', reaction: 'agree' }); assert.equal(reaction.targetId, 'alice')
 emit({ type: 'discard', memberId: 'alice', utteranceId: 'one' }); assert.deepEqual(discarded, ['alice', 'one'])
 client.close(); assert.equal(client.getToken(), ''); assert.equal(fake.onmessage, null); assert.equal(closed, 0)
 client.connect('join', 'Bob', '123456'); fake.onclose(); assert.equal(closed, 1)

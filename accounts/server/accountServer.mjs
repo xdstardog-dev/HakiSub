@@ -7,7 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import { createRoomManagementClient } from './roomManagementClient.mjs'
-import { openAccountDatabase } from './database.mjs'
+import { openAccountDatabase, allocatePublicUid } from './database.mjs'
 import { createPasswordService, normalizeAnswer } from './passwords.mjs'
 import { createRequestSecurity, tokenHash, problem, normalizeUsername, requireText, requireNickname, requirePassword, requireQuestions, validatePreset } from './requestSecurity.mjs'
 
@@ -53,7 +53,8 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   })
   const bodySchema = (keys, required = keys) => ({ body: { type: 'object', additionalProperties: false, required, properties: Object.fromEntries(keys.map(key => [key, {}])) } })
   const account = path => '/api/account/' + path
-  const publicUser = user => ({ uid: user.id, username: user.username, nickname: user.nickname, createdAt: user.created_at })
+  const publicUser = user => ({ uid: user.public_uid, username: user.username, nickname: user.nickname, createdAt: user.created_at })
+  const findLoginUser = identifier => database.prepare('SELECT * FROM users WHERE username=? OR public_uid=?').get(identifier, identifier)
   const lookupSession = request => {
     const token = request.cookies[sessionName]
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return undefined
@@ -96,7 +97,7 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   })
   app.get(projectPath + '/identity', async request => {
     const user = lookupSession(request)
-    return { user: user ? { uid: user.id, nickname: user.nickname } : null }
+    return { user: user ? { uid: user.public_uid, nickname: user.nickname } : null }
   })
   const forwardRoom = (request, command) => {
     const user = needUser(request)
@@ -112,7 +113,7 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   })
   app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled'], ['action']) }, async request => {
     const { action, apiKey, enabled } = request.body
-    if (!['save', 'delete', 'test', 'asr'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined)) throw problem(400, '无效的房间管理操作。')
+    if (!['save', 'delete', 'test', 'asr', 'reveal'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined)) throw problem(400, '无效的房间管理操作。')
     return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}) })
   })
   app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
@@ -123,7 +124,7 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     const nickname = requireNickname(body.nickname), password = requirePassword(body), questions = requireQuestions(body.questions), answers = answersFor(questions, body)
     const checkRegistration = () => {
       if (database.prepare('SELECT COUNT(*) AS count FROM registration_events WHERE subject=? AND created_at>? AND quota_exempt=0').get(ip, now() - 86400000).count >= configuration.limits.registrationSuccesses) throw problem(429, '当前网络近期注册较多，请明天重试或联系站点维护者。')
-      if (database.prepare('SELECT id FROM users WHERE username=?').get(username)) throw problem(409, '这个登录账号已被使用，请换一个。')
+      if (findLoginUser(username)) throw problem(409, '这个登录账号已被使用，请换一个。')
     }
     checkRegistration()
     const hashes = await passwords.run(async () => {
@@ -134,7 +135,8 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     const user = { id: randomUUID(), username, nickname, auth_version: 1, created_at: now() }
     database.transaction(() => {
       checkRegistration()
-      database.prepare('INSERT INTO users (id,username,nickname,password_hash,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(user.id, username, nickname, hashes[0], now(), now())
+      user.public_uid = allocatePublicUid(database)
+      database.prepare('INSERT INTO users (id,username,nickname,password_hash,created_at,updated_at,public_uid) VALUES (?,?,?,?,?,?,?)').run(user.id, username, nickname, hashes[0], now(), now(), user.public_uid)
       saveQuestions(user.id, questions, hashes.slice(1))
       database.prepare('INSERT INTO registration_events (user_id,subject,created_at) VALUES (?,?,?)').run(user.id, ip, now())
       const dayStart = Math.floor((now() + 28800000) / 86400000) * 86400000 - 28800000
@@ -149,9 +151,9 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     const username = normalizeUsername(request.body.username), ip = security.ipSubject(request)
     security.consume('login_ip', ip, 30, 900000)
     security.consume('login_pair', security.subject(ip + ':' + username), 5, 900000)
-    security.consume('login_account', security.subject('username:' + username), 30, 3600000)
+    const snapshot = findLoginUser(username)
+    security.consume('login_account', security.subject(snapshot ? 'user:' + snapshot.id : 'username:' + username), 30, 3600000)
     requireText(request.body.password, 1, 128, '密码')
-    const snapshot = database.prepare('SELECT * FROM users WHERE username=?').get(username)
     const valid = await passwords.run(() => passwords.verify(snapshot?.password_hash ?? passwords.dummyHash, request.body.password))
     const current = snapshot && database.prepare('SELECT * FROM users WHERE id=?').get(snapshot.id)
     if (!valid || !current || snapshot.password_hash !== current.password_hash || snapshot.auth_version !== current.auth_version) throw problem(401, '登录账号或密码不正确。')
@@ -214,10 +216,10 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   app.post(account('recovery/start'), { schema: bodySchema(['username']) }, async (request, reply) => {
     const username = normalizeUsername(request.body.username)
     requireText(username, 1, 32, '登录账号')
-    const subject = security.subject('username:' + username)
+    const user = findLoginUser(username)
+    const subject = security.subject(user ? 'user:' + user.id : 'username:' + username)
     security.consume('recovery_start_ip', security.ipSubject(request), 10, 900000)
     security.consume('recovery_start_account', subject, 5, 1800000)
-    const user = database.prepare('SELECT id,auth_version FROM users WHERE username=?').get(username)
     const actual = user ? database.prepare('SELECT question FROM security_questions WHERE user_id=? ORDER BY slot').all(user.id).map(row => row.question) : []
     const index = parseInt(subject.slice(0, 4), 16) % decoyQuestions.length
     const questions = actual.length === 3 ? actual : Array.from({ length: 3 }, (_, offset) => decoyQuestions[(index + offset) % decoyQuestions.length])

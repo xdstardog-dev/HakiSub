@@ -43,6 +43,12 @@ try {
     assert.equal(JSON.stringify(initial).includes(secret), false)
     const headers = { Origin: 'http://127.0.0.1:5173', 'Content-Type': 'application/json', 'X-HakiSub-Token': initial.csrfToken }
     const post = (body, override = {}, suffix = '') => fetch(base + suffix, { method: 'POST', headers: { ...headers, ...override }, body: JSON.stringify(body) })
+    assert.equal((await post({ action: 'reveal' }, { 'X-HakiSub-Token': 'wrong' })).status, 403)
+    const revealed = await post({ action: 'reveal' })
+    assert.equal(revealed.headers.get('cache-control'), 'no-store')
+    assert.equal((await revealed.json()).apiKey, secret)
+    assert.equal((await post({ action: 'save', apiKey: '********' })).status, 400)
+    assert.equal(store.getKey(), secret)
     assert.equal((await post({ action: 'delete' }, { Origin: 'https://stranger.example' })).status, 403)
     assert.equal((await post({ action: 'delete' }, { 'X-HakiSub-Token': 'wrong' })).status, 403)
     const rejectedHost = await new Promise((resolve, reject) => {

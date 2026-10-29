@@ -1,6 +1,18 @@
 import Database from 'better-sqlite3'
 import { mkdirSync, chmodSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { randomInt } from 'node:crypto'
+
+// 保留内部主键与所有关联；六位 UID 仅作为公开登录标识，避开已有数字账号。
+export function allocatePublicUid(database) {
+  const occupied = new Set(database.prepare('SELECT public_uid, username FROM users').all().flatMap(row => [row.public_uid, row.username]))
+  const start = randomInt(100000, 1000000)
+  for (let offset = 0; offset < 900000; offset++) {
+    const candidate = String(100000 + (start - 100000 + offset) % 900000)
+    if (!occupied.has(candidate)) return candidate
+  }
+  throw Error('六位 UID 已用尽。')
+}
 
 export function openAccountDatabase(path) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -10,7 +22,7 @@ export function openAccountDatabase(path) {
   database.pragma('journal_mode = WAL')
   database.pragma('busy_timeout = 3000')
   const version = database.pragma('user_version', { simple: true })
-  if (version > 1) { database.close(); throw Error('账号数据库版本高于当前程序，请使用匹配版本。') }
+  if (version > 2) { database.close(); throw Error('账号数据库版本高于当前程序，请使用匹配版本。') }
   if (version === 0) database.transaction(() => {
     database.exec(`
       CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, nickname TEXT NOT NULL,
@@ -40,6 +52,14 @@ export function openAccountDatabase(path) {
       INSERT INTO schema_migrations VALUES (1, ${Date.now()});
       PRAGMA user_version = 1;
     `)
+  }).immediate()
+  if (version < 2) database.transaction(() => {
+    if (!database.prepare('PRAGMA table_info(users)').all().some(column => column.name === 'public_uid')) database.exec('ALTER TABLE users ADD COLUMN public_uid TEXT')
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_by_public_uid ON users(public_uid)')
+    const update = database.prepare('UPDATE users SET public_uid=? WHERE id=?')
+    for (const user of database.prepare('SELECT id FROM users WHERE public_uid IS NULL ORDER BY created_at,id').all()) update.run(allocatePublicUid(database), user.id)
+    database.prepare('INSERT OR IGNORE INTO schema_migrations VALUES (2,?)').run(Date.now())
+    database.pragma('user_version = 2')
   }).immediate()
   return database
 }

@@ -11,11 +11,20 @@ const configurationLabel = computed(() => configurationState.value === 'loading'
   : configurationState.value === 'unavailable' ? '配置状态暂不可用'
     : (managedByServer.value ? serverConfigured.value : configuration.value?.configured) ? '已配置 API Key' : '尚未配置 API Key')
 const apiKey = ref(''), message = ref(''), failed = ref(false), busy = ref(false), confirmDelete = ref(false)
+const revealedKey = ref(''), keyVisible = ref(false), editingKey = ref(false)
+function clearKeyDisplay() { revealedKey.value = ''; keyVisible.value = false; editingKey.value = false }
+function editKey(event: Event) { apiKey.value = (event.target as HTMLInputElement).value; revealedKey.value = '' }
+async function toggleKey() {
+  if (busy.value || managedByServer.value || configuration.value?.readOnly) return
+  if (keyVisible.value) { clearKeyDisplay(); return }
+  if (apiKey.value) { keyVisible.value = true; return }
+  await requestConfiguration('reveal')
+}
 const keyInput = ref<HTMLInputElement | null>(null)
 let controller: AbortController | undefined
 let disposed = false
 
-async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
+async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'reveal') {
   if (busy.value || (action && (managedByServer.value || !configuration.value))) return
   busy.value = true; failed.value = false; message.value = ''; confirmDelete.value = false
   if (!action) configurationState.value = 'loading'
@@ -23,6 +32,8 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
   const timeout = setTimeout(() => controller?.abort(), 12000)
   // 输入值仅用于这次请求，提交后立即清空，不在浏览器持久化。
   const submittedKey = apiKey.value.trim()
+  if (action === 'save' && (!submittedKey || /^\*+$/.test(submittedKey))) { busy.value = false; clearTimeout(timeout); return }
+  clearKeyDisplay()
   if (action) apiKey.value = ''
   try {
     let response = await fetch(managedByServer.value ? '/api/asr/health' : `/api/asr/settings${action === 'test' ? '/test' : ''}`, {
@@ -51,6 +62,7 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
       configurationState.value = 'available'
       if (!managedByServer.value) { await nextTick(); if (!disposed) keyInput.value?.focus() }
     }
+    else if (action === 'reveal') { revealedKey.value = result.apiKey ?? ''; keyVisible.value = true }
     else if (action === 'test') { failed.value = !result.ok; message.value = result.message }
     else { configuration.value = { ...configuration.value!, ...result }; message.value = result.message }
   } catch (error) {
@@ -62,7 +74,7 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test') {
   } finally { clearTimeout(timeout); if (!disposed) busy.value = false }
 }
 onMounted(() => { void requestConfiguration() })
-onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = '' })
+onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; clearKeyDisplay() })
 </script>
 
 <template>
@@ -78,12 +90,12 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = '' })
         <button :disabled="busy" @click="requestConfiguration()">刷新状态</button>
       </template>
       <template v-else-if="configuration">
-      <p class="settings-note">密钥保存在这台电脑的本地配置文件中，尚未加密。保存后不会回显，也不会写入浏览器存储。此设置目前只供本机使用。</p>
+      <p class="settings-note">密钥保存在这台电脑的本地配置文件中，尚未加密。默认显示掩码，点击显示可临时查看，不写入浏览器存储。此设置目前只供本机使用。</p>
       <p v-if="configuration?.readOnly" class="settings-note">当前使用启动环境提供的密钥。若要在这里更换，请先移除环境变量并重启服务。</p>
       <p v-if="configuration?.busy" class="settings-note">当前正在识别或处理设置，请停止识别后刷新状态。</p>
       <form @submit.prevent="requestConfiguration('save')">
         <label for="doubao-api-key">{{ configuration?.configured ? '更换 API Key' : 'API Key' }}</label>
-        <input id="doubao-api-key" ref="keyInput" v-model="apiKey" type="password" autocomplete="off" spellcheck="false" maxlength="2048" placeholder="粘贴豆包语音服务 API Key" :disabled="busy || !configuration || configuration.readOnly || configuration.busy" />
+        <div class="secret-field"><input id="doubao-api-key" ref="keyInput" :value="apiKey || revealedKey || (configuration.configured && !editingKey ? '********' : '')" @input="editKey" @focus="editingKey = true" @blur="editingKey = false" :type="keyVisible ? 'text' : 'password'" autocomplete="off" spellcheck="false" maxlength="2048" placeholder="粘贴豆包语音服务 API Key" :disabled="busy || !configuration || configuration.readOnly || configuration.busy" /><button type="button" aria-controls="doubao-api-key" :aria-pressed="keyVisible" :disabled="busy || configuration.readOnly || configuration.busy || (!apiKey && !configuration.configured)" @click="toggleKey">{{ keyVisible ? '隐藏' : '显示' }}</button></div>
         <div class="settings-actions">
           <button class="save-key" type="submit" :disabled="busy || !apiKey.trim() || !configuration || configuration.readOnly || configuration.busy">保存配置</button>
           <button type="button" :disabled="busy || !configuration?.configured || configuration.busy || !!apiKey.trim()" @click="requestConfiguration('test')">测试已保存的连接</button>
@@ -108,6 +120,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = '' })
 </template>
 
 <style scoped>
+.secret-field{display:flex;gap:8px;align-items:center}.secret-field input{min-width:0;flex:1}.secret-field button{flex-shrink:0}
 .api-settings { padding: 20px 0 32px; }
 .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 h1 { font-size: 24px; } h2 { margin: 0; font-size: 20px; }

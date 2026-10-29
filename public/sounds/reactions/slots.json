@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "default": "default.mp3",
+  "reactions": {
+    "agree": "agree.mp3",
+    "disagree": "disagree.mp3",
+    "question": "question.mp3",
+    "received": "received.mp3",
+    "fun": "fun.mp3",
+    "thanks": "thanks.mp3",
+    "sorry": "sorry.mp3",
+    "slower": "slower.mp3",
+    "repeat": "repeat.mp3",
+    "wait": "wait.mp3",
+    "unclear": "unclear.mp3",
+    "understood": "understood.mp3",
+    "okay": "okay.mp3"
+  }
+}

@@ -30,6 +30,8 @@ try {
   browser = await chromium.launch({ channel: process.env.VAD_BROWSER_CHANNEL ?? 'chrome', headless: true,
     args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-audio-capture=${audioFile}`] })
   const context = await browser.newContext({ permissions: ['microphone'] })
+  // 账号入口与语音资源无关；隔离旧脚本，避免访问真实主站账号服务。
+  await context.route('https://xdstar.work/api/projects/hakisub/identity', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"user":null}' }))
   await context.addInitScript(() => {
     window.testAudioTracks = []
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
@@ -42,7 +44,7 @@ try {
   const page = await context.newPage()
   const failedRequests = [], externalRequests = []
   page.on('response', response => { if (response.status() >= 400 && !response.url().includes('/api/')) failedRequests.push(response.url()) })
-  page.on('request', request => { if (!request.url().startsWith(origin)) externalRequests.push(request.url()) })
+  page.on('request', request => { if (!request.url().startsWith(origin) && !request.url().endsWith('/api/projects/hakisub/identity')) externalRequests.push(request.url()) })
   await page.goto(origin)
   const result = await page.evaluate(({ origin, workerFile }) => new Promise((resolve, reject) => {
     const worker = new Worker(`${origin}/assets/${workerFile}`)
@@ -51,6 +53,7 @@ try {
     worker.onerror = event => { clearTimeout(timer); worker.terminate(); reject(Error(event.message)) }
     worker.onmessage = event => {
       if (event.data.type === 'error') { clearTimeout(timer); worker.terminate(); reject(Error('VAD initialization/inference failed')); return }
+      if (!['ready', 'result'].includes(event.data.type)) return // 加载进度不是可发送音频的 ready。
       if (event.data.type === 'result') probabilities.push(event.data.probability)
       if (probabilities.length === 10) {
         clearTimeout(timer); worker.terminate(); resolve({ probabilities, isolated: crossOriginIsolated }); return
@@ -67,6 +70,7 @@ try {
   await page.locator('form button[type="submit"]').click()
   await page.getByLabel('输入', { exact: true }).selectOption('microphone')
   assert.equal(await page.getByLabel('识别来源').inputValue(), 'doubao')
+  await page.getByRole('button', { name: '切换打字', exact: true }).click()
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByRole('status').filter({ hasText: '等待说话' }).waitFor({ timeout: 30000 })
   await page.waitForTimeout(2200)
@@ -75,6 +79,7 @@ try {
   await page.getByRole('button', { name: '关闭麦克风', exact: true }).click()
   assert.equal(await page.evaluate(() => window.testAudioTracks.every(track => track.readyState === 'ended')), true)
   await page.route('**/vad/silero-v6.onnx*', route => route.abort())
+  await page.getByRole('button', { name: '切换打字', exact: true }).click()
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByRole('status').filter({ hasText: '语音检测资源下载失败' }).waitFor({ timeout: 30000 })
   assert.equal(cloudConnections, 0, '模型加载失败不能退回持续上传')

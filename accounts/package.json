@@ -7,7 +7,7 @@
     "start": "node server/index.mjs",
     "dev": "node server/index.mjs --development",
     "build": "node ../node_modules/vite/bin/vite.js build --config vite.config.mjs",
-    "test": "node tests/accounts.test.mjs",
+    "test": "node tests/accounts.test.mjs && node tests/interaction.test.mjs",
     "admin": "node server/admin.mjs"
   },
   "dependencies": {
