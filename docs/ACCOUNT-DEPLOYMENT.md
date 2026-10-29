@@ -1,5 +1,37 @@
 # 账号系统部署、验收与恢复
 
+## 打字、回应和素材音效上线（2026-10-29，Asia/Shanghai）
+
+用户明确授权“上传至GitHub+同步到服务器”。已将此前已上线但未提交的账号交互修复、本轮打字/回应/音效、原本未推送的文档提交一并正常推送GitHub main；功能代码为`b8afe0ca719b15a3b8126b20fae3b051864492c9`。发布前扫描66个变更文件，未发现凭据/数据库/临时工具进入Git。`npm test`、`npm run build`、`npm run test:accounts`、`npm run test:room-management`、`npm run build:accounts`全部通过；最终Vite产物为`index-DRecb3bU.js`与`index-CC_Vion2.css`。
+
+### 实际切换与保留
+
+北京时间17:04:33（09:04:33 UTC）切换`hakisub-test:captions-20261029T0853Z`，镜像ID为`sha256:c0c35c202cef59db4ee247583e1e6eebb2de8eb750c453d66381a0bc56bcecac`，revision标签为上述功能提交。源码/构建白名单包66项，SHA256 `7425483914174b946ba5aff4b363fe388182bb672c9ca50517d2e7ce0733a32f`，存于服务器`/srv/projects/hakisub/images/captions-20261029T0853Z/source/`并有RELEASE.json逐项哈希。复用生产已验证Node22.23.3/ws8.22.0依赖，只叠加server/dist，无新原生运行依赖。
+
+账号server/dist共11项与本地当前构建SHA256完全一致，因此不重建、不重启账号服务，仍运行`xdstar-accounts:interaction-20261025T1510Z`；账号库保持v2。Caddy容器、服务器secrets/server.env与accounts.env、代理文件、回环端口、资源限制及数据卷保持原样。仅将根.env的HAKISUB_RELEASE改为新发布名，使用原四份Compose文件和public-web/accounts profiles，以`up -d --no-deps --no-build --pull never hakisub`切换单个网关。网关按既有内存Key规则在重启后缺Key，房主需重新填写；未使用真实Key或付费ASR。
+
+### 备份与数据核验
+
+备份在本次发布目录backup/，AES-256-CBC/PBKDF2加密，目录0700、归档/口令0600；口令只在服务器`secrets/captions-20261029T0853Z-backup.key`。使用SQLite在线backup API获得一致性快照，房间、env及部署/代理配置一起加密；实际解密逐字节核验，并在隔离内存目录重新打开SQLite，integrity_check=ok、foreign_key_check无异常。未下载生产数据库或凭据至本机。
+
+- 切换前`production-before.tar.enc`：`30361ee1b78847c1ccfa64b89d8d340ae55078e1b91bbd336c4dc7fa24081992`。
+- 切换后`production-after.tar.enc`：`decf97cfe2b4e4b5bbe692148332416f4499b01c94bd846b1a40cb68b8d77b60`。
+- 公网与浏览器验收后的`production-final.tar.enc`：`1538c2598fb52e2598193e111f42fa0784dc4ab7f59d8f60169cb9db9c97ef60`。
+
+原21间房记录逐项匹配，4个原账号内部ID/公开UID映射保留，账号/Caddy容器ID不变，两业务端口仅127.0.0.1。公网自检创建合成房间377573、275696，最终23房、4账号；没有修改原房权限/Key，没有新建账号，测试结束已关闭全部客户端，不补发字幕历史。证据在发布目录prepared.json、activated.json、verified-after.json、verified-final.json及verification/报告。备份仍为同机加密备份，不是异机备份。
+
+### 验收与回滚
+
+新镜像先在无网络、无生产卷/凭据的Linux容器中通过真实回环WS打字、回应、身份和跨房隔离联调。正式HTTPS验证页面/音效/账号静态资源28项逐字节匹配，其中14个MP3正确audio/mpeg；账号健康和匿名身份、内部路径/源文件404正常。正式WSS验证打字、成员typing状态、扩展词库、发送者防伪、目标房间校验、八人广播/第九人拒绝、后来加入无历史均通过。正式Chrome隔离会话在合成房间实际点击完成全局输入窗/跨浏览器打字、右键设置词库、跨浏览器谢谢气泡、疑问MP3逐项试听及离房，页面无JS异常，明确阻止ASR请求。物理扬声器听感、真实系统IME、iOS/Android软键盘及真实麦克风/豆包不在本次自动验收内。
+
+本次独立回滚入口已准备、语法检查，未实际执行：
+
+```sh
+sudo -n python3 /srv/projects/hakisub/images/captions-20261029T0853Z/publish-captions.py rollback
+```
+
+它只将网关镜像切回`interaction-20261025T1510Z`并检查健康，不恢复旧rooms.json/SQLite，不改账号库版本，不重启账号/Caddy，不覆盖新写入数据。不要使用下方10月25日的schema降级回滚来撤销本次功能。发布脚本首次对旧标签中的大写T/Z校验过严，在生产未切换时修正并复用已核验备份，随后准备/上线/验收全部成功。
+
 ## 交互修复上线（2026-10-25，Asia/Shanghai）
 
 按用户指定23:10开始，23:23切换 `interaction-20261025T1510Z`。网关/账号镜像为 `hakisub-test:interaction-20261025T1510Z`、`xdstar-accounts:interaction-20261025T1510Z`；基于上一版已验证Linux镜像及原生依赖叠加本次服务和构建文件。本地修改尚未提交Git。Caddy、服务密钥、端口、持久卷均保留。本次重启清空内存Key，房主需重填。

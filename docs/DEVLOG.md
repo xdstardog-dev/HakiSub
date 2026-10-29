@@ -677,3 +677,15 @@ HakiSub：新增accountClient、AccountAccess、RoomPresets；默认昵称、独
 测试修改：tests/sound-settings.test.mjs扩展实际MP3标头/授权/槽位覆盖、同文件并发去重、缺失/坏文件/过大/过长回退、超时/静音/离房中止和迟到解码；tests/static-website.test.mjs验证MP3/JSON MIME/no-cache；tests/demo.test.mjs接入新播放模块，房间联调保留通信/IME验证并把音频失败清理放在独立测试。tests/room-interactions-browser.mjs真实Chrome从正式静态服务解码全部14个MP3，验证200/MIME/非静音/时长/峰值，统计原生BufferSource.start确认默认/指定疑问素材试听和实际回应播放，保留桌面/移动双房间/八成员、静音/音量/旁观成员/跨房/偏好、词库/打字/假ASR回归。测试不锁死原素材哈希或14个不同文件，允许以后改名、统一映射或替换自己的有效MP3。
 
 实际 npm test全套、npm run build（vue-tsc/Vite）、git diff --check通过；public及dist均核对14个MP3、60497字节。最终 node tests/sound-settings.test.mjs 和 npm run test:room-interactions:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs 通过。维护根README、ARCHITECTURE和本日志，保留已有工作区修改，未编辑DEEPSEEK-MEMORY，无新增运行依赖、生产部署、提交或推送。真实扬声器/耳机音量听感、iOS/Android及物理多设备仍待人工试听；本次只证明浏览器解码/音频启动与模拟清理，没有调用真实麦克风或豆包API。
+
+## 2026-10-29 · GitHub同步与生产发布（已完成）
+
+用户明确授权本版本上传GitHub并同步服务器。仓库origin=xdstardog-dev/HakiSub，GitHub main原d1f237b，本地已有文档提交fb84add未推送；工作区还包含10月25日已上线的账号交互修复，本次保留并一并补齐Git历史。审核66个变更文件，无凭据/数据库/临时工具，提交b8afe0ca719b15a3b8126b20fae3b051864492c9并正常推送main，无强推。发布前主测试/构建、账号测试/构建、房主管理全通过；账号源码及构建11项与生产容器哈希完全相同，故账号服务保持运行。
+
+发布captions-20261029T0853Z：白名单66项包SHA256=7425483914174b946ba5aff4b363fe388182bb672c9ca50517d2e7ce0733a32f，服务器逐项验证后，在线SQLite一致性快照与房间/环境/代理配置加密备份并实际解密核验。镜像复用已验证Linux依赖，叠加新server/dist并带功能提交标签；无网络隔离容器中真实WS打字/回应/隔离自检成功。脚本先遇旧镜像标签大写T/Z校验问题，生产尚未切换；修正校验并让准备过程复用已有已验证备份后成功。
+
+北京时间17:04:33仅重建HakiSub网关，镜像hakisub-test:captions-20261029T0853Z，ID sha256:c0c35c202cef59db4ee247583e1e6eebb2de8eb750c453d66381a0bc56bcecac。服务healthy，账号/Caddy容器ID未变化，代理、密钥文件、卷、回环端口和资源限制保留，原21房与4账号ID/公开UID映射完整，SQLite integrity=ok且无外键错误。网关重启按现有规则清空房间内存Key，需房主重填。
+
+公网TLS/HTTPS校验28个页面/音效/账号文件哈希一致（14个MP3 MIME正确）；账号健康/匿名身份和内部/源文件404通过。公网WSS创建2间合成房间377573/275696，实际打字、typing成员状态、扩展回应、身份防伪/跨房目标拒绝、八人广播/第九人拒绝、无历史补发通过。正式Chrome隔离浏览器跨端打字、右键个人词库、谢谢气泡、疑问MP3试听及离房通过，未调用ASR/麦克风。结束关闭客户端，最终23房/4账号；没有更改原房间权限或创建账号。
+
+发布目录/srv/projects/hakisub/images/captions-20261029T0853Z。前/后/最终加密备份SHA256分别30361ee1b78847c1ccfa64b89d8d340ae55078e1b91bbd336c4dc7fa24081992、decf97cfe2b4e4b5bbe692148332416f4499b01c94bd846b1a40cb68b8d77b60、1538c2598fb52e2598193e111f42fa0784dc4ab7f59d8f60169cb9db9c97ef60，全部核验解密及SQLite，密钥仅服务器，未下载生产数据/凭据。回滚脚本只切回上一网关镜像，保留当前数据/账号/代理，已准备但未执行。公网/浏览器报告与截图已同步verification/，本机也在ignored artifacts发布目录；README、ARCHITECTURE、ACCOUNT-DEPLOYMENT和本日志补充上线事实。未编辑DEEPSEEK-MEMORY。真实手机、系统输入法、扬声器听感与麦克风/豆包仍另行人工验收。
