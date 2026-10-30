@@ -51,6 +51,15 @@ async function enter(page, name, code) {
 }
 const selfTile = page => page.locator('.member-tile').filter({ has: page.locator('h2 small') })
 const captionWith = (page, text) => page.locator('.caption-message').filter({ hasText: text })
+const reactionWith = (page, text) => page.locator('.reaction-bubble').filter({ hasText: text }).or(page.getByLabel(text, { exact: true }))
+async function expandOwnMember(page, name) {
+  const avatar = page.getByRole('button', { name: new RegExp(`^展开${name}的卡片`) })
+  if (await avatar.count()) await avatar.click()
+}
+async function selectTyping(page, tile) {
+  await tile.locator('.mode-options-trigger').click()
+  await page.getByRole('menuitem', { name: /切换打字|继续打字/ }).click()
+}
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
   const alice = await openPage(), bob = await openPage(true), other = await openPage(), observer = await openPage()
@@ -97,9 +106,9 @@ try {
   await mobileSoundSettings.getByRole('checkbox', { name: '启用快捷回应音效' }).uncheck()
   await mobileSoundSettings.getByRole('button', { name: '关闭音效设置' }).tap()
   const own = selfTile(alice)
-  await own.locator('.tile-mic').click() // 默认闭麦 → 打字。
+  await expandOwnMember(alice, 'A')
+  await selectTyping(alice, own)
   await own.getByText('打字模式', { exact: true }).waitFor()
-  await own.locator('.tile-text').click()
   const input = alice.getByLabel('输入字幕', { exact: true })
   await input.fill('中文输入法测试')
   await input.press('Shift+Enter'); await input.press('End'); await input.type('second line')
@@ -119,13 +128,13 @@ try {
   assert.match(await captionWith(bob, '中文输入法测试').innerText(), /\n/)
 
   // 桌面左键不打开，右键闭麦 B 打开回应；自己的输入保留原生菜单。
-  const bobTile = alice.locator('.member-tile').filter({ has: alice.getByRole('heading', { name: 'B', exact: true }) })
+  const bobTile = alice.locator('.member-tile').filter({ has: alice.getByRole('heading', { name: 'B', exact: true }) }).or(alice.locator('.contracted-member').filter({ has: alice.getByRole('button', { name: 'B，闭麦，长按或右键发送快捷回应', exact: true }) }))
   const selfContextAllowed = await input.evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
   assert.equal(selfContextAllowed, true, '自己的输入保留原生菜单')
   assert.equal(await alice.locator('.reaction-menu').count(), 0)
-  await bobTile.locator('.tile-identity').click()
+  await bobTile.locator('.tile-identity, .member-avatar').click()
   assert.equal(await alice.locator('.reaction-menu').count(), 0, '桌面左键不弹回应菜单')
-  await bobTile.locator('.tile-identity').click({ button: 'right' })
+  await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   assert.equal(await alice.getByRole('button', { name: '😆 闹麻了', exact: true }).count(), 1)
   assert.equal(await alice.locator('.reaction-menu > button').count(), 5)
   const footer = await alice.locator('.reaction-menu-footer').evaluate(element => {
@@ -134,8 +143,8 @@ try {
   })
   assert.ok(footer.cancel <= footer.settings, '取消在左，设置在右')
   await alice.getByRole('button', { name: '👍 赞同', exact: true }).click()
-  await bob.locator('.reaction-bubble').filter({ hasText: 'A 赞同了 B' }).waitFor()
-  await alice.locator('.reaction-bubble').filter({ hasText: 'A 赞同了 B' }).waitFor()
+  await reactionWith(bob, '👍 A 赞同了 B').waitFor()
+  await reactionWith(alice, '👍 A 赞同了 B').waitFor()
   await alice.waitForFunction(() => window.testToneStarts === 3)
   await observer.waitForFunction(() => window.testToneStarts === 1)
   assert.equal(await bob.evaluate(() => window.testToneStarts), 0, '本机静音保留气泡')
@@ -160,7 +169,7 @@ try {
   assert.equal(contextPrevented, true)
   await remote.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 7, bubbles: true })
   await bob.getByRole('button', { name: '✅ 收到', exact: true }).tap()
-  await alice.locator('.reaction-bubble').filter({ hasText: 'B 收到了 A' }).waitFor()
+  await reactionWith(alice, '✅ B 收到了 A').waitFor()
   await bob.waitForFunction(() => window.testToneStarts === 2)
   await observer.waitForFunction(() => window.testToneStarts === 2)
   await bob.waitForTimeout(2700)
@@ -168,7 +177,7 @@ try {
   assert.equal(await bob.locator('.reaction-bubble').count(), 0)
 
   // 个人词库配置只影响自己的菜单，新词仍向所有同房成员广播。
-  await bobTile.locator('.tile-identity').click({ button: 'right' })
+  await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   await alice.locator('.reaction-menu').getByRole('button', { name: '设置', exact: true }).click()
   const reactionSettings = alice.getByRole('dialog', { name: '你需要哪五个词汇？' })
   await reactionSettings.waitFor()
@@ -178,11 +187,11 @@ try {
   await reactionSettings.getByRole('checkbox', { name: '谢谢', exact: true }).check()
   assert.match(await reactionSettings.getByRole('status').innerText(), /已选 5 \/ 5/)
   await reactionSettings.getByRole('button', { name: '保存', exact: true }).click()
-  await bobTile.locator('.tile-identity').click({ button: 'right' })
+  await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   assert.equal(await alice.locator('.reaction-menu > button').count(), 5)
   assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 0)
   await alice.getByRole('button', { name: '🙏 谢谢', exact: true }).click()
-  await bob.locator('.reaction-bubble').filter({ hasText: 'A 对 B：谢谢' }).waitFor()
+  await reactionWith(bob, '🙏 A 对 B：谢谢').waitFor()
   assert.deepEqual(await alice.evaluate(() => JSON.parse(localStorage.getItem('hakisub.reaction-selection.v1'))), ['agree', 'question', 'received', 'fun', 'thanks'])
   assert.equal(await bob.evaluate(() => localStorage.getItem('hakisub.reaction-selection.v1')), null)
   await remote.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 8, isPrimary: true, clientX: 50, clientY: 250, bubbles: true })
@@ -210,6 +219,8 @@ try {
   await input.fill('切换后保留草稿')
   await alice.getByLabel('识别来源').selectOption('browser')
   await own.locator('.tile-mic').click()
+  await own.getByText('麦克风关闭', { exact: true }).waitFor()
+  await own.locator('.tile-mic').click()
   await own.getByText('麦克风开启', { exact: true }).waitFor()
   await alice.evaluate(() => window.testRecognition.onresult({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript: '原有语音仍广播' } }] }))
   await captionWith(bob, '原有语音仍广播').waitFor()
@@ -217,8 +228,7 @@ try {
   await own.getByText('麦克风关闭', { exact: true }).waitFor()
   await captionWith(bob, '原有语音仍广播').waitFor({ state: 'detached' })
   assert.ok(await alice.evaluate(() => window.testAbortCount > 0))
-  await own.locator('.tile-mic').click()
-  await own.locator('.tile-text').click()
+  await selectTyping(alice, own)
   assert.equal(await input.inputValue(), '切换后保留草稿')
   // 八人房间时自己的编辑区、其他闭麦卡片及轻量菜单仍可使用。
   for (let index = 0; index < 5; index++) {
@@ -228,14 +238,14 @@ try {
     peer.send(JSON.stringify({ type: 'join', name: `Peer${index}`, code }))
     await memberUpdate
   }
-  await bob.waitForFunction(() => document.querySelectorAll('.member-tile').length === 8)
+  await bob.waitForFunction(() => document.querySelectorAll('.member-tile, .contracted-member').length === 8)
   await bob.evaluate(() => {
     window.testViewport = Object.assign(new EventTarget(), { width: innerWidth, height: innerHeight, offsetTop: 0, offsetLeft: 0 })
     Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => window.testViewport })
   })
   const mobileSelf = selfTile(bob)
-  await mobileSelf.locator('.tile-mic').tap()
-  await mobileSelf.locator('.start-typing').tap()
+  await expandOwnMember(bob, 'B')
+  await selectTyping(bob, mobileSelf)
   const mobileInput = bob.getByLabel('输入字幕', { exact: true })
   await mobileInput.fill('八人手机打字')
   const layout = await mobileInput.evaluate(editor => {
@@ -272,7 +282,7 @@ try {
   await alice.reload(); await enter(alice, 'A again', code)
   assert.match(await alice.getByRole('button', { name: '全局音效设置', exact: true }).innerText(), /关/)
   assert.deepEqual(await alice.evaluate(() => JSON.parse(localStorage.getItem('hakisub.sound-preferences.v1'))), { enabled: false, volume: 25 })
-  await bobTile.locator('.tile-identity').click({ button: 'right' })
+  await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   assert.equal(await alice.getByRole('button', { name: '🙏 谢谢', exact: true }).count(), 1, '刷新后恢复个人菜单')
   assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 0)
   await alice.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).click()

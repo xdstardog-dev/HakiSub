@@ -191,7 +191,7 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     const persisted = await readFile(path, 'utf8')
     assert.equal(persisted.includes('synthetic-room-final'), false)
     assert.equal(persisted.includes(ownerToken), false)
-    assert.equal(JSON.parse(persisted).version, 3)
+    assert.equal(JSON.parse(persisted).version, 4)
     assert.equal(persisted.includes('encryptedKey'), false)
     assert.notEqual(JSON.parse(persisted).rooms.find(item => item.code === '114514').ownerHash, ownerHash, '绑定时原摘要永久撤销')
     assert.deepEqual(accounts.database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%room%'").all().map(row => row.name), ['hakisub_room_presets'], '账号库只有既有偏好存档，没有Key或所有权镜像')

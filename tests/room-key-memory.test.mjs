@@ -8,10 +8,10 @@ import { createRoomGateway } from '../server/roomGateway.mjs'
 const directory = await mkdtemp(join(tmpdir(), 'hakisub-memory-keys-'))
 const path = join(directory, 'rooms.json')
 const ownerUid = '11111111-1111-1111-1111-111111111111'
-const metadata = { code: '114514', ownerHash: 'a'.repeat(64), ownerUid, aliases: ['985529'], asrEnabled: true }
+const metadata = { code: '114514', ownerHash: 'a'.repeat(64), ownerUid, aliases: ['985529'], asrEnabled: true, accessCode: '', accessVersion: '', accessAccounts: [] }
 let gateway
 try {
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     const legacy = { ...metadata, encryptedKey: { ciphertext: 'unreadable-old-ciphertext' }, apiKey: 'synthetic-disk-key', keyState: 'configured' }
     await writeFile(path, JSON.stringify({ version, rooms: [legacy] }))
     const store = await createRoomStore(path)
@@ -29,7 +29,7 @@ try {
     assert.equal((await gateway.manageAccount({ uid: ownerUid, action: 'list' })).rooms[0].keyState, 'missing')
     await gateway.manageAccount({ ...command, action: 'asr', enabled: false })
     const saved = JSON.parse(await readFile(path, 'utf8'))
-    assert.equal(saved.version, 3)
+    assert.equal(saved.version, 4)
     assert.deepEqual(saved.rooms, [{ ...metadata, asrEnabled: false }], '成功保存时全文件剥离旧Key字段，保留身份/别名/开关')
     await gateway.close(); gateway = undefined
   }

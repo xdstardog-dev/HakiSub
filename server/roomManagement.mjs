@@ -1,6 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 
-// 独立服务密钥只授权房间管理；签名绑定完整正文、固定路由和本次网关启动，重启后旧请求也失效。
+// 独立服务密钥用于房间管理与账号入房授权；签名绑定正文、路由和本次启动，重启后旧请求失效。
 export function createRoomManagementHandler(rooms, secret, now = Date.now) {
   if (secret && secret.length < 43) throw Error('房间管理服务密钥长度不足。')
   const audience = randomUUID(), used = new Map()
@@ -27,7 +27,7 @@ export function createRoomManagementHandler(rooms, secret, now = Date.now) {
           !/^[a-f0-9-]{36}$/.test(envelope.nonce) || used.has(envelope.nonce) || used.size >= 10000) { reply(403, { message: '服务请求已失效。' }); return }
       used.set(envelope.nonce, envelope.issuedAt + 10001)
       const command = envelope.command
-      if (!command || typeof command.uid !== 'string' || !/^[a-f0-9-]{36}$/.test(command.uid) || !['list', 'bind', 'save', 'delete', 'test', 'asr', 'reveal'].includes(command.action) ||
+      if (!command || typeof command.uid !== 'string' || !/^[a-f0-9-]{36}$/.test(command.uid) || !['list', 'bind', 'save', 'delete', 'test', 'asr', 'reveal', 'access-code', 'access'].includes(command.action) ||
           (command.action !== 'list' && (typeof command.code !== 'string' || !/^\d{6}$/.test(command.code)))) { reply(400, { message: '无效的管理请求。' }); return }
       reply(200, await rooms.manageAccount(command))
     } catch (error) { reply(error.statusCode ?? 500, { message: error.statusCode ? error.message : '房间管理服务暂时不可用。' }) }

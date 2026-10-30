@@ -21,7 +21,7 @@ export function createRoomSettingsHandler(rooms, { allowedOrigins }) {
       }
       let command
       try { command = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { reply(400, { message: '配置格式不正确。' }); return }
-      if (!['save', 'delete', 'test', 'asr', 'reveal'].includes(command?.action)) { reply(400, { message: '无效的房间管理操作。' }); return }
+      if (!['save', 'delete', 'test', 'asr', 'reveal', 'access-code'].includes(command?.action)) { reply(400, { message: '无效的房间管理操作。' }); return }
       const result = await rooms.manageAnonymous(member, command)
       reply(200, { ...status(), ...result, busy: false })
     } catch (error) { reply(error.statusCode ?? 500, { message: error.statusCode ? error.message : '房间操作失败，请重试。' }) }

@@ -713,3 +713,61 @@ OwnedRooms.vue：房间卡片先显示房号、Key/ASR状态及管理/进入入�
 正式HTTPS三项账号资源匹配构建；真实Chrome 375/768/1440px完成两步注册往返和完成、五页导航、覆盖抽屉/遮罩/Escape/焦点恢复/背景锁定、刷新会话、UID登录/退出及HakiSub子域凭据CORS身份读取，无页面JS异常；Cookie主站host-only/Secure/HttpOnly/SameSite=Lax。新增合成账号workspace_probe_20261029（工作台上线自检（合成）），随机凭据只存在测试内存，不改原资料或房间，无新房间，最终5账号/23房。此账号无绑定房间，生产未执行Key/ASR管理，完整流程依靠已通过的本地合成接口及权限专项；没有真实Key、ASR或麦克风。报告/截图上传服务器verification/，本地ignored artifacts发布目录保留副本。
 
 前/后/最终备份SHA256分别7333997a5134e03bc44c1d74237f0a41d522ac4c4d98619daebd501c0f61527b、93a0937603b6e2314e11e88c9eaa8b5c3f070da1fa05548e71da3d63ab10e762、eba7dacd39c59491d23378ba37c3f80e7fc00ff6eff98abb0a708c3916cf4565，均实际解密和SQLite核验。准备只回退账号镜像、不回退数据库或重启网关/Caddy的rollback命令，未实际执行。README、账号README、ARCHITECTURE、ACCOUNT-DEPLOYMENT及本日志补充上线事实；DEEPSEEK-MEMORY未编辑。物理手机与真实音频/豆包仍另验。
+
+## 2026-10-29 · 阿里云生产服务器维护
+
+用户明确授权SSH维护及必要服务/容器/整机重启。本次检查宿主机包、二进制、服务、进程、监听、自定义目录和三个生产容器，没有PHP运行时；对照PHP/阿里云/Ubuntu的CVE-2026-109618、109619公开公告，不受该PHP漏洞影响，无需升级/卸载PHP。无原始告警正文，判断仅覆盖此实例。
+
+升级14个系统/Docker包，Docker29.9.2、Compose5.6.1、Buildx0.38.1、containerd.io2.4.2-3；原内核6.8.0-63缺少跟踪元包，安装linux-virtual及七依赖，保留旧内核并验证virtio/ext4内建及GRUB/initramfs。19:55重启恢复6.8.0-147，三个原容器自动恢复、健康正常，无failed unit/dpkg异常/剩余重启要求。保留cloud-init原hold、不执行autoremove。新内核RETBleed=Vulnerable，未发现关闭缓解参数，需阿里云核验宿主机及虚拟CPU能力，未修改启动缓解设置。
+
+逐份比对Docker镜像层/平台/命令后删除九份已导入镜像.tar及逐字节相同临时文档/截图共786,532,989字节；所有业务历史镜像和源码/校验/回滚保留。仅按确切标签删除无引用hello-world，builder缓存959.3MB清零，APT缓存209MB、七天前归档journal41MiB清理。未执行全局system/image/volume prune、down -v或数据卷删除。清理实测释放1,973,805,056字节（1.97GB），最终17%已用、31GiB可用。历史.tar路径变化已在README/ARCHITECTURE和专项记录说明。
+
+维护前、重启前和验收后均在线SQLite一致性快照加密、实际解密核验，另加密备份Caddy卷；口令只在服务器，归档/口令0600、目录0700。原5用户全列/UID/密保/存档/项目关联和23房逐项保留，schema2及SQLite完整性/外键通过，env/secrets/Compose/代理/证书/ACME及挂载/镜像不变。Caddy仅last_clean.json随启动更新时间戳；首次过严核验定位后仅允许该运行文件变化，用新归档名verified-final完成最终核验。未下载生产数据库/凭据。备份仍仅同机。
+
+真实HTTPS/Chrome桌面和移动视口通过主页/账号/健康、内部路径404、注册/UID登录/刷新/退出、Cookie安全属性、跨域身份、建房自动绑定/独立游客加入/成员同步/跨浏览器打字/离房重进无历史，页面无JS异常。合成账号maintenance_probe_20261029和730385房保留，最终6账号/24房，随机凭据仅测试内存，所有测试客户端关闭，原账号/房间设置未修改。网关重启清空内存Key，房主需重填；未调用真实麦克风或付费豆包。
+
+npm test、npm run build全通过；首次room-renaming子进程受沙箱限制，正常环境完整重跑通过。浏览器临时脚本语法错误在实际执行前修复，正式流程通过。详细备份哈希、清理和验收见docs/PRODUCTION-MAINTENANCE-20261029.md；证据本地ignored artifacts/maintenance-20261029与服务器maintenance/20261029。只改维护文档，无应用代码变更、GitHub提交/推送，不编辑DEEPSEEK-MEMORY。
+
+## 2026-10-30 · 角色收束与输入方式切换（本地实现，未部署）
+
+按用户确认的规则实现“闭麦且没有任何可见字幕连续10秒”收束。新增memberContraction.ts，每成员独立计时，任何新字、开麦或打字清零并展开，渐隐仍算有字，消字后重新等待完整10秒。MemberCaptionGrid.vue将收起成员放入底部单行头像栏，显示姓名/闭麦标记、窄屏横向滚动；点击头像只展开、重新计时且保持闭麦，恢复原成员顺序。全员收束仍可从头像或底部常驻控件恢复；收起头像继续右键/长按回应并显示表情提示，回应不自动展开。保留字幕生命周期、最新句强调、跟随滚动和固定/动态布局。
+
+新增MemberModeControl.vue，卡片和底部复用。短按直接开麦/闭麦互换，打字短按先闭麦；长按500ms、右键或左侧‹展开打字选项，点选或长按后左滑命中再松手进入打字并自动打开输入窗。原地松手保留菜单，移出取消，抑制长按后的合成click；支持方向键、菜单键/Shift+F10、Escape、外部点击及窗口失焦/卸载清理。App.vue仍负责会话停止、模式广播和输入窗，不改网关、音频、密钥及供应商协议；保留Final/草稿和原会话代次，停止后迟到ASR不能覆盖typing。仅本人可进入打字，模拟成员开关继续可用。
+
+收束判断批量读取同一轮字幕和时钟prop，修复浏览器快进时暴露的混合快照提前计时；指针按住/菜单、键盘焦点及ASR准备/重连/错误保护卡片。普通点击闭麦后留下的按钮焦点不阻止收束。320×568短屏缩小顶部操作区间距/按钮横向留白和卡片内边距，保证头像栏存在时输入入口与字幕区可见；未作整体视觉改版。
+
+测试：新增member-mode-control.test.mjs和实际SFC编译辅助load-vue-component.mjs；扩展caption-grid.test.mjs覆盖10秒边界、新字清零、渐隐、批量时钟快照、展开不启麦、顺序、焦点和成员清理；demo.test.mjs改为新模式路径，验证显式打字、ASR停止、草稿与迟到回调。新增test:member-controls:browser并更新旧room-interactions-browser.mjs入口。最终npm test全套、npm run build（vue-tsc/Vite）、旧双房间/八成员Chrome交互回归和新480×900/390×844/320×568八成员Chrome验收全部通过，git diff --check通过。新脚本使用浏览器时钟、原生鼠标/CDP模拟触摸，验证全员收束、头像展开不启麦、普通焦点不阻塞、长按防误触、左滑松手、字幕恢复/消失后完整10秒、头像回应、常驻控件及固定/动态布局边界；六张截图位于ignored artifacts/member-controls/，已目视检查390/320px。命令均使用本机已有Playwright：file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs。
+
+初次npm test因系统分配的随机端口落在Node fetch禁用端口而失败，重跑全套通过；esbuild及Chrome启动受沙箱限制，允许本地子进程后通过。浏览器脚本修正了冻结时钟与Vue监听器同毫秒导致事件被忽略的测试条件，并用完整计时断言发现和修复上述批量快照问题。README、ARCHITECTURE和本日志已更新；保留原有维护文档修改，无新运行依赖、Git提交/推送或生产部署，未编辑DEEPSEEK-MEMORY。真实物理手机/系统输入法、真实麦克风/浏览器语音服务/豆包API未验收，模拟成功不代替这些项目；当前无本地阻塞。
+
+## 2026-10-30 · 收束等待由10秒缩短为5秒（本地，未部署）
+
+按用户要求将memberContraction.ts中的MEMBER_CONTRACTION_DELAY_MS从10000改为5000，中文注释、App提示、README和ARCHITECTURE同步更新。仍要求闭麦且无可见字幕连续满5秒；出现字清零、渐隐结束后重新计时、展开后重计、焦点/菜单保护及开麦/打字恢复规则保留，字幕自身3/6/10秒生命周期不变。
+
+更新caption-grid.test.mjs的4999/5000ms边界、消字重计、展开重计及批量快照断言，更新member-controls-browser.mjs的三视口快进时间和5秒说明。旧浏览器回归首次在“谢谢”回应断言超时，原因是目标更早收束，回应已显示在头像标记而非完整卡片气泡；将断言改为同时检查实际气泡文字或头像完整aria-label后通过。
+
+实际npm test全套、npm run build（vue-tsc/Vite）、test:member-controls:browser（480/390/320px八成员）和test:room-interactions:browser均通过；git diff --check通过。无新增运行依赖、提交、推送或部署；保留现有工作区修改。未调用真实麦克风/豆包，未使用物理手机，本轮模拟与浏览器测试不代替真实设备/API验收。
+
+## 2026-10-30 · 他人收束头像只提供快捷回应（本地，未部署）
+
+用户明确要求不能点击他人头像展开卡片。MemberCaptionGrid.vue的restoreMember增加selfId校验，只有本人头像可手动展开并重启5秒计时；他人普通点击、触屏轻触及键盘激活均不修改收束状态。同步区分本人/他人头像的aria-label和title，将空白提示改为“点击自己的头像展开”。他人头像保留长按/右键回应及键盘菜单键，回应不展开；对方开麦、打字或出现字幕仍按已有规则自动恢复。
+
+扩展caption-grid.test.mjs验证非本人ID拒绝、普通/键盘激活不展开且不重置计时、本人仍可展开与提示区分。扩展member-controls-browser.mjs，在480/390/320px八成员全收束下验证鼠标点击/触屏轻触/Enter不展开、右键发送回应、CDP触摸长按松手保持头像、本人恢复及原5秒规则。旧room-interactions-browser.mjs改为直接定位完整卡片或收起头像发表情，仅保留展开本人头像的测试辅助，移除展开他人头像的操作。
+
+实际npm test全套、npm run build（vue-tsc/Vite）、test:member-controls:browser及test:room-interactions:browser通过；git diff --check通过。新增浏览器用例初次在移动上下文中轻触后立即模拟鼠标右键，命中原有700ms系统contextmenu抑制窗；测试等待抑制窗结束再独立验证右键后通过，未修改生产长按/系统菜单保护逻辑。README、ARCHITECTURE和本日志已更新。无网关/音频/密钥协议改动、新运行依赖、提交、推送或部署；保留已有工作区修改，未编辑DEEPSEEK-MEMORY。真实物理手机、麦克风及豆包API未验收，浏览器模拟不代替真机验收；无本地阻塞。
+
+## 2026-10-31 · 四位明文入房码与账号跨设备免输（本地实现，未部署）
+
+用户确认四位数字仅作简单入房凭证，并明确不需要哈希。按此实现：入房码明文保存在服务端房间资料，不进入Git、日志、网址或浏览器本地存储。房内入口由“豆包配置”改为“房间设置”，与账号工作台单房间管理均支持设置、更换、移除四位码及前导零。无入房码沿用原流程；有入房码首次弹出原生dialog，错误/忙碌状态可重试或取消，提交/卸载清空输入；游客每次验证，账号验证一次后跨设备和正常重启免输。
+
+新增server/roomAccess.mjs，网关先验证入房码或60秒单次票据，再创建成员/临时ASR令牌和发送成员/字幕。账号服务新增rooms/:code/access，沿用Cookie、CSRF、精确来源及既有HMAC通信，从真实服务端会话取内部UID，拒绝客户端指定UID；网关按房间持久保存已验证账号，签发绑定当前房间/版本的短期票据。普通状态仅返回requiresPassword，不返回入房码或账号名单。基础错误限制按房间/账号或实际连接来源累计5次/分钟，重连不重置；账号服务另限制网络和账号请求频率。房主账号或原合法匿名房主凭据可直接管理。
+
+设置不同非空入房码先原子落盘，再旋转版本、清空账号资格并撤销非房主在线成员、ASR令牌和未使用旧票据；客户端停止音频、清空字幕/草稿并返回验证卡片。旧成员队列消息也检查撤销状态，防止关闭期间继续广播。移除入房码恢复公开加入；相同码不重复撤权。保存入房码或账号资格失败保持原设置及ASR Key，不签发假成功。API Key依旧只存内存、重启后重填，未改变音频/ASR协议和字幕生命周期。
+
+房间存储升级为v4，新增accessCode/accessVersion/accessAccounts，兼容读取v1～v4，保留房号/别名/所有权/ASR开关，管理员换号继续保留入房码与资格；旧程序拒绝v4以免忽略访问控制。账号SQLite schema仍v2，无新表或新运行依赖。App增加可取消的账号入房请求和代次，取消/离房/卸载/账号切换后迟到响应不能进房；房间客户端仅在WSS首条消息传入房码或票据，不放查询参数，发送后清空参数。
+
+新增tests/room-access.test.mjs、room-password-prompt.test.mjs、accounts/tests/room-access.test.mjs与room-access-browser.mjs；扩展App、roomClient、账号客户端、房内/个人中心设置及v4兼容测试。新增npm run test:room-access与test:room-access:browser，主npm test含网关/弹窗测试，账号test含真实SQLite/Cookie/CSRF/签名/WSS跨设备与双服务重启联调。实际最终npm test全套、npm run test:accounts、npm run test:room-management、npm run build（vue-tsc/Vite）、npm run build:accounts全部通过。新test:room-access:browser与原test:room-interactions:browser、test:member-controls:browser、test:accounts:browser均通过，覆盖主前端480/390/320px和账号375/768/1440px。浏览器模块使用既有file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs。
+
+新增浏览器验收使用正式构建、真实隔离持久网关和合成账号身份代理签名，验证首次/错误/前导零、跨浏览器和网关重启免输、游客只读、改码重新验证、房主继续管理及移除恢复公开；真实Cookie/CSRF边界由独立账号集成测试覆盖，不能把浏览器合成身份当作生产Cookie验收。截图在ignored artifacts/room-access/，已目视320px弹窗与480px设置。新增模拟覆盖跨房间/账号隔离、票据到期/重放、重连限流/冷却、改码撤权、资格写入失败、取消/账号切换/卸载迟到清理，旧Key仅内存与无历史规则回归通过。
+
+开发中一次PowerShell测试脚本入口自动替换破坏了两个package.json，导致首轮npm命令在解析阶段失败；按原清单恢复，仅保留有意新增的测试脚本，校验JSON及git diff后重新构建/测试全部通过。无生产数据或环境配置操作。README、accounts/README、ARCHITECTURE及本日志更新，git diff --check通过；保留原工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。后续上线需配套更新网关、账号后端及两套前端，旧镜像不能直接读取v4资料。真实物理手机/系统软键盘、真实账号跨域生产浏览器、真实麦克风和豆包API未在本轮验收，模拟成功不代替这些项目；当前无本地阻塞。

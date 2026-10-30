@@ -4,9 +4,10 @@ import { createAccountClient, accountCenterUrl } from '../accountClient'
 
 const props = defineProps<{ token: string; code?: string; ownerToken?: string; statusVersion?: number }>()
 const emit = defineEmits<{ close: []; bound: [] }>()
-type Configuration = { configured: boolean; readOnly: boolean; busy: boolean; source: 'room' | 'server' | 'none'; bound?: boolean; asrEnabled?: boolean; keyState?: string }
+type Configuration = { configured: boolean; readOnly: boolean; busy: boolean; source: 'room' | 'server' | 'none'; bound?: boolean; asrEnabled?: boolean; keyState?: string; requiresPassword?: boolean }
 const configuration = ref<Configuration | null>(null)
 const apiKey = ref(''), busy = ref(false), message = ref(''), failed = ref(false), confirmDelete = ref(false)
+const newAccessCode = ref('')
 const revealedKey = ref(''), keyVisible = ref(false), editingKey = ref(false)
 function clearKeyDisplay() { revealedKey.value = ''; keyVisible.value = false; editingKey.value = false }
 function editKey(event: Event) { apiKey.value = (event.target as HTMLInputElement).value; revealedKey.value = '' }
@@ -31,19 +32,22 @@ async function bindAccount() {
   } catch (error) { if (!disposed) { failed.value = true; message.value = error instanceof Error ? error.message : '绑定失败，请重试。' } }
   finally { if (!disposed) { busy.value = false; void requestConfiguration() } }
 }
-async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'asr' | 'reveal') {
+async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'asr' | 'reveal' | 'access-code', accessCode?: string) {
   if (busy.value || (action && (!configuration.value || configuration.value.readOnly))) return
+  if (action === 'access-code' && (typeof accessCode !== 'string' || (accessCode !== '' && !/^\d{4}$/.test(accessCode)))) return
   busy.value = true; message.value = ''; failed.value = false; confirmDelete.value = false
   const submittedKey = apiKey.value.trim()
   if (action === 'save' && (!submittedKey || /^\*+$/.test(submittedKey))) { busy.value = false; return }
   clearKeyDisplay()
   if (action) apiKey.value = ''
+  if (action === 'access-code') newAccessCode.value = ''
+  const command = { action, ...(action === 'save' ? { apiKey: submittedKey } : {}), ...(action === 'asr' ? { enabled: !configuration.value?.asrEnabled } : {}), ...(action === 'access-code' ? { accessCode } : {}) }
   controller = new AbortController()
   const timeout = setTimeout(() => controller?.abort(), 12000)
   try {
     if (action && configuration.value?.bound) {
       accountClient ??= createAccountClient()
-      const result = await accountClient.manageRoom(props.code ?? '', { action, ...(action === 'save' ? { apiKey: submittedKey } : {}), ...(action === 'asr' ? { enabled: !configuration.value.asrEnabled } : {}) })
+      const result = await accountClient.manageRoom(props.code ?? '', command)
       if (!disposed) {
         if (action === 'reveal') { revealedKey.value = result.apiKey ?? ''; keyVisible.value = true }
         else if (action === 'test') { failed.value = !result.ok; message.value = result.message ?? '' }
@@ -54,7 +58,7 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'asr' 
     const response = await fetch('/api/rooms/settings', {
       method: action ? 'POST' : 'GET', cache: 'no-store', signal: controller.signal,
       headers: { Authorization: `Bearer ${props.token}`, ...(action ? { 'Content-Type': 'application/json' } : {}) },
-      ...(action ? { body: JSON.stringify(action === 'save' ? { action, apiKey: submittedKey } : action === 'asr' ? { action, enabled: !configuration.value?.asrEnabled } : { action }) } : {}),
+      ...(action ? { body: JSON.stringify(command) } : {}),
     })
     const result = await response.json()
     if (disposed) return
@@ -79,19 +83,26 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'asr' 
   }
 }
 onMounted(() => { settingsDialog.value?.showModal(); void requestConfiguration() })
-onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(); apiKey.value = ''; clearKeyDisplay(); settingsDialog.value?.close() })
+onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(); apiKey.value = ''; newAccessCode.value = ''; clearKeyDisplay(); settingsDialog.value?.close() })
 </script>
 
 <template>
   <dialog ref="settingsDialog" class="room-api-settings" aria-labelledby="room-api-title" @cancel.prevent="emit('close')">
-    <div class="settings-heading"><h2 id="room-api-title">房间豆包配置</h2><button @click="emit('close')">收起配置</button></div>
+    <div class="settings-heading"><h2 id="room-api-title">房间设置</h2><button @click="emit('close')">收起配置</button></div>
     <p role="status">{{ configuration ? configuration.configured ? '已配置 API Key' : '尚未配置 API Key' : busy ? '正在读取配置…' : '配置状态暂不可用' }}</p>
     <template v-if="configuration">
       <p>豆包 ASR：{{ configuration.asrEnabled === false ? '已暂停' : '已开启（仍需本房间 Key）' }}</p>
       <p v-if="configuration.keyState === 'deleted'">房主已删除 Key，豆包识别不可用。</p>
       <p v-if="configuration.bound" class="settings-note">房间已绑定账号。<a :href="accountCenterUrl" target="_blank" rel="noopener noreferrer">打开个人中心</a>登录房主账号可跨设备管理。</p>
+      <p>入房码：{{ configuration.requiresPassword ? '已设置' : '未设置，可直接加入' }}</p>
       <p v-if="configuration.readOnly" class="settings-note">由房间创建者管理配置。请使用创建房间的浏览器修改；其他成员只看到配置状态。</p>
       <template v-else>
+        <form @submit.prevent="requestConfiguration('access-code', newAccessCode)">
+          <label for="room-new-access-code">{{ configuration.requiresPassword ? '更换四位入房码' : '设置四位入房码' }}</label>
+          <input id="room-new-access-code" v-model="newAccessCode" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" :disabled="busy || configuration.busy" required />
+          <div class="settings-actions"><button type="submit" :disabled="busy || configuration.busy || !/^\d{4}$/.test(newAccessCode)">保存入房码</button><button v-if="configuration.requiresPassword" type="button" :disabled="busy || configuration.busy" @click="requestConfiguration('access-code', '')">移除入房码</button></div>
+          <p class="settings-note">简单入房凭证。设置或更换后，其他成员需重新验证；登录账号验证一次后跨设备、重启仍免输。</p>
+        </form>
         <p class="settings-note">API Key 仅保存在当前后端进程内存中。重启后须由房主重填；点击显示仅供房主临时查看，关闭配置后清除。</p>
         <p class="settings-note">更换或删除 Key、切换 ASR 会停止本房间的豆包会话；成员之后需手动开麦。</p>
         <button v-if="!configuration.bound && props.ownerToken" :disabled="busy" @click="bindAccount">绑定当前登录账号</button>

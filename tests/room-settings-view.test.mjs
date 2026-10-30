@@ -21,7 +21,7 @@ function createView(fetchResponse) {
     setTimeout: callback => { timers.set(++next, callback); return next }, clearTimeout: id => timers.delete(id),
     fetch: (url, options) => { calls.push({ url, options }); return fetchResponse(url, options) },
   })
-  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { configuration,revealedKey,keyVisible,editingKey,editKey,toggleKey,apiKey,busy,message,failed,confirmDelete,requestConfiguration,emit,props,accountCenterUrl };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { configuration,newAccessCode,revealedKey,keyVisible,editingKey,editKey,toggleKey,apiKey,busy,message,failed,confirmDelete,requestConfiguration,emit,props,accountCenterUrl };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
   return { state: context.view, calls, timers, unmount: () => unmount(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.view, render })) }
 }
 const owner = createView((_url, options) => json(options.method === 'POST' ? JSON.parse(options.body).action === 'reveal' ? { apiKey: 'fixture-room-key' } : { ...status, configured: true, source: 'room', message: 'saved' } : status))
@@ -45,12 +45,18 @@ const count = owner.calls.length
 await owner.state.requestConfiguration('save')
 assert.equal(owner.calls.length, count, '掩码不能作为待提交内容')
 assert.equal(owner.timers.size, 0)
+owner.state.newAccessCode.value = '0042'
+await owner.state.requestConfiguration('access-code', owner.state.newAccessCode.value)
+assert.deepEqual(JSON.parse(owner.calls.at(-1).options.body), { action: 'access-code', accessCode: '0042' })
+assert.equal(owner.state.newAccessCode.value, '')
+await owner.state.requestConfiguration('access-code', '')
+assert.deepEqual(JSON.parse(owner.calls.at(-1).options.body), { action: 'access-code', accessCode: '' })
 owner.unmount()
 const member = createView(() => json({ ...status, readOnly: true, configured: true, source: 'room' }))
 await member.state.requestConfiguration()
 assert.doesNotMatch(await member.html(), /<input|保存房间配置|测试连接|移除房间配置/)
 assert.match(await member.html(), /创建房间的浏览器/)
-for (const action of ['save', 'delete', 'test', 'reveal']) await member.state.requestConfiguration(action)
+for (const action of ['save', 'delete', 'test', 'reveal', 'access-code']) await member.state.requestConfiguration(action)
 await member.state.toggleKey()
 assert.equal(member.calls.length, 1)
 member.unmount()

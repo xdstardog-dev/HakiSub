@@ -111,10 +111,17 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     if (typeof request.body.ownerToken !== 'string' || !/^[a-f0-9-]{36}$/.test(request.body.ownerToken)) throw problem(400, '需要合法的原房主管理凭据。')
     return forwardRoom(request, { code: request.params.code, action: 'bind', ownerToken: request.body.ownerToken })
   })
-  app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled'], ['action']) }, async request => {
-    const { action, apiKey, enabled } = request.body
-    if (!['save', 'delete', 'test', 'asr', 'reveal'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined)) throw problem(400, '无效的房间管理操作。')
-    return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}) })
+  app.post(projectPath + '/rooms/:code/access', { schema: bodySchema(['password'], []) }, async request => {
+    const user = needUser(request), { password } = request.body
+    if (password !== undefined && (typeof password !== 'string' || !/^\d{4}$/.test(password))) throw problem(400, '入房码需为四位数字。')
+    security.consume('room_access_network', security.ipSubject(request), 30, 60000)
+    security.consume('room_access_account', security.subject(user.id), 20, 60000)
+    return forwardRoom(request, { code: request.params.code, action: 'access', ...(password === undefined ? {} : { password }) })
+  })
+  app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled', 'accessCode'], ['action']) }, async request => {
+    const { action, apiKey, enabled, accessCode } = request.body
+    if (!['save', 'delete', 'test', 'asr', 'reveal', 'access-code'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined) || (action !== 'access-code' && accessCode !== undefined)) throw problem(400, '无效的房间管理操作。')
+    return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}), ...(action === 'access-code' ? { accessCode } : {}) })
   })
   app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
     const ip = security.ipSubject(request)

@@ -6,6 +6,8 @@ import { buildScenario, STRESS_DURATION_MS, type ScenarioKey } from './simulatio
 import { expandScenario } from './simulation/engine'
 import { materialState } from './simulation/material'
 import MemberCaptionGrid from './components/MemberCaptionGrid.vue'
+import MemberModeControl from './components/MemberModeControl.vue'
+import RoomPasswordPrompt from './components/RoomPasswordPrompt.vue'
 import TypingComposer from './components/TypingComposer.vue'
 import ReactionSettings from './components/ReactionSettings.vue'
 import SoundSettings from './components/SoundSettings.vue'
@@ -28,6 +30,8 @@ const rememberedRooms = ref<RememberedRoom[]>(loadRememberedRooms())
 const roomSessionToken = ref('')
 const roomStatusVersion = ref(0)
 const connecting = ref(false), selfId = ref('')
+const roomPasswordOpen = ref(false), roomPasswordMessage = ref('')
+let roomEntryOperation = 0, roomAccessClient: ReturnType<typeof createAccountClient> | undefined
 let roomClient: ReturnType<typeof createRoomClient> | undefined
 const joined = ref(false), mode = ref<'create' | 'join'>('create'), name = ref(''), code = ref(''), room = ref(''), error = ref('')
 const sharing = ref(false), shareMessage = ref(''), manualShare = ref(false)
@@ -37,6 +41,7 @@ const members = ref<Member[]>([]), captions = ref<Caption[]>([])
 const now = ref(Date.now())
 const typedDraft = ref(''), typedSending = ref(false)
 const typingEditorOpen = ref(false)
+const selfModeMenuOpen = ref(false)
 const reactionSettingsOpen = ref(false), selectedReactions = ref<ReactionType[]>(loadReactionSelection())
 function updateReactionSelection(selection: ReactionType[]) {
   selectedReactions.value = normalizeReactionSelection(selection)
@@ -283,18 +288,14 @@ function toggleMemberMic(id: string) {
   if (!member) return
   if (id === me.value?.id) {
     typingEditorOpen.value = false
-    if (member.mode === 'typing') {
-      member.mode = 'microphone'
-      if (inputMode.value === 'microphone') asr.start()
-      else member.mic = true
-    } else if (member.mic || (inputMode.value === 'microphone' && asrActive.value)) {
+    if (member.mode === 'typing' || member.mic || (inputMode.value === 'microphone' && asrActive.value)) {
       if (inputMode.value === 'microphone') asr.stop()
       member.mic = false; member.mode = 'muted'
       if (roomMode.value === 'online') roomClient?.send({ type: 'mode', mode: 'muted' })
     } else {
-      asr.stop()
-      member.mic = false; member.mode = 'typing'
-      if (roomMode.value === 'online') roomClient?.send({ type: 'mode', mode: 'typing' })
+      member.mode = 'microphone'
+      if (inputMode.value === 'microphone') asr.start()
+      else member.mic = true
     }
     if (!member.mic) captions.value = captions.value.filter(c => c.memberId !== id || c.state === 'final')
     return
@@ -302,10 +303,26 @@ function toggleMemberMic(id: string) {
   if (inputMode.value === 'microphone') return
   if (member) {
     member.mic = !member.mic
+    member.mode = member.mic ? 'microphone' : 'muted'
     if (!member.mic) captions.value = captions.value.filter(c => c.memberId !== id || c.state === 'final')
   }
 }
-function enter() {
+function selectMemberTyping(id: string) {
+  const member = me.value
+  if (!joined.value || !member || member.id !== id) return
+  if (member.mode !== 'typing') {
+    asr.stop()
+    member.mic = false; member.mode = 'typing'
+    captions.value = captions.value.filter(caption => caption.memberId !== id || caption.state === 'final')
+    if (roomMode.value === 'online') roomClient?.send({ type: 'mode', mode: 'typing' })
+  }
+  typingEditorOpen.value = true
+}
+function cancelRoomPassword() {
+  roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
+  roomClient?.close(); connecting.value = false; roomPasswordOpen.value = false; roomPasswordMessage.value = ''
+}
+async function enter(password?: string | Event) {
   error.value = ''
   if (!name.value.trim()) { error.value = '请先填写你的显示名称。'; return }
   if (mode.value === 'join' && !/^\d{6}$/.test(code.value)) { error.value = '请输入 6 位数字房间码。'; return }
@@ -314,18 +331,44 @@ function enter() {
     if (connecting.value) return
     connecting.value = true
     roomClient?.close()
+    const operation = ++roomEntryOperation
+    const submittedPassword = typeof password === 'string' ? password : undefined
+    let accessTicket: string | undefined
+    if (mode.value === 'join' && accountUser.value) {
+      const entryAccountUid = accountUser.value.uid
+      const client = createAccountClient()
+      roomAccessClient?.cancel(); roomAccessClient = client
+      try {
+        const access = await client.roomAccess(code.value, submittedPassword)
+        if (operation !== roomEntryOperation) return
+        if (accountUser.value?.uid !== entryAccountUid) { connecting.value = false; error.value = '登录账号已变化，请重新加入房间。'; return }
+        if (!access.accessTicket) {
+          connecting.value = false; roomPasswordOpen.value = true; roomPasswordMessage.value = access.message ?? '请输入四位入房码。'
+          return
+        }
+        accessTicket = access.accessTicket
+      } catch (issue) {
+        if (operation !== roomEntryOperation) return
+        connecting.value = false
+        const message = issue instanceof Error ? issue.message : '入房验证暂时不可用，请重试。'
+        if (roomPasswordOpen.value) roomPasswordMessage.value = message
+        else error.value = message
+        return
+      } finally { client.cancel(); if (roomAccessClient === client) roomAccessClient = undefined }
+    }
     let ownerRecoveryAttempted = false
     roomClient = createRoomClient({
       onJoined(roomCode, memberId, ownership) {
         const aliases = ownership?.aliases ?? []
         const previousOwner = rememberedRooms.value.find(value => aliases.includes(value.code) && value.ownerToken)
         // 直接输入新号码时，复用本浏览器旧入口的管理凭据，仅补验一次，避免重填Key或丢房主身份。
-        if (!ownership?.isOwner && previousOwner?.ownerToken && !ownerRecoveryAttempted) {
+        if (!accessTicket && !ownership?.isOwner && previousOwner?.ownerToken && !ownerRecoveryAttempted) {
           ownerRecoveryAttempted = true
           roomClient?.connect('join', name.value.trim(), roomCode, previousOwner.ownerToken)
           return
         }
         room.value = roomCode; selfId.value = memberId
+        roomPasswordOpen.value = false; roomPasswordMessage.value = ''
         roomSessionToken.value = roomClient?.getToken() ?? ''
         rememberedRooms.value = rememberRoom(rememberedRooms.value, { code: roomCode, name: name.value.trim(), ownerToken: ownership?.ownerToken }, aliases)
         settingsOpen.value = mode.value === 'create'
@@ -335,7 +378,7 @@ function enter() {
           void client.bindRoom(roomCode, ownership.ownerToken).then(() => {
             rememberedRooms.value = forgetRoomOwnership(rememberedRooms.value, roomCode)
             accountMessage.value = '房间已绑定账号，可在个人中心跨设备管理。'
-          }).catch(() => { if (room.value === roomCode) error.value = '房间已创建，但账号绑定未完成；请在豆包配置中登录后重试绑定。' }).finally(() => client.cancel())
+          }).catch(() => { if (room.value === roomCode) error.value = '房间已创建，但账号绑定未完成；请在房间设置中登录后重试绑定。' }).finally(() => client.cancel())
         }
         const path = roomPath(roomCode)
         if (location.pathname !== path || location.search || location.hash) {
@@ -365,6 +408,14 @@ function enter() {
         finishTypedSend()
         if (!joined.value) { connecting.value = false; roomClient?.close() }
       },
+      onPasswordRequired(roomCode, message) {
+        if (operation !== roomEntryOperation) return
+        code.value = roomCode; connecting.value = false; roomPasswordOpen.value = true; roomPasswordMessage.value = message
+      },
+      onAccessRevoked(roomCode, message) {
+        leave(false); mode.value = 'join'; code.value = roomCode
+        roomPasswordOpen.value = true; roomPasswordMessage.value = message
+      },
       onRoomStatus(status) {
         roomStatusVersion.value++
         if (status.bound && room.value) rememberedRooms.value = forgetRoomOwnership(rememberedRooms.value, room.value)
@@ -375,7 +426,8 @@ function enter() {
       },
       onClose() { leave(false); prepareRoomEntry(); error.value = '房间连接已断开，请重新加入；麦克风已停止。' },
     })
-    roomClient.connect(mode.value, name.value.trim(), code.value, rememberedRooms.value.find(value => value.code === code.value)?.ownerToken)
+    roomClient.connect(mode.value, name.value.trim(), code.value, rememberedRooms.value.find(value => value.code === code.value)?.ownerToken,
+      accessTicket ? { accessTicket } : submittedPassword === undefined ? undefined : { password: submittedPassword })
     return
   }
   room.value = mode.value === 'create' ? String(Math.floor(100000 + Math.random() * 900000)) : code.value
@@ -420,6 +472,8 @@ function runSimulation() {
   tick()
 }
 function leave(updateLocation = true) {
+  roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
+  roomPasswordOpen.value = false; roomPasswordMessage.value = ''
   asr.stop()
   roomClient?.close(); roomClient = undefined
   connecting.value = false; selfId.value = ''; roomSessionToken.value = ''; settingsOpen.value = false
@@ -454,6 +508,7 @@ function unlockReactionSound() { if (joined.value && soundEnabled.value) void un
 window.addEventListener('pointerdown', unlockReactionSound)
 window.addEventListener('keydown', unlockReactionSound)
 onUnmounted(() => {
+  roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
   finishTypedSend(); reactionSound.close()
   window.removeEventListener('pointerdown', unlockReactionSound)
   window.removeEventListener('keydown', unlockReactionSound)
@@ -489,6 +544,7 @@ prepareRoomEntry()
   <div v-else class="app-shell" :class="{ 'in-room': joined }">
     <header v-if="!joined" class="header"><a class="brand" href="/"><span class="brand-icon">≋</span>实时字幕<span class="brand-en">LIVE CAPTIONS</span></a><div class="header-links"><AccountAccess @identity="updateAccountIdentity" /><a class="glasses-link" href="/glasses">▱ AR 预览 <span>↗</span></a></div></header>
     <RoomPresets v-if="presetsOpen" :user="accountUser" :configuration="{ schemaVersion: 1, asrProvider, adaptiveCards }" :can-load="!joined && !connecting" @close="presetsOpen = false" @load="loadRoomPreset" />
+    <RoomPasswordPrompt v-if="roomPasswordOpen && !joined" :room-code="code" :busy="connecting" :message="roomPasswordMessage" :signed-in="!!accountUser" @submit="enter" @cancel="cancelRoomPassword" />
     <main v-if="!joined" class="landing">
       <section class="intro"><div class="eyebrow"><span class="dot"></span> 多人实时字幕 · 保留模拟测试</div><h1>多人<span>实时字幕</span></h1><p>按成员显示实时字幕，让每句话随时间自然消散。</p><div class="feature-tags"><span>◎ 最多 8 名成员</span><span>◷ 每句话独立渐隐</span><span>✦ 无字幕历史记录</span></div></section>
       <section class="entry-card">
@@ -525,7 +581,7 @@ prepareRoomEntry()
           </button>
           <div><h1>字幕房间</h1><button class="copy-room" @click="copyCode" aria-label="复制房间码">{{ room }} · {{ copied ? '已复制' : '复制房间码' }}</button></div>
         </div>
-        <div class="room-actions"><AccountAccess @identity="updateAccountIdentity" /><button aria-label="全局音效设置" :aria-expanded="soundSettingsOpen" @click="openSoundSettings">音效：{{ soundEnabled ? '开' : '关' }}</button><button @click="presetsOpen = true">个人存档</button><button @click="settingsOpen = !settingsOpen" :aria-expanded="settingsOpen">豆包配置</button><button class="room-exit" @click="leave()">返回首页</button></div>
+        <div class="room-actions"><AccountAccess @identity="updateAccountIdentity" /><button aria-label="全局音效设置" :aria-expanded="soundSettingsOpen" @click="openSoundSettings">音效：{{ soundEnabled ? '开' : '关' }}</button><button @click="presetsOpen = true">个人存档</button><button @click="settingsOpen = !settingsOpen" :aria-expanded="settingsOpen">房间设置</button><button class="room-exit" @click="leave()">返回首页</button></div>
       </header>
       <p v-if="shareMessage" class="share-message" role="status">{{ shareMessage }}</p>
       <input v-if="manualShare" class="manual-share" aria-label="房间分享链接" :value="shareUrl" readonly @focus="($event.target as HTMLInputElement).select()"/>
@@ -566,7 +622,7 @@ prepareRoomEntry()
       <p v-else class="room-grid-note">普通话 · {{ roomMode === 'online' ? '每人独立开麦，字幕同步到同房成员' : '仅“我”接收真实语音' }} · {{ asrProvider === 'doubao' ? '本地检测到说话后上传至豆包，按服务用量计费' : '音频可能发送至浏览器语音服务' }}</p>
       <label class="layout-experiment"><input v-model="adaptiveCards" type="checkbox" />{{ adaptiveCards ? '动态自适应布局（实验）' : '固定等分布局（原版）' }}</label>
       <section class="room-stage" aria-label="房间内容">
-        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :starting-member-id="asrState === 'starting' ? me?.id : undefined" :live-input="inputMode === 'microphone'" :online-room="roomMode === 'online'" :typed-draft="typedDraft" :reactions="reactions" :reaction-cooldown-until="nextReactionAt" :selected-reactions="selectedReactions" @edit-typed="typingEditorOpen = true" @react="sendReaction" @reaction-settings="reactionSettingsOpen = true" @toggle-mic="toggleMemberMic" />
+        <MemberCaptionGrid :adaptive="adaptiveCards" :members="members" :captions="captions" :now="now" :self-id="me?.id" :starting-member-id="asrState === 'starting' ? me?.id : undefined" :protected-member-id="selfModeMenuOpen || ['starting', 'reconnecting', 'error'].includes(asrState) ? me?.id : undefined" :live-input="inputMode === 'microphone'" :online-room="roomMode === 'online'" :typed-draft="typedDraft" :reactions="reactions" :reaction-cooldown-until="nextReactionAt" :selected-reactions="selectedReactions" @edit-typed="typingEditorOpen = true" @react="sendReaction" @reaction-settings="reactionSettingsOpen = true" @toggle-mic="toggleMemberMic" @select-typing="selectMemberTyping" />
       </section>
       <TypingComposer v-if="typingEditorOpen && me?.mode === 'typing'" v-model:draft="typedDraft" :sending="typedSending" :now="now" :cooldown-until="nextTypedAt" @send="sendTypedCaption" @close="typingEditorOpen = false" />
       <ReactionSettings v-if="reactionSettingsOpen" :selected="selectedReactions" @save="updateReactionSelection" @close="reactionSettingsOpen = false" />
@@ -578,10 +634,10 @@ prepareRoomEntry()
         <small>豆包返回的是响应中的音频时长，不是账单计费时长；本次数据仅存页面内存。</small>
       </p>
       <p class="room-grid-note">{{ stressProgress || '确认后按字数显示 3 / 6 / 10 秒，再渐隐 2 秒 · 无历史回看' }}</p>
+      <p class="room-grid-note" title="闭麦且无字幕连续 5 秒后，卡片收起到底部头像栏">短按开关麦 · 长按、右键或 ‹ 打字</p>
       <div class="room-bottom-bar">
         <div><strong>{{ inputMode === 'simulation' ? '模拟测试' : '真实麦克风' }}</strong><small>{{ inputMode === 'simulation' ? '未采集音频' : asrProvider === 'doubao' ? '豆包 ASR 2.0 · 普通话' : '浏览器语音识别 · zh-CN' }}</small></div>
-        <button v-if="inputMode === 'microphone' && me" class="room-self-mic" :aria-pressed="asrState === 'listening' || asrState === 'reconnecting'" :aria-busy="asrState === 'starting'" @click="toggleMemberMic(me.id)">{{ asrState === 'starting' ? '取消开启' : me.mode === 'typing' ? '开启麦克风' : asrActive ? '关闭麦克风' : '切换打字' }}</button>
-        <button v-else-if="me" class="room-self-mic" :aria-pressed="me.mic" @click="toggleMemberMic(me.id)">{{ me.mic ? '关闭我的麦克风' : '开启我的麦克风' }}</button>
+        <MemberModeControl v-if="me" :member-name="me.name" :microphone="me.mic" :mode="me.mode" :preparing="inputMode === 'microphone' && asrState === 'starting'" allow-typing labelled @toggle-mic="toggleMemberMic(me.id)" @select-typing="selectMemberTyping(me.id)" @menu-open="selfModeMenuOpen = $event" />
       </div>
     </main>
     <footer v-if="!joined"><span>实时字幕 · 面对面多人交流</span><span>多人联网 / 本地演示 <span class="footer-dot">●</span> 保留模拟测试</span></footer>

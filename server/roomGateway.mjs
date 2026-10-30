@@ -1,10 +1,12 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import { testDoubaoConnection } from './apiSettings.mjs'
+import { createRoomAccess } from './roomAccess.mjs'
 
 // 房间资料可持久化；成员、令牌、音频与字幕永远只在当前连接内存中。
 export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomStore, probe = testDoubaoConnection } = {}) {
   const rooms = new Map(), sessions = new Map()
+  const roomAccess = createRoomAccess({ saveRoom: room => roomStore?.save(room) })
   for (const record of roomStore?.list() ?? []) rooms.set(record.code, { asrEnabled: true, ...record, apiKey: '', keyState: 'missing', members: new Map(), settingsBusy: false })
   const aliases = new Map()
   for (const room of rooms.values()) for (const code of room.aliases ?? []) aliases.set(code, room.code)
@@ -19,16 +21,17 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
   const broadcast = (room, event) => { for (const member of room.members.values()) send(member.socket, event) }
   const publishMembers = room => broadcast(room, { type: 'members', members: [...room.members.values()].map(({ id, name, mic, mode }) => ({ id, name, mic, mode, color: '' })) })
   const reactionTypes = new Set(['agree', 'disagree', 'question', 'received', 'fun', 'thanks', 'sorry', 'slower', 'repeat', 'wait', 'unclear', 'understood', 'okay'])
-  sockets.on('connection', socket => {
+  sockets.on('connection', (socket, address) => {
     let member, room, messages = 0, windowStart = Date.now(), messageQueue = Promise.resolve()
     socket.alive = true
     socket.on('pong', () => { socket.alive = true })
     const timeout = setTimeout(() => socket.close(1008, 'join timeout'), 10000)
-    const fail = message => send(socket, { type: 'error', message })
+    const fail = (message, reason) => send(socket, { type: 'error', message, ...(reason ? { reason, code: room?.code } : {}) })
     socket.on('error', () => {})
     const handleMessage = async (packet, binary) => {
       try {
         if (socket.readyState !== WebSocket.OPEN) return
+        if (member && sessions.get(member.token) !== member) return
         const event = JSON.parse(packet.toString())
         if (!member) {
           if (!['create', 'join'].includes(event.type) || typeof event.name !== 'string' || !event.name.trim() || event.name.trim().length > 20) { fail('请输入有效显示名称。'); return }
@@ -49,7 +52,13 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
           }
           if (room.members.size >= 8) { fail('房间已满，最多允许 8 人。'); return }
           const owner = !room.ownerUid && (!!ownerToken || verifyOwnerToken(room, event.ownerToken))
-          member = { id: randomUUID(), token: randomUUID(), name: event.name.trim(), mic: false, mode: 'muted', socket, room, owner, asr: undefined, lastTypedAt: 0, lastReactionAt: 0 }
+          if (room.settingsBusy) { fail('房间设置正在更新，请稍后重试。'); return }
+          const accountUid = roomAccess.consumeTicket(room, event.accessTicket)
+          if (!owner && !accountUid) {
+            try { roomAccess.verifyCode(room, event.password, `network:${address}`) }
+            catch (error) { fail(error.message, error.reason); return }
+          }
+          member = { id: randomUUID(), token: randomUUID(), name: event.name.trim(), mic: false, mode: 'muted', socket, room, owner, accountUid, asr: undefined, lastTypedAt: 0, lastReactionAt: 0 }
           room.members.set(member.id, member); sessions.set(member.token, member)
           clearTimeout(timeout)
           send(socket, { type: 'joined', code: room.code, aliases: room.aliases ?? [], memberId: member.id, token: member.token, isOwner: owner, ...(ownerToken ? { ownerToken } : {}) })
@@ -112,7 +121,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
   }, heartbeatMs)
   heartbeat.unref()
   const publicStatus = room => ({ code: room.code, bound: !!room.ownerUid, configured: !!room.apiKey, keyState: room.keyState,
-    source: room.apiKey ? 'room' : 'none', asrEnabled: room.asrEnabled, busy: room.settingsBusy })
+    source: room.apiKey ? 'room' : 'none', asrEnabled: room.asrEnabled, busy: room.settingsBusy, requiresPassword: !!room.accessCode })
   const problem = (statusCode, message) => Object.assign(Error(message), { statusCode })
   const findRoom = code => rooms.get(aliases.get(code) ?? code)
   const anonymousOwner = member => !!member?.owner && !member.room.ownerUid
@@ -139,30 +148,45 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
         changes = { apiKey: key, keyState: 'configured' }
       } else if (action === 'delete') changes = { apiKey: '', keyState: 'deleted' }
       else if (action === 'asr' && typeof command.enabled === 'boolean') changes = { asrEnabled: command.enabled }
+      else if (action === 'access-code') {
+        if (typeof command.accessCode !== 'string' || (command.accessCode !== '' && !/^\d{4}$/.test(command.accessCode))) throw problem(400, '入房码需为四位数字。')
+        if (command.accessCode === (room.accessCode ?? '')) return { room: { ...publicStatus(room), busy: false }, message: '入房码未改变。' }
+        changes = { accessCode: command.accessCode, accessVersion: randomUUID(), accessAccounts: [] }
+      }
       // 绑定与旧摘要撤销一起原子落盘；匿名凭据不再能在未来兼容路径中恢复权限。
       else if (action === 'bind') changes = { ownerUid: command.uid, ownerHash: hash(randomUUID()) }
       else throw problem(400, '无效的房间管理操作。')
       // Key只更新本进程内存；元数据写入失败则清掉本房Key，重启也没有凭据可恢复。
-      const affectsAsr = action !== 'bind'
+      const affectsAsr = !['bind', 'access-code'].includes(action)
       if (affectsAsr) stopRoomAsr(room)
       try {
-        if (action === 'asr' || action === 'bind') await roomStore?.save({ code: room.code,
-          ownerHash: changes.ownerHash ?? room.ownerHash, ownerUid: changes.ownerUid ?? room.ownerUid,
-          asrEnabled: changes.asrEnabled ?? room.asrEnabled, aliases: room.aliases ?? [] })
+        if (['asr', 'bind', 'access-code'].includes(action)) await roomStore?.save({ ...room, ...changes })
       }
       catch {
         if (affectsAsr) { room.apiKey = ''; room.keyState = 'missing' }
         broadcast(room, { type: 'room-status', ...publicStatus(room) })
-        throw problem(500, affectsAsr ? '房间开关保存失败；本房Key已清除，请修复后重试并重新填写Key。' : '房间绑定保存失败；原匿名房主权限保留，请重试。')
+        throw problem(500, action === 'access-code' ? '入房码保存失败，原设置保留，请重试。' : affectsAsr ? '房间开关保存失败；本房Key已清除，请修复后重试并重新填写Key。' : '房间绑定保存失败；原匿名房主权限保留，请重试。')
       }
       Object.assign(room, changes)
-      if (action === 'bind') for (const member of room.members.values()) member.owner = false
+      if (action === 'bind') for (const member of room.members.values()) {
+        if (member.owner) member.accountUid = command.uid
+        member.owner = false
+      }
+      if (action === 'access-code' && room.accessCode) {
+        for (const member of room.members.values()) {
+          if (anonymousOwner(member) || (room.ownerUid && member.accountUid === room.ownerUid)) continue
+          sessions.delete(member.token); member.asr?.terminate(); room.members.delete(member.id)
+          send(member.socket, { type: 'access-revoked', code: room.code, message: '房主已设置或更改入房码，请重新验证。' })
+          member.socket.close(1008, 'room access changed')
+        }
+        publishMembers(room)
+      }
       broadcast(room, { type: 'room-status', ...publicStatus(room), busy: false })
-      return { room: { ...publicStatus(room), busy: false }, message: action === 'save' ? 'Key已设置，仅当前后端进程有效，重启后需重新填写。' : action === 'delete' ? '本房Key已删除。' : '房间设置已保存。' }
+      return { room: { ...publicStatus(room), busy: false }, message: action === 'save' ? 'Key已设置，仅当前后端进程有效，重启后需重新填写。' : action === 'delete' ? '本房Key已删除。' : action === 'access-code' ? room.accessCode ? '入房码已保存，其他成员需重新验证。' : '已移除入房码，成员可直接加入。' : '房间设置已保存。' }
     } finally { room.settingsBusy = false }
   }
   return {
-    upgrade: (request, socket, head) => sockets.handleUpgrade(request, socket, head, client => sockets.emit('connection', client)),
+    upgrade: (request, socket, head) => sockets.handleUpgrade(request, socket, head, client => sockets.emit('connection', client, request.socket.remoteAddress ?? 'unknown')),
     findSession: token => sessions.get(token),
     publicStatus, anonymousOwner,
     manageAnonymous: (member, command) => manage(member.room, command, () => {
@@ -172,6 +196,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
       if (command.action === 'list') return { rooms: [...rooms.values()].filter(room => room.ownerUid === command.uid).map(publicStatus) }
       const room = findRoom(command.code)
       if (!room || room.persisting) throw problem(404, '房间不存在。')
+      if (command.action === 'access') return roomAccess.authorizeAccount(room, command.uid, command.password)
       return manage(room, command, () => {
         if (command.action === 'bind') {
           if (room.ownerUid) throw problem(409, '房间已经绑定账号，不能重复认领。')
@@ -181,6 +206,7 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
     },
     close: async () => {
       clearInterval(heartbeat)
+      roomAccess.clear()
       for (const room of rooms.values()) { room.apiKey = ''; room.keyState = 'missing' }
       for (const socket of sockets.clients) socket.terminate()
       await new Promise(resolve => sockets.close(resolve))

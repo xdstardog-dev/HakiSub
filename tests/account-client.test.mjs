@@ -18,6 +18,11 @@ assert.ok(calls.every(call => call.options.credentials === 'include' && call.opt
 assert.equal(calls[2].options.headers['X-CSRF-Token'], 'ephemeral-csrf')
 assert.equal(calls[2].options.headers.Authorization, undefined)
 assert.equal(JSON.parse(calls[2].options.body).configuration.apiKey, undefined)
+await client.roomAccess('123456', '0042')
+assert.ok(calls.at(-1).url.endsWith('/rooms/123456/access'))
+assert.deepEqual(JSON.parse(calls.at(-1).options.body), { password: '0042' })
+await client.roomAccess('123456')
+assert.deepEqual(JSON.parse(calls.at(-1).options.body), {})
 let signal
 const pendingClient = model.createAccountClient((_url, options) => new Promise((_resolve, reject) => { signal = options.signal; signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))) }))
 const pending = pendingClient.identity(); pendingClient.cancel(); await assert.rejects(pending, /取消或超时/); assert.equal(signal.aborted, true)

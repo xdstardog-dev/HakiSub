@@ -6,11 +6,12 @@ const emit = defineEmits(['open-rooms', 'session-expired'])
 const rooms = ref([]), keys = ref({}), busy = ref(false), error = ref(''), message = ref(''), deleting = ref('')
 const revealedKeys = ref({}), visibleKeys = ref({}), editingKeys = ref({})
 const selectedCode = ref('')
+const newAccessCode = ref('')
 const selectedRoom = computed(() => rooms.value.find(room => room.code === selectedCode.value))
 const displayedRooms = computed(() => props.overview ? rooms.value.slice(0, 3) : rooms.value)
 function clearKeyDisplay() { revealedKeys.value = {}; visibleKeys.value = {}; editingKeys.value = {} }
 function selectRoom(code = '') {
-  generation++; keys.value = {}; clearKeyDisplay(); deleting.value = ''; error.value = ''; message.value = ''; selectedCode.value = code; busy.value = false
+  generation++; keys.value = {}; newAccessCode.value = ''; clearKeyDisplay(); deleting.value = ''; error.value = ''; message.value = ''; selectedCode.value = code; busy.value = false
 }
 function editKey(code, event) { keys.value[code] = event.target.value; delete revealedKeys.value[code] }
 async function toggleKey(room) {
@@ -22,22 +23,23 @@ async function toggleKey(room) {
 let generation = 0, disposed = false
 async function refresh() {
   const current = ++generation
-  keys.value = {}; clearKeyDisplay(); deleting.value = ''; error.value = ''; message.value = ''; busy.value = true
+  keys.value = {}; newAccessCode.value = ''; clearKeyDisplay(); deleting.value = ''; error.value = ''; message.value = ''; busy.value = true
   try {
     const result = await accountRequest('/api/projects/hakisub/rooms')
     if (!disposed && current === generation) { rooms.value = result.rooms; if (!selectedRoom.value) selectedCode.value = '' }
   } catch (issue) { if (!disposed && current === generation) { rooms.value = []; error.value = issue.message; if (issue.status === 401) emit('session-expired') } }
   finally { if (!disposed && current === generation) busy.value = false }
 }
-async function manage(room, action) {
+async function manage(room, action, accessCode = newAccessCode.value) {
   if (busy.value || room.busy) return
+  if (action === 'access-code' && (typeof accessCode !== 'string' || (accessCode !== '' && !/^\d{4}$/.test(accessCode)))) return
   const current = generation, apiKey = keys.value[room.code]?.trim()
   if (action === 'save' && (!apiKey || /^\*+$/.test(apiKey))) return
   clearKeyDisplay()
-  keys.value = {}; deleting.value = ''; busy.value = true; error.value = ''; message.value = ''
+  keys.value = {}; newAccessCode.value = ''; deleting.value = ''; busy.value = true; error.value = ''; message.value = ''
   try {
     const result = await accountRequest(`/api/projects/hakisub/rooms/${room.code}/manage`, 'POST', {
-      action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled: !room.asrEnabled } : {}),
+      action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled: !room.asrEnabled } : {}), ...(action === 'access-code' ? { accessCode } : {}),
     })
     if (disposed || current !== generation) return
     if (action === 'reveal') { revealedKeys.value[room.code] = result.apiKey ?? ''; visibleKeys.value[room.code] = true; return }
@@ -57,7 +59,7 @@ function focus() { if (!busy.value) void refresh() }
 watch(() => props.uid, () => { selectRoom(); rooms.value = []; void refresh() })
 watch(() => props.overview, () => { selectRoom(); void refresh() })
 onMounted(() => { void refresh(); window.addEventListener('focus', focus) })
-onUnmounted(() => { disposed = true; generation++; keys.value = {}; clearKeyDisplay(); window.removeEventListener('focus', focus) })
+onUnmounted(() => { disposed = true; generation++; keys.value = {}; newAccessCode.value = ''; clearKeyDisplay(); window.removeEventListener('focus', focus) })
 </script>
 <template>
   <section class="owned-rooms" :class="{ 'room-overview': overview }" aria-labelledby="owned-rooms-title" :aria-busy="busy">
@@ -68,6 +70,11 @@ onUnmounted(() => { disposed = true; generation++; keys.value = {}; clearKeyDisp
     <div v-if="!selectedRoom" class="room-grid" :class="{ 'summary-grid': overview }"><article v-for="room in displayedRooms" :key="room.code" class="room-card"><div class="room-card-heading"><span class="room-icon" aria-hidden="true">▦</span><div><small>HAKISUB ROOM</small><h3>房间 {{ room.code }}</h3></div></div><dl class="room-status"><div><dt>豆包 ASR</dt><dd><span class="status-dot" :class="{ enabled: room.asrEnabled }"></span>{{ room.asrEnabled ? '已开启' : '已暂停' }}</dd></div><div><dt>API Key</dt><dd>{{ room.keyState === 'deleted' ? '房主已删除' : room.configured ? '已配置' : '未配置' }}</dd></div></dl><div v-if="!overview" class="room-card-actions"><button class="secondary" :disabled="busy" @click="selectRoom(room.code)">管理房间</button><a :href="`${projectOrigin}/${room.code}/`" target="_blank" rel="noopener noreferrer">进入房间 ↗</a></div></article></div>
     <template v-if="selectedRoom && !overview">
     <article v-for="room in [selectedRoom]" :key="room.code" class="room-management">
+      <div class="settings-card"><h3>房间入房码</h3><p class="muted">{{ room.requiresPassword ? '已设置四位入房码' : '未设置，可直接加入' }}</p>
+        <form @submit.prevent="manage(room, 'access-code')"><fieldset :disabled="busy || room.busy"><label :for="`entry-code-${room.code}`">{{ room.requiresPassword ? '更换四位入房码' : '设置四位入房码' }}</label><input :id="`entry-code-${room.code}`" v-model="newAccessCode" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required />
+          <div class="button-row"><button type="submit" class="secondary" :disabled="!/^\d{4}$/.test(newAccessCode)">保存入房码</button><button v-if="room.requiresPassword" type="button" class="secondary" @click="manage(room, 'access-code', '')">移除入房码</button></div>
+        </fieldset></form><p class="muted">简单入房凭证。设置或更换后，其他成员需重新验证；登录账号验证一次后跨设备、重启仍免输。</p>
+      </div>
       <div class="settings-card"><div class="section-heading"><div><h3>豆包语音识别</h3><p class="muted">房主 · 当前账号</p></div><a :href="`${projectOrigin}/${room.code}/`" target="_blank" rel="noopener noreferrer">进入房间 ↗</a></div><p><span class="status-dot" :class="{ enabled: room.asrEnabled }"></span>{{ room.asrEnabled ? '豆包 ASR 已开启' : '豆包 ASR 已暂停' }}</p><button type="button" class="secondary" :disabled="busy || room.busy" @click="manage(room, 'asr')">{{ room.asrEnabled ? '暂停豆包 ASR' : '开启豆包 ASR' }}</button><small>开启后仍需有效 Key，各成员须手动开麦。</small></div>
       <div class="settings-card"><h3>API Key</h3><p class="muted">{{ room.keyState === 'deleted' ? '房主已删除' : room.configured ? '已配置' : '未配置' }} · 仅在明确点击显示时读取原文。</p>
       <form @submit.prevent="manage(room, 'save')"><fieldset :disabled="busy || room.busy">

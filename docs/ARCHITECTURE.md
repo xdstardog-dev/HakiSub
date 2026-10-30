@@ -1,5 +1,29 @@
 # HakiSub 架构
 
+## 四位入房码与账号进房资格（2026-10-31，本地实现，未部署）
+
+`roomStore.mjs`写v4、兼容读取v1～v4；新增accessCode（空或四位数字，按用户明确要求明文）、accessVersion（变更时随机UUID）和accessAccounts（已验证的内部账号ID）。所有字段仅属于本房间，原子写入/权限沿用既有房间存储，不复制API Key或字幕。读写及维护换号保留进房码/版本/账号资格；旧程序拒绝v4以避免忽略访问控制。账号SQLite schema保持v2，不新增Key或所有权镜像。每房间记住最多5000个账号。
+
+`roomAccess.mjs`在网关实例中管理四位码校验、基础错误限流和60秒单次入场票据。已验证账号资格持久化，票据/错误窗口只在内存；正常重启后通过账号服务重新签票即可继续免输。游客直接在WSS首条join消息提交password；登录用户调用账号`POST /api/projects/hakisub/rooms/:code/access`（仅允许可选password），账号服务从Cookie取真实内部UID，保留CSRF/来源/登录会话检查，经既有HMAC签名通道发送action=access。网关验证本房间资格或四位码，成功落盘资格后才签发票据；前端再以accessTicket加入。票据绑定房间对象、账号、当前版本及到期时间，成功使用后删除；客户端提交UID不能授予资格。账号服务另按网络/账号限制请求频率；网关错误按房间及账号或实际连接来源跨重连累计5次/分钟，不依赖前端计时。
+
+`roomGateway.mjs`在分配成员/临时ASR令牌、发送room-status和成员列表之前验证。缺码/错码/限流通过结构化error.reason返回，旧客户端仍按普通错误失败；普通客户端只收到requiresPassword布尔值，不能读取入房码或账号资格。合法匿名房主凭据和经签票证明的绑定房主可直接进入管理。新增access-code管理动作仅房主可用，空字符串移除；新码与原码相同不撤权，不同则先原子保存，再旋转版本、清空账号资格、同步删除非房主成员/ASR令牌并关闭其音频与房间连接；已排队旧成员消息也检查令牌失效。保存失败保留旧入房码/资格和ASR Key。API Key仍仅内存，原暂停/关闭/清理协议保留。
+
+`roomClient.ts`仅在WSS首条消息携带password或accessTicket，发送后清空参数，不放URL。App维护入房操作代次及可取消账号请求，取消/离房/卸载丢弃迟到授权，账号切换后不使用旧账号票据。RoomPasswordPrompt使用原生dialog、四位数字输入/前导零、错误与忙碌状态、提交/卸载清空；access-revoked停止音频和清空字幕/草稿后返回弹窗。RoomApiSettings与账号OwnedRooms提供设置/更换/移除，普通成员只读；界面统一改名“房间设置”。无新运行依赖，无音频/字幕历史保存。
+
+测试分层：room-access.test.mjs真实回环HTTP/WSS＋假ASR覆盖验证前不泄露、房主/账号/房间边界、单次票据/到期、跨重连限流、资格与入房码重启/换号保留、改码在线撤权及失败原子性；accounts/tests/room-access.test.mjs使用隔离真实SQLite/Argon2/Cookie/CSRF和签名服务，覆盖跨设备、双服务重启、退出、伪造UID和改码失效。App、roomClient、两处设置和RoomPasswordPrompt模拟覆盖取消/账号切换/迟到响应/清理。浏览器room-access-browser.mjs使用正式构建和真实隔离网关、合成账号身份代理签名，在480/390/320px验证完整流程并保存截图；真实Cookie边界由账号集成测试覆盖，未将合成浏览器身份当作生产Cookie验收。主测试、账号/房主测试、主/账号构建、新旧交互与账号工作台浏览器回归均需运行；真实设备/麦克风/豆包另验。
+
+## 角色收束与输入方式（2026-10-30，本地实现，未部署）
+
+`memberContraction.ts`维护每成员独立的空白闭麦起点和收束状态；只有闭麦且无可见字幕时连续5秒才收束，新字/开麦/打字清零并展开，渐隐未结束仍计为有字。成员离开删除状态，只有点击本人的头像才展开和重启计时；restoreMember按selfId拒绝他人ID，普通点击与键盘激活均不能展开他人卡片。状态仅存在本端内存，不改变房间协议、ASR、音频和`captions.ts`。`MemberCaptionGrid.vue`统一读取同一轮更新后的字幕和时钟，避免逐项prop更新用旧时钟提前开始计时；固定/动态布局只分配展开成员，原成员顺序保留，底部独立单行头像栏横向滚动。全员收束提示点击自己的头像；他人头像标签仅提示长按/右键回应，继续接收回应标记和菜单，点击及回应均不触发展开。指针按住、菜单、键盘焦点及本人ASR准备/重连/错误保护卡片；普通指针焦点不阻止闭麦后的收束。卸载/窗口失焦清理按压和长按计时器，原字幕强调和滚动观察器保留。
+
+`MemberModeControl.vue`被卡片及底部常驻控件复用，只发出toggleMic/selectTyping/menuOpen意图。App负责实际ASR开关、模式广播和打字输入窗：短按开麦/闭麦互换，typing短按先回muted；明确选中打字后先停止旧ASR、丢弃interim、保留final与草稿，再广播typing并自动打开输入窗。原会话代次继续隔离迟到回调。每个模式控件独立保存按压/菜单状态，Pointer Capture支持长按500ms后拖入左侧目标，松手命中才提交，移出取消；长按原地松手保留菜单并抑制合成click。系统触屏contextmenu不提前展开，右键只展开不切模式。菜单Teleport至body避免卡片裁剪，限制视口边界，支持显式展开按钮、方向键/菜单键/Shift+F10、Escape与外部点击；卸载清理计时器和窗口监听。
+
+验证：`caption-grid.test.mjs`覆盖连续5秒空白计时/新字清零/渐隐/同轮时钟快照/恢复顺序/焦点保护/成员清理；`member-mode-control.test.mjs`覆盖实际SFC模板及长按、拖入确认、移出取消、合成点击抑制、键盘、禁用和卸载；App模拟回归短按及显式打字、草稿和ASR停止。`test:member-controls:browser`使用隔离内存网关、假Web Speech和Chrome时钟在480/390/320px覆盖八成员、原生鼠标/CDP模拟触摸、底部恢复、单行滚动与固定/动态边界，输出本地截图；旧双房间八成员浏览器回归同步更新新入口。无新运行依赖，真实物理手机/麦克风/豆包另验。
+
+## 生产宿主机维护（2026-10-29）
+
+应用镜像、四个持久卷、Compose及代理/密钥结构保持。升级14个系统/Docker包，补装linux-virtual元包，重启后运行6.8.0-147-generic、Docker29.9.2、Compose5.6.1；宿主机及生产容器无PHP。原5账号全记录/23房、SQLite完整性、秘密配置和证书核验通过，自检后6账号/24房，房间Key遵循重启后失效规则。清理已核验的重复镜像.tar、相同临时文件、构建/APT缓存、hello-world及过期journal，释放约1.97GB；回滚镜像/源码/备份保留，历史九份.tar路径需要时从保留镜像重新导出。保留cloud-init hold及待云平台确认的RETBleed警告。详见[维护记录](PRODUCTION-MAINTENANCE-20261029.md)。
+
 ## XDstar 账号工作台（2026-10-29，已部署）
 
 19:43:06（北京时间）发布`account-workspace-20261029T1139Z`，功能源码`bb5447df91bf339f92247f7e2d4b270be6984706`。基于原账号Linux镜像仅替换dist，后端逐项哈希与依赖配置一致；单独重建accounts，HakiSub/Caddy容器ID未变，原账号卷、schema v2及23房/4账号身份保留。线上新建一个明确标记的合成自检账号，最终5账号/23房；真实HTTPS静态资源3项匹配，三视口工作台/抽屉、注册/UID登录/退出、host-only Secure/HttpOnly Cookie与跨子域凭据CORS通过。真实手机及麦克风/豆包未验；加密备份与只回退账号镜像的入口见ACCOUNT-DEPLOYMENT。

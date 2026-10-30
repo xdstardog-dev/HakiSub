@@ -3,6 +3,8 @@ import { computed, reactive, watch, ref, onMounted, onUnmounted, nextTick, type 
 import { adaptiveLayout, type TileRect } from '../adaptiveLayout'
 import { captionOpacity, type Caption } from '../captions'
 import { DEFAULT_REACTION_TYPES, QUICK_REACTIONS, REACTION_SELECTION_LIMIT, type MemberMode, type ReactionType, type VisibleReaction } from '../roomInteractions'
+import MemberModeControl from './MemberModeControl.vue'
+import { updateMemberContraction, expandContractedMember, type MemberContractionState } from '../memberContraction'
 
 const props = defineProps<{
   members: { id: string; name: string; mic: boolean; mode?: MemberMode }[]
@@ -10,6 +12,7 @@ const props = defineProps<{
   now: number
   selfId?: string
   startingMemberId?: string
+  protectedMemberId?: string
   liveInput?: boolean
   onlineRoom?: boolean
   adaptive?: boolean
@@ -18,7 +21,10 @@ const props = defineProps<{
   reactionCooldownUntil?: number
   selectedReactions?: ReactionType[]
 }>()
-const emit = defineEmits<{ toggleMic: [id: string]; editTyped: []; react: [targetId: string, reaction: ReactionType]; reactionSettings: [] }>()
+const emit = defineEmits<{ toggleMic: [id: string]; selectTyping: [id: string]; editTyped: []; react: [targetId: string, reaction: ReactionType]; reactionSettings: [] }>()
+const contractionStates = reactive(new Map<string, MemberContractionState>())
+const pressedMembers = reactive(new Map<number, string>())
+const focusedMemberId = ref<string | null>(null), modeMenuMemberId = ref<string | null>(null)
 const selectedReactionOptions = computed(() => (props.selectedReactions ?? DEFAULT_REACTION_TYPES).slice(0, REACTION_SELECTION_LIMIT).flatMap(type => QUICK_REACTIONS.filter(option => option.type === type)))
 const reactionMenu = ref<{ memberId: string; left: number; top: number } | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
@@ -43,6 +49,8 @@ function handleCardKeydown(event: KeyboardEvent, memberId: string) {
   openReactionMenu(memberId, rect.left, rect.top)
 }
 function startLongPress(event: PointerEvent, memberId: string) {
+  focusedMemberId.value = null
+  pressedMembers.set(event.pointerId, memberId)
   if (memberId === props.selfId || event.pointerType === 'mouse' || !event.isPrimary) return
   cancelLongPress()
   suppressTouchContextMenuUntil = Date.now() + 1000
@@ -53,6 +61,7 @@ function moveLongPress(event: PointerEvent) {
   if (pressStart && (event.pointerId !== pressStart.pointerId || Math.hypot(event.clientX - pressStart.x, event.clientY - pressStart.y) > 10)) cancelLongPress()
 }
 function finishLongPress(event: PointerEvent) {
+  pressedMembers.delete(event.pointerId)
   if (event.pointerType !== 'mouse') suppressTouchContextMenuUntil = Date.now() + 700
   cancelLongPress()
 }
@@ -62,6 +71,26 @@ function dismissReactionMenu(event: PointerEvent) {
 function handleEscape(event: KeyboardEvent) {
   if (event.isComposing) return
   if (event.key === 'Escape') reactionMenu.value = null
+}
+function handleFocusOut(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) focusedMemberId.value = null
+}
+function handleFocusIn(event: FocusEvent, memberId: string) {
+  // 点击闭麦后按钮会保留焦点；只保护键盘焦点，不能因此永远不收起。
+  focusedMemberId.value = (event.target as HTMLElement).matches(':focus-visible') ? memberId : null
+}
+function cancelInteractions() { pressedMembers.clear(); cancelLongPress() }
+function restoreMember(memberId: string, event: MouseEvent) {
+  if (memberId !== props.selfId || reactionMenu.value?.memberId === memberId) return
+  focusedMemberId.value = null
+  expandContractedMember(contractionStates, memberId, props.now)
+  if (event.detail === 0) nextTick(() => gridElement.value?.querySelector<HTMLElement>(`[data-member-id="${CSS.escape(memberId)}"]`)?.focus({ preventScroll: true }))
+}
+function handleAvatarKeydown(event: KeyboardEvent, memberId: string) {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
+  event.preventDefault()
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  openReactionMenu(memberId, rect.left, rect.top)
 }
 function selectReaction(reaction: ReactionType) {
   const target = reactionMenu.value?.memberId
@@ -125,26 +154,24 @@ function tileStyle(index: number) {
   const rect = props.adaptive ? tileRects.value[index] : undefined
   return rect ? { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` } : undefined
 }
-watch(() => [props.adaptive, props.members.map(member => member.id).join(',')], async () => {
-  await nextTick()
-  measureLayout(true)
-})
 onMounted(() => {
   window.addEventListener('pointerdown', dismissReactionMenu)
   window.addEventListener('pointerup', finishLongPress)
   window.addEventListener('pointercancel', finishLongPress)
   window.addEventListener('keydown', handleEscape)
+  window.addEventListener('blur', cancelInteractions)
   layoutObserver = new ResizeObserver(() => measureLayout())
   if (gridElement.value) layoutObserver.observe(gridElement.value)
   measureLayout(true)
   layoutTimer = setInterval(() => measureLayout(), 600)
 })
 onUnmounted(() => {
-  clearInterval(layoutTimer); layoutObserver?.disconnect(); cancelLongPress()
+  clearInterval(layoutTimer); layoutObserver?.disconnect(); cancelLongPress(); pressedMembers.clear(); contractionStates.clear()
   window.removeEventListener('pointerdown', dismissReactionMenu)
   window.removeEventListener('pointerup', finishLongPress)
   window.removeEventListener('pointercancel', finishLongPress)
   window.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('blur', cancelInteractions)
 })
 
 const scrollObservers = new WeakMap<HTMLElement, ResizeObserver>()
@@ -174,31 +201,38 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
   const speaking = member.mic && captions.some(c => c.state === 'interim')
   return { ...member, captions, speaking, typing: member.mode === 'typing', preparing: member.id === props.startingMemberId }
 }))
+const visibleTiles = computed(() => tiles.value.filter(member => !contractionStates.get(member.id)?.contracted))
+const contractedTiles = computed(() => tiles.value.filter(member => contractionStates.get(member.id)?.contracted))
+watch(() => ({ now: props.now, members: tiles.value.map(member => ({
+  id: member.id,
+  muted: !member.mic && member.mode !== 'typing',
+  hasText: member.captions.some(caption => caption.text.trim() && captionOpacity(caption, props.now) > 0),
+  protected: member.id === props.startingMemberId || member.id === props.protectedMemberId || member.id === focusedMemberId.value
+    || member.id === modeMenuMemberId.value || member.id === reactionMenu.value?.memberId || [...pressedMembers.values()].includes(member.id),
+})) }), ({ members, now }) => updateMemberContraction(contractionStates, members, now), { immediate: true })
+watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',')], async () => {
+  await nextTick(); measureLayout(true)
+})
 </script>
 
 <template>
-  <div ref="gridElement" class="member-caption-grid" :class="{ 'is-adaptive': adaptive && tileRects.length === tiles.length, 'is-compact': adaptive && compactCards }" :data-count="tiles.length" aria-label="按成员分区的实时字幕">
-    <article v-for="(member, index) in tiles" :key="member.id" class="member-tile" :style="tileStyle(index)"
+  <div class="member-caption-surface">
+  <div ref="gridElement" class="member-caption-grid" :class="{ 'is-adaptive': adaptive && tileRects.length === visibleTiles.length, 'is-compact': adaptive && compactCards }" :data-count="visibleTiles.length" aria-label="按成员分区的实时字幕">
+    <article v-for="(member, index) in visibleTiles" :key="member.id" class="member-tile" :style="tileStyle(index)"
       :class="{ 'is-speaking': member.speaking, 'is-muted': !member.mic, 'is-typing': member.typing, 'reaction-target': member.id !== selfId }"
-      @pointerdown="startLongPress($event, member.id)" @pointermove="moveLongPress"
+      @pointerdown.capture="startLongPress($event, member.id)" @pointermove="moveLongPress"
+      @focusin="handleFocusIn($event, member.id)" @focusout="handleFocusOut" @keydown.capture="focusedMemberId = member.id"
       @contextmenu="handleCardContextMenu($event, member.id)"
       @keydown="handleCardKeydown($event, member.id)"
-      :tabindex="member.id !== selfId ? 0 : undefined" :aria-description="member.id !== selfId ? '右键或长按发送快捷回应' : undefined"
+      :tabindex="member.id !== selfId ? 0 : -1" :aria-description="member.id !== selfId ? '右键或长按发送快捷回应' : undefined"
       :data-member-id="member.id" :aria-label="`${member.name}的字幕区域`">
       <div class="tile-heading">
         <div class="tile-identity">
           <h2 :title="member.name">{{ member.name }}<small v-if="member.id === selfId">（我）</small></h2>
           <span class="tile-status">{{ member.typing ? '打字模式' : member.preparing ? '麦克风准备中…' : liveInput && member.id !== selfId && !onlineRoom ? '未接入设备' : !member.mic ? '麦克风关闭' : liveInput ? '麦克风开启' : '模拟麦克风开启' }}</span>
         </div>
-        <button class="tile-mic" :disabled="liveInput && member.id !== selfId" @click.stop="emit('toggleMic', member.id)"
-          :aria-label="member.typing ? `开启${member.name}的麦克风` : member.preparing ? `取消开启${member.name}的麦克风` : member.mic ? `关闭${member.name}的麦克风` : `将${member.name}切换到打字模式`" :aria-busy="member.preparing" :aria-pressed="member.mic" title="开麦 → 闭麦 → 打字 → 开麦">
-          <svg v-if="member.typing" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M5 9h2m2 0h2m2 0h2m2 0h2M5 12h2m2 0h2m2 0h2m2 0h2M7 16h10"/></svg>
-          <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-            <rect x="9" y="3" width="6" height="12" rx="3" />
-            <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
-            <path v-if="!member.mic && !member.preparing" d="m3 3 18 18" />
-          </svg>
-        </button>
+        <MemberModeControl :member-name="member.name" :microphone="member.mic" :mode="member.mode" :preparing="member.preparing" :disabled="liveInput && member.id !== selfId" :allow-typing="member.id === selfId"
+          @toggle-mic="emit('toggleMic', member.id)" @select-typing="emit('selectTyping', member.id)" @menu-open="modeMenuMemberId = $event ? member.id : null" />
       </div>
       <div v-caption-scroll class="tile-text" :class="{ 'can-type': member.typing && member.id === selfId }" @click="editTypedCaption(member.id)" :aria-label="`${member.name}的当前字幕`" aria-live="polite" aria-relevant="additions text">
         <div class="caption-flow">
@@ -219,11 +253,22 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
       <small v-if="now < (reactionCooldownUntil ?? 0)">请稍后再回应</small>
       <div class="reaction-menu-footer"><button @click="reactionMenu = null">取消</button><button class="reaction-settings-trigger" @click="openReactionSettings">设置</button></div>
     </div>
-    <p v-if="!tiles.length" class="grid-empty">暂无成员</p>
+    <p v-if="!visibleTiles.length" class="grid-empty">{{ tiles.length ? '等待发言 · 点击自己的头像展开' : '暂无成员' }}</p>
+  </div>
+  <div v-if="contractedTiles.length" class="contracted-members" aria-label="已收起的闭麦成员">
+    <div v-for="member in contractedTiles" :key="member.id" class="contracted-member" :data-member-id="member.id"
+      @pointerdown="startLongPress($event, member.id)" @pointermove="moveLongPress" @contextmenu="handleCardContextMenu($event, member.id)"
+      @focusin="handleFocusIn($event, member.id)" @focusout="handleFocusOut" @keydown.capture="focusedMemberId = member.id">
+      <button type="button" class="member-avatar" :aria-label="member.id === selfId ? `展开${member.name}的卡片（我），保持闭麦` : `${member.name}，闭麦，长按或右键发送快捷回应`" :title="member.id === selfId ? `${member.name} · 闭麦 · 点击展开` : `${member.name} · 闭麦 · 长按或右键发送快捷回应`" @click="restoreMember(member.id, $event)" @keydown="handleAvatarKeydown($event, member.id)">{{ Array.from(member.name).slice(0, 2).join('') }}<span aria-hidden="true" class="avatar-muted"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8M3 3l18 18"/></svg></span></button>
+      <span class="contracted-name">{{ member.name }}{{ member.id === selfId ? '（我）' : '' }}</span>
+      <span v-for="reaction in (reactions ?? []).filter(reaction => reaction.targetId === member.id).slice(-1)" :key="reaction.id" class="contracted-reaction" role="status" :title="reaction.message" :aria-label="reaction.message">{{ reaction.message.split(' ')[0] }}</span>
+    </div>
+  </div>
   </div>
 </template>
 
 <style scoped>
+.member-caption-surface { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .member-caption-grid {
   --caption-size: 16px;
   position: relative;
@@ -231,7 +276,7 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   min-width: 0;
 }
@@ -260,16 +305,13 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
   color: #222;
 }
 .is-compact .member-tile { padding: 4px; }
-.is-compact .tile-mic { width: 32px; height: 32px; min-height: 32px; }
+.is-compact :deep(.tile-mic) { width: 32px; height: 32px; min-height: 32px; }
 .member-tile.is-speaking { border-color: #333; box-shadow: inset 0 0 0 1px #333; }
 .tile-heading { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .tile-identity { flex: 1; min-width: 0; }
 .tile-identity h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 1.5; margin: 0; }
 .tile-identity h2 small { font-size: 10px; font-weight: 400; }
 .tile-status { display: block; font-size: 10px; line-height: 1.5; color: #666; }
-.tile-mic { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border-radius: 5px; }
-.tile-mic:hover { background: #eee; }
-.is-muted .tile-mic { color: #888; }
 /* Normal top-down flow. Hidden overflow permits automatic scrolling only;
    wheel, touch and keyboard cannot manually browse older captions. */
 .tile-text { min-height: 0; flex: 1; overflow: hidden; overflow-anchor: none; overflow-wrap: anywhere; margin-top: 4px; }
@@ -293,7 +335,15 @@ const tiles = computed(() => props.members.slice(0, 8).map(member => {
 .reaction-bubble { margin: 0; padding: 3px 8px; border: 1px solid #c9d8c7; border-radius: 12px; background: #eff8ee; color: #263d29; font-size: 12px; overflow-wrap: anywhere; box-shadow: 0 1px 4px #0001; }
 .member-caption-grid[data-count="1"],
 .member-caption-grid[data-count="2"] { --caption-size: 22px; }
-.grid-empty { grid-column: 1 / -1; color: #666; text-align: center; }
+.grid-empty { grid-column: 1 / -1; grid-row: 1 / -1; align-self: center; color: #666; text-align: center; font-size: 13px; }
+.contracted-members { flex-shrink: 0; display: flex; gap: 8px; overflow-x: auto; padding: 6px 4px; border-top: 1px solid #ddd; }
+.contracted-member { position: relative; flex: 0 0 60px; min-width: 0; text-align: center; user-select: none; -webkit-touch-callout: none; touch-action: pan-x; }
+.member-avatar { position: relative; display: block; width: 44px; height: 44px; margin: 0 auto; padding: 0; border: 1px solid #bbb; border-radius: 50%; background: #e8ece7; font-size: 13px; }
+.avatar-muted { position: absolute; display: grid; place-items: center; bottom: -1px; right: -2px; width: 16px; height: 16px; border-radius: 50%; background: #777; color: white; }
+.contracted-name, .contracted-reaction { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; line-height: 1.6; }
+.contracted-reaction { position: absolute; top: -2px; right: 0; padding: 1px 4px; border-radius: 10px; background: #eff8ee; color: #34533a; font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .member-caption-grid.is-adaptive > .member-tile { transition: none; } }
+@media (max-height: 650px) { .member-tile { padding: 6px; } }
 @media (max-width: 350px) {
   .member-caption-grid { gap: 6px; }
   .member-tile { padding: 6px; }

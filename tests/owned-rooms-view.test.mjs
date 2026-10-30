@@ -18,7 +18,7 @@ function view(request) {
     onMounted() {}, onUnmounted(callback) { unmount = callback }, watch(_getter, callback) { changed = callback },
     accountRequest: async (...args) => { calls.push(args); return request(...args) },
   })
-  vm.runInContext(script + '\nglobalThis.model = {props, overview: false, projectOrigin: props.projectOrigin, emit, rooms, keys, revealedKeys, visibleKeys, editingKeys, selectedRoom, selectedCode, displayedRooms, selectRoom, editKey, toggleKey, busy, error, message, deleting, refresh, manage};', context)
+  vm.runInContext(script + '\nglobalThis.model = {props, overview: false, projectOrigin: props.projectOrigin, emit, rooms, keys, newAccessCode, revealedKeys, visibleKeys, editingKeys, selectedRoom, selectedCode, displayedRooms, selectRoom, editKey, toggleKey, busy, error, message, deleting, refresh, manage};', context)
   return { state: context.model, calls, unmount: () => unmount(), changeUser: () => changed(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.model, render })) }
 }
 const owner = view(async (_url, method, body) => method === 'POST' ? body.action === 'reveal' ? { apiKey: 'synthetic-input-key' } : body.action === 'test' ? { ok: true, message: '连接测试通过' } : { room: { ...configured, asrEnabled: false }, message: '已保存' } : { rooms: [configured] })
@@ -42,6 +42,12 @@ assert.equal(owner.state.revealedKeys.value['114514'], undefined)
 await owner.state.manage(configured, 'asr')
 assert.equal(owner.calls.at(-1)[2].enabled, false)
 assert.match(await owner.html(), /开启豆包 ASR/)
+owner.state.newAccessCode.value = '0042'
+await owner.state.manage(configured, 'access-code')
+assert.equal(owner.calls.at(-1)[2].accessCode, '0042')
+assert.equal(owner.state.newAccessCode.value, '')
+await owner.state.manage(configured, 'access-code', '')
+assert.equal(owner.calls.at(-1)[2].accessCode, '')
 owner.state.rooms.value = [{ ...configured, configured: false, keyState: 'deleted' }]
 assert.match(await owner.html(), /房主已删除/)
 owner.state.selectRoom()

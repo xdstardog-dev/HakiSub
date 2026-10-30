@@ -130,12 +130,14 @@ try {
 const source = readFileSync(new URL('../src/roomClient.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const context = vm.createContext({ setTimeout, clearTimeout })
 vm.runInContext(ts.transpile(source + '\nglobalThis.factory = createRoomClient', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
-let fake, joined, members, caption, reaction, discarded, closed = 0, error
+let fake, joined, members, caption, reaction, discarded, closed = 0, error, passwordRequired, accessRevoked
 const client = context.factory({
   onJoined: (...args) => joined = args, onMembers: value => members = value,
   onCaption: value => caption = value, onDiscard: (...args) => discarded = args,
   onReaction: value => reaction = value,
   onClose: () => closed++, onError: value => error = value,
+  onPasswordRequired: (...args) => passwordRequired = args,
+  onAccessRevoked: (...args) => accessRevoked = args,
 }, () => fake = { readyState: 1, bufferedAmount: 0, sent: [], send(data) { this.sent.push(JSON.parse(data)) }, close() { this.closed = true } })
 client.connect('create', 'Alice', ''); fake.onopen()
 assert.equal(fake.sent[0].name, 'Alice')
@@ -151,4 +153,13 @@ emit({ type: 'discard', memberId: 'alice', utteranceId: 'one' }); assert.deepEqu
 client.close(); assert.equal(client.getToken(), ''); assert.equal(fake.onmessage, null); assert.equal(closed, 0)
 client.connect('join', 'Bob', '123456'); fake.onclose(); assert.equal(closed, 1)
 client.connect('create', 'Alice', ''); fake.onmessage({ data: '{bad' }); assert.match(error, /无法解析/); assert.equal(closed, 2)
+const access = { password: '0042' }
+client.connect('join', 'Alice', '123456', undefined, access); fake.onopen()
+assert.equal(fake.sent[0].password, '0042'); assert.deepEqual(Object.keys(access), [])
+emit({ type: 'error', reason: 'password-required', code: '123456', message: '需要入房码' })
+assert.deepEqual(passwordRequired, ['123456', '需要入房码']); assert.equal(fake.closed, true); assert.equal(closed, 2)
+client.connect('join', 'Alice', '123456', undefined, { accessTicket: 'synthetic-ticket' }); fake.onopen()
+assert.equal(fake.sent[0].accessTicket, 'synthetic-ticket')
+emit({ type: 'access-revoked', code: '123456', message: '请重新验证' })
+assert.deepEqual(accessRevoked, ['123456', '请重新验证']); assert.equal(fake.closed, true); assert.equal(closed, 2)
 console.log('通过：真实本地 WebSocket 创建/加入/满员/销毁、成员身份隔离、跨房间隔离、双路假豆包并发/独立音频/字幕、关麦离房清理、令牌撤销及房间客户端事件。未调用真实豆包或麦克风。')

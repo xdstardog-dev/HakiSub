@@ -10,6 +10,8 @@ type RoomCallbacks = {
   onDiscard: (memberId: string, utteranceId: string) => void
   onError: (message: string) => void
   onClose: () => void
+  onPasswordRequired?: (code: string, message: string) => void
+  onAccessRevoked?: (code: string, message: string) => void
   onRoomStatus?: (status: { bound: boolean; asrEnabled: boolean; configured: boolean }) => void
 }
 export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/rooms`)) {
@@ -28,13 +30,17 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
     socket.close(); socket = undefined
   }
   return {
-    connect(type: 'create' | 'join', name: string, code: string, ownerToken?: string) {
+    connect(type: 'create' | 'join', name: string, code: string, ownerToken?: string, access?: { password?: string; accessTicket?: string }) {
       close()
       socket = createSocket()
       connectionTimer = setTimeout(() => {
         close(); callbacks.onError('连接房间超时，请重新加入。'); callbacks.onClose()
       }, 10000)
-      socket.onopen = () => { send({ type, name, code, ...(ownerToken ? { ownerToken } : {}) }) }
+      socket.onopen = () => {
+        send({ type, name, code, ...(ownerToken ? { ownerToken } : {}), ...access })
+        if (access) { delete access.password; delete access.accessTicket }
+        if (socket) socket.onopen = null
+      }
       socket.onmessage = message => {
         try {
           const event = JSON.parse(message.data)
@@ -46,7 +52,11 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
           else if (event.type === 'caption') callbacks.onCaption(event)
           else if (event.type === 'reaction') callbacks.onReaction?.(event)
           else if (event.type === 'discard') callbacks.onDiscard(event.memberId, event.utteranceId)
-          else if (event.type === 'error') callbacks.onError(event.message)
+          else if (event.type === 'error') {
+            if (['password-required', 'password-incorrect', 'access-rate-limited'].includes(event.reason) && callbacks.onPasswordRequired) { close(); callbacks.onPasswordRequired(event.code, event.message) }
+            else callbacks.onError(event.message)
+          }
+          else if (event.type === 'access-revoked' && callbacks.onAccessRevoked) { close(); callbacks.onAccessRevoked(event.code, event.message) }
           else if (event.type === 'room-status') callbacks.onRoomStatus?.(event)
         } catch { close(); callbacks.onError('房间消息无法解析，请重新加入。'); callbacks.onClose() }
       }
