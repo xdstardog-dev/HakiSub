@@ -1,5 +1,152 @@
 # HakiSub 架构
 
+## 2026-11-01 配套发布
+
+主站、网关、账号后端与账号前端必须一起更新，运行镜像均包含 accounts/shared 共享规则。房间文件 v5 与旧网关不兼容；先备份、隔离演练真实资料副本的迁移，再停止两服务制作一致性快照后切换。部署核对运行文件哈希、原房间及账号记录、卷和配置，保留 Caddy。恢复限制及实际验收见[完整发布记录](RELEASE-20261101.md)；下文未部署字样为各阶段历史状态。
+
+## 共用四位 PIN 输入（2026-11-01）
+
+`accounts/shared/PinCodeInput.vue` 同时供 `CreateRoomDialog`、`RoomApiSettings`、`RoomPasswordPrompt`、模拟设置 `ApiSettings` 和账号中心 `OwnedRooms` 使用，放在已有共享目录以兼容账号前端独立构建和打包。组件只负责 `modelValue`、四个字符的渲染与原生输入交互；设置、验证、错误提示、权限及生命周期清理由原父组件负责。移除 RoomApiSettings 原本单独的数字过滤函数；私密创建确认按钮补上四位长度条件，模拟设置的已保存密码改为状态提示，其余接口及提交校验保持。
+
+一个正常尺寸的原生文本 input 覆盖整排字符，保留 inputmode=numeric、maxlength=4、pattern、标签及禁用状态；不创建四个输入槽、不拦截数字键盘或按键、不在输入时切换 DOM 或转移焦点。四个等宽字符用 aria-hidden 隐去重复朗读，空位为灰点、数字继承当前主题。CSS 局部取消边框、背景、横线与焦点矩形，聚焦时灰点加深。过滤仅允许 ASCII 0–9，保留前导零；过滤后按有效数字数恢复光标，粘贴先去除非数字再按当前选择范围截取；IME 合成结束才过滤，避免中断输入法。
+
+房内设置和加入复用原清空逻辑，账号中心切房／重开也不回填已保存密码。浏览器共用 PIN 验收帮助函数检查字符与几何、原生鼠标／触屏聚焦、编辑／粘贴、提交条件及重试；账号中心支持独立 --pin-only 回归。浏览器仿真不代表物理手机软键盘验收，无网关、ASR 或密码校验规则修改。
+
+## 房间头像元数据与交互（2026-11-01）
+
+accounts/shared/roomAvatars.mjs集中定义默认home、四个快捷项、八个首批预制头像与编号校验，配套d.mts类型。RoomAvatarIcon统一绘制可信SVG路径；RoomCard在姓名上方的可用区域居中放大头像，RoomListDialog和房内RoomAvatarControl共用同一图形。后续头像只需扩充此目录，不将SVG、上传文件或远程地址写入房间资料。
+
+RoomAvatarControl独立处理鼠标／触屏500ms长按、10px移动取消、右键、Shift+F10及菜单方向键；短按继续打开原设置，长按后的合成点击不会误开设置。快捷菜单为四头像加“更多”，后者通过原生模态dialog显示完整库，单击头像即保存。框外点击／Escape／窗口变化及卸载关闭并清理手势、监听器和请求；异步操作编号防止离房后的回调更新新界面。组件保留房间设置的无障碍名称。
+
+roomAvatarClient复用/api/rooms/settings读取匿名房主权限；绑定房间再通过现有账号rooms接口确认当前账号拥有该房间。更换以avatar动作提交avatarId，分别复用匿名管理Bearer与账号Cookie／CSRF／HMAC链路，服务端再次执行既有房主鉴权。普通成员可见头像且无法更换。编号在网关白名单校验，通过原串行房间写入后才更新并广播；失败保留原头像、Key和采集状态，avatar与rename一样不停止ASR。账号管理接口和内部签名动作白名单同步扩展，未新增公开管理路由或放宽权限。
+
+roomStore在现有v5资料中保存可选avatarId，旧资料缺省home；其他元数据写入及绑定／换号保留该字段。joined与room-status携带avatarId，App更新当前房间并通过rememberRoom保存最近资料，forgetRoomOwnership清理旧凭据时保留头像。本机缓存缺失／未知编号回退房屋，不改变房间顺序或保存字幕。未入房的首页不会建立额外广播连接，重入取得最新资料；模拟分支仅保留本次会话。
+
+Docker已复制完整accounts/shared目录；私有发布脚本增加roomAvatars.mjs，账号发布脚本原有shared目录复制继续适用。发布需配套更新网关、账号后端及主前端。新增模拟测试覆盖权限、广播、写失败、持久重启、旧资料、取消与不干扰ASR；真实Chrome覆盖两种长按、右键、键盘、更多库、多成员同步、首页／列表／刷新和窄屏。
+
+## 房间与首页共用灰阶配色（2026-11-01）
+
+房间直接复用home.css已有的--home-bg、--home-outer-bg、--room-card-bg、--home-text、--home-secondary-text、--home-light-text及--home-border变量，不引入第二套主题状态。style.css让房内外框和桌面留白分别沿用首页深灰与外部灰底，顶部文字和底部普通主控使用浅色前景，顶部图标按钮使用浅底深色线条。MemberCaptionGrid、MemberModeControl、RoomApiSettings、TypingComposer及回应／音效／模拟设置只调整CSS颜色，浅色表面与中性灰按钮和首页保持一致；传送到body的输入菜单自行指定前景与背景，避免继承旧绿色根文本。房内普通错误提示适配深底；ASR禁用的暗红语义色及原状态逻辑保留。
+
+MemberCaptionGrid的既有grid-empty继续表示全部卡片收起后的空闲状态，以grid-column／grid-row覆盖整个字幕网格，align-self:stretch及align-content:center保持与单人可见卡片同宽高并居中睡猫提示。隔层使用rgb(255 255 255 / 50%)覆盖深外框#41454a，并以同色linear-gradient叠加10%黑色，将原灰色再压暗10%；提示文字、颜文字及currentColor嘴巴SVG统一为#fff，边框／圆角沿用卡片。房屋设置与返回按钮使用--room-card-bg浅底及--home-text深色线条；分享按钮单独使用更深的#c5c7c3灰底，悬停为#d3d5d1、按下为#b6b9b3。底部头像与主控仍在原网格外的dock，收束／恢复、字幕生命周期、动作与采集协议保持。
+
+既有member-controls-browser在480／390／320px比较空闲隔层与恢复单人卡片的矩形范围；房间设置、ASR禁用、打字框长文滚动、回应与音效使用原浏览器套件回归。无新增组件、依赖或服务端修改。
+
+## 房间顶部与复制反馈（2026-10-31）
+
+App的room-heading容纳48px房屋图标设置入口及房间名称／房号，room-actions容纳同尺寸的分享与返回按钮。名称单行省略以保留窄屏操作空间；copy-room是包含数字及重叠方框SVG的整行按钮，保留键盘操作与无障碍名称。房屋入口仍打开settingsOpen，返回继续调用leave。
+
+房间返回首页与房主详细设置返回上一级共用room-back-button样式：48px方形、15px圆角、浅色底、细边框及相同悬停／按下配色，SVG同为26px圆角弯折箭头。RoomApiSettings仅保留返回按钮的右对齐，不再单独定义尺寸和视觉。两处分别沿用leave与backToPersonal及原无障碍名称／Escape和草稿清理。
+
+roomNavigation.shareRoomLink仅调用Clipboard.writeText，不再调用Navigator.share；URL继续通过roomShareUrl剥离查询参数、片段与凭据，只含当前origin和六位房号路径。复制房号与分享共用App的copyMessage及500ms计时器，Teleport到body的固定居中提示采用50%透明黑底白字、pointer-events:none，不参与房间布局。2026-11-01增加Vue Transition：120ms opacity淡入，计时器清空消息后执行240ms渐隐，再移除节点。成功分别提示“复制房间号成功”“复制链接成功”，剪贴板缺失或拒绝时提示“复制失败，请重试”，不打开额外面板。每次点击递增copyOperation并重置提示，离房／卸载同样递增并清理计时器，避免迟到回调覆盖后一次操作或新房间。
+
+既有room-navigation、demo及room-refactor-browser回归覆盖无系统分享、纯净URL、成功／失败、迟到回调、连续操作续时、自动消失、键盘及320／390／1280px排布。浏览器使用隔离内存网关与模拟Clipboard，不操作系统剪贴板或真实ASR。
+
+## 纯键盘入口与简洁输入窗（2026-10-31）
+
+MemberModeControl由typingAvailable派生是否可进入打字，仅本人allowTyping且当前不是typing时开放箭头／长按／右键／键盘展开，进入打字会关闭已打开菜单。卡片与底部复用同一个组件，选项以64×56px纯SVG键盘呈现，原无障碍名称“切换打字”保留；定位根据实际按钮尺寸及56px菜单高度限制在视口内。打字状态的主按钮仍显示键盘、短按仍回闭麦；重新编辑使用原卡片文字区／输入字幕入口，不再提供重复菜单。
+
+新一次真实pointerdown先解除旧长按的合成点击保护，再判断是否需要启动长按；即使滑入打字后浏览器未产生合成click，下一次真实短按仍可正常退出，既有释放／移出取消与Pointer Capture机制不变。
+
+TypingComposer移除可见h2、收起按钮与快捷键／同步说明，role=dialog使用aria-label“打字字幕”。暖浅灰圆角框保持居中，宽度为min(440px, 可见视口宽度−64px)，两侧至少各32px；框内上方textarea独立滚动，下方同色区域放置左侧字数和右侧32px方形发送箭头；点击框外空白或Escape关闭并保留草稿，外部功能按钮继续响应原操作。IME、发送确认与软键盘视口跟随逻辑保留，具体事件传播与清理见下方打字输入窗说明。占位文字为哈基...，使用#92968f中性灰色，正文颜色不受影响。RoomApiSettings只调整关闭状态文案为动态自适应（已关闭），adaptiveCards=false仍接入原固定布局，无存储／服务端结构变化。
+
+
+## 房主原位编辑与Key操作（2026-10-31）
+
+匿名房主的“绑定当前登录账号”按钮复用dark-button配色，以bind-account-button设为内容区同宽、文字居中，并通过16px上边距与房间密码分隔线分开；沿用原ownerToken显示条件、busy禁用与bindAccount流程，无绑定接口或权限变更。
+
+RoomApiSettings在原name-row内切换strong／input，确认按钮沿用rename文本操作。以编辑行ref判断pointerdown是否在外部，不采用输入框blur取消，避免点击确认时先丢失草稿；已发送的rename等待确认，未提交草稿点击别处／Escape／返回时丢弃。名称长度校验和服务端权限、持久化、广播沿用原机制。
+
+Key编辑表单使用key-input-row把保存按钮放在字段右侧，更换时才显示取消更换和浅色移除入口。移除先打开原生嵌套dialog，默认焦点在取消，主设置在确认时保持模态；只有明确确认后才调用旧delete操作。取消弹窗不删除也不丢当前输入；保存／删除仍立即清空Key，离开设置继续清理明文。非Key操作／刷新不再无条件清空正在编辑的Key。
+
+连接测试保留现有test接口及服务端probe，新增独立activeAction与connectionTestMessage／Failed用于同一行的进度和结果。成功文字固定key测试通过！，失败原因为同位置提示，不在底部重复显示；未保存的新Key不允许发起测试，避免将已保存Key的结果误当成新草稿的结果。保存／删除／开始更换／新输入会清除旧结果。无新接口、读取原文能力、依赖或数据结构变化，账号绑定与匿名房主两条原管理路径均保留。
+
+
+## 音量静音恢复与管理分区（2026-10-31）
+
+主面板可见标题和个人偏好说明已移除，dialog改用动态aria-label保留无障碍名称；主面板右上角settings-close显示×，仍以“关闭设置”作为无障碍名称并沿用原关闭清理。房主详细页保留自身标题，右上角仅显示settings-back返回箭头，无正文返回文字或×入口；点击箭头或Escape调用原backToPersonal，清空Key、密码、名称和连接测试草稿并回到主设置，主设置Escape才关闭。owner-entry为深色底白字。
+
+RoomApiSettings在各音量行增加独立的喇叭按钮与禁用状态。快捷回应继续复用SoundPreferences.enabled／volume，点击静音只将enabled设为false而不把volume改成0；发言偏好新增可选speechEnabled字段，沿用hakisub.room-preferences.v1，旧值缺失默认true。静音后的音量仍保留，应用以speechEnabled决定传给speechSound.configure的有效音量是否为0，保存／刷新不丢调试值；手动拖到0时，在当前设置会话保留最近非零音量，点击恢复可回到该值，初始无历史时使用60%。
+
+App的updateSpeechEnabled／updateSpeechVolume在合法用户操作内解锁音频；刷新后原本静音的用户点击恢复，即可接收后续发言提示，不需要再点其他控件。音量／静音配置的同步watch与布局保存watch分离，切换布局不会停止正在播放的短音。原音频节点清理、MP3素材、字幕入场及视觉反馈机制均不变。
+
+布局控件使用原adaptiveCards布尔状态和滑动开关，文案为动态自适应／固定分布；普通成员和房主均可使用。仅合法房主显示owner-management分区，中性浅灰背景区别于个人设置；ASR开关与布局开关共享左侧位置，owner-entry显示房间设置，仍调用原openOwnerSettings进入房主详细页。无网关、权限、API或服务端数据结构变化。
+
+
+## 贴底头像与主控（2026-10-31，视觉微调）
+
+App房间ASR关闭提示使用“语音转文字功能被关闭了喵！只能打字说话了喵~”，向Grid及底部主控传递房间级microphoneUnavailable；仅此状态给非打字麦克风增加is-asr-disabled暗红／浅红配色及aria-disabled，收起头像徽标同步变红，普通闭麦恢复原灰黑。开麦动作在控件及App双重阻止，指针事件仍用于长按／右键选择打字，打字状态可正常退出。状态广播关闭ASR时停止豆包或浏览器采集、使本人闭麦并同步状态；asr.start同样拦截关闭状态，不允许浏览器回退绕过。重新启用不自动开麦。原模拟模式、打字／回应、权限及字幕生命周期保持，无服务端协议或数据修改。
+
+App把MemberModeControl沿用原逻辑放入MemberCaptionGrid的可选controls插槽。Grid内的member-bottom-dock同时容纳可横向滚动的收起头像与右侧主控，随房间内容高度保持贴底；头像不再渲染外置姓名，原aria-label／title保留身份和操作含义。App用room-main-control类设置主控64×56px与16px圆角，不修改MemberModeControl的手势或模式逻辑。普通状态说明移除，错误提示保留在字幕区上方，模拟／调试信息也置于上方；分享按钮调整至room-identity右侧。
+
+头像贴底后，反应菜单按可用空间向上或向下展开，并与原按压点保持12px间隔，避免触屏长按松手时误触刚出现的菜单。原槽位、字幕、音效、ASR、收束、房主权限与数据结构均不变。
+
+房间右上角room-exit与房主详细页settings-back共用相同造型：26px SVG实心箭头头部及圆角弯折线，44px按钮、12px圆角、1px浅灰边框和平面浅灰底；两处同色，悬停／按下加深，无立体阴影。保留“退出房间”／“返回房间设置”无障碍名称，仍调用原leave或backToPersonal，未改会话清理或导航流程。
+
+`MemberCaptionGrid.vue`在有成员但无展开卡片时以grid将“没人说话喵”和睡猫颜文字分两行居中，间隔10px。猫脸用18px本地等宽字符对称排列，嘴巴以8×5px内联SVG绘制浅双弧线，z／Z缩为9／13px并独立控制阶梯位置，避免字体中的omega过大及组合附标错位；整体以role=img及aria-label提供含义，装饰字符不重复朗读。无成员时仍只显示“暂无成员”，原显示条件与字幕／收束生命周期保持。
+
+
+## 房间内部 UI 与字幕入场（2026-10-31，本地实现，未部署）
+
+此节为当前本地实现，下方带日期的明文密码、Key回读、固定布局默认和房内存档说明为历史实现。
+
+App继续拥有交互与每成员字幕队列，MemberModeControl、TypingComposer、反应词库和MP3播放器保持原业务逻辑。RoomApiSettings改为同一原生dialog内的personal／owner二级视图：普通成员只操作两条本机音量及布局；房主设置由现有匿名凭据或账号Cookie/CSRF/HMAC管理链路授权。房间名称复用已有rename文本操作，不调用管理员renameRoom数字换号脚本。退出二级页／关闭／卸载清空明文；取消房间与账号服务的reveal动作，不回读Key或密码。Key生命周期仍是进程内存，保存、删除、暂停均沿用stopRoomAsr；暂停广播显示简洁状态并阻止本端新豆包会话，打字与回应独立运行。
+
+roomPreferences.ts保存adaptiveCards与speechVolume，默认true／60；快捷回应继续使用roomInteractions.ts原sound-preferences.v1（enabled、volume）和reactionSound.ts完整素材配置。两个音量独立。旧个人存档组件和账号端接口仍保留兼容数据，但App不再提供房内入口、不加载preset链接来覆盖个人偏好。debug=1显式URL参数才显示已有技术控件；普通路径默认豆包。模拟分支和本机配置保持，用原测试注入，不新增生产模拟入口。
+
+roomGateway在成员加入时查找最小空闲0～7槽，存入成员toneSlot并随members广播；槽位不持久化、不接受客户端编号、不随列表／布局变化。退出仅移除对应成员，其他槽位不变。统一CaptionEvent新增可选source=speech|typing，网关按消息类型赋值；旧typed-句子命名空间仍被识别，UI不依赖豆包结构。
+
+captionEntrance.ts在receiveCaption之前读取同成员所有captionOpacity>0且非空的字幕。首条有效语音且此前无可见字幕才返回true；同ID更新／重复final不返回true；打字参与占位但不触发。expireCaptions和原3／6／10秒保持+2秒渐隐完全不改。App消费一次返回值，同时更新成员入口序号和调用speechSound.play(toneSlot)。Grid只观察序号，不观察interim或布局；Web Animations同时播放头像两圈及card scale1→1.015→1，几何布局仍由原adaptiveLayout和top／height过渡负责。减少动态偏好时不创建动画，取消／卸载释放动画引用。
+
+speechSound.ts提供C4～C5自然大调八个固定频率、同一sine短音及相同包络／0.21秒时长。最大增益0.055，音量按幂曲线映射，最多8音且不排队；独立于原MP3三路有界播放。pointerdown／keydown／入房合法交互解锁，未运行AudioContext、异常设备、静音时直接丢弃，字幕和视觉照常。配置变更停止旧音，离房／卸载释放全部节点与context。
+
+roomPassword.mjs封装随机16字节盐+scrypt32字节摘要和恒时比较。roomStore写v5 passwordHash，不写accessCode；读v1～v4先校验旧记录，再原子迁移非空旧密码，迁移失败不启动，禁止静默把私密房公开。保留accessVersion、accessAccounts、ownerHash／UID、name、aliases和ASR开关。运行时对内存适配器仍可验证旧accessCode，正式磁盘路径不保留原文。房主响应仅requiresPassword，不包含摘要／原码。原5次／分钟限流、票据单次／到期／版本校验、改码撤权、保存失败保留原状态均保留。旧版本会拒绝v5，回退须兼容摘要或受控迁移；账号SQLite结构不变。
+
+新增模块与测试、实际执行结果及人工验收边界见[验收记录](ROOM-UI-REFACTOR-20261031.md)。
+
+
+## 模拟房间设置与房主明文入房码（2026-10-31，本地修复，未部署）
+
+修复模拟分支只初始化房号、不初始化roomName且标题写死“字幕房间”的遗漏。App在模拟进入时读取指定名称或“显示名称的房间”，标题统一读取roomName；renameSimulationRoom仅在已加入的模拟会话内校验并更新名称，不重建成员、不触发音频或字幕清理。simulationAccessCode同样仅存在当前模拟会话，设置关闭重开保留，离房清空，不写真实房间或浏览器存储。ApiSettings新增可选roomName/accessCode与rename/access-code事件，提供本地元数据表单；用于模拟时为原生可滚动dialog，Escape/返回关闭，原独立使用仍为section并保留语音配置/404健康查询/请求清理。
+
+网关新增ownerStatus，在publicStatus基础上附带当前accessCode（无入房码时为空串），仅用于合法匿名房主设置GET、经过既有鉴权的管理结果和本人绑定房间列表。publicStatus、joined、room-status、成员/字幕广播和access授权响应不含明文码；绑定房主房内页面仍从受Cookie/CSRF/HMAC保护的本人房间列表取管理状态，普通成员只读且不读取明文。RoomApiSettings、OwnedRooms和模拟设置均常驻显示已保存码，编辑输入type=text，无显示/隐藏切换；API Key掩码与按需读取不变，入房验证密码框仍沿用原行为。账号/房间资料结构、访问控制版本和改码撤权行为不变。
+
+单元/SFC/App测试覆盖模拟初始化/改名/校验/事件/不发请求/离房清理和两端明文展示；真实回环网关与SQLite/Cookie/CSRF联调覆盖合法房主重开/重启读取、改码返回新值、成员及广播不含码。simulation-settings-browser以envFile:false的隔离Vite加载真实开发SFC，通过Vue开发实例调用已有模拟入口，在480/320px验证操作，不增加生产测试入口。原room-access-browser及workspace-browser验证联网与账号设置显示、重开/重启保留、只读和原流程。
+
+## 首页房间卡片 V1（2026-10-31，本地实现）
+
+`HomePage.vue`品牌Logo使用本地静态资源`public/hakisub-logo.svg`，由提供的SVG保留原路径与白色细节，仅将#140B53／#4A4284分别替换为现有深灰#41454A／中灰#62666B。`home-logo`在手机和桌面均为56px，采用12px圆角、overflow:hidden及浅色底，内部img填满并裁切；装饰图片alt为空，由品牌链接的无障碍名称提供完整含义。文字仍在上方用`b`显示“哈基字幕”、下方`small`显示“HakiSub”，沿用既有字号和响应式规则；链接仍回首页。首页浏览器回归等待图片解码后检查六视口截图与原交互。
+
+`HomePage.vue`将房间列表入口放在“我的房间”标题右侧，仅显示原列表图标，以`aria-label`保留按钮名称及原展开状态；顶部导航只含账号入口。`home-room-heading`用同一行对齐标题与44px按钮，移动端不再隐藏图标，标题行统一承担左右留白。列表打开、搜索、选房、关闭焦点恢复及轮播位置均沿用原逻辑。
+
+`RoomListDialog.vue`弹窗标题为“房间列表”，移除搜索框上方说明及列表行尾箭头。搜索使用SVG图标和带`aria-label`的原生search输入，`home-search-field`统一绘制圆角边线并用`:focus-within`加深；仅在该搜索框内清除输入自身的焦点outline/box-shadow，避免全局输入与模态焦点规则叠出双框，其他表单保留原焦点样式。过滤与整行入房逻辑保持。
+
+`App.vue`保留房间会话、账号身份、创建/加入/入房码与历史导航，新增`entryOpen`只管理原入口表单的弹窗状态。`HomePage.vue`组合导航、卡片和列表，复用`AccountAccess.vue`及原`reenterRoom`；`RoomCard.vue`区分整卡进入的普通卡和仅含居中的“创建房间”和“加入房间”两个按钮的末尾功能卡。首页数据继续使用`rememberedRooms.ts`的真实浏览器缓存，`rememberRoom`原有的移到首位规则即最近访问排序，不新增置顶或后端数据字段。名称缺失时回退房间号；仅缓存入口和已有管理凭据，音频、字幕、API Key不落盘。
+
+`RoomCarousel.vue`使用原生滚动与CSS scroll-snap，首尾通过对称留白完整居中。移动端80vw、最大340px，槽位3:4；`requestAnimationFrame`先批量读取未缩放槽位距中心的距离，再写入0～1进度，CSS将其映射到1～0.9缩放和0～0.4灰色覆盖层。蒙层为覆盖整卡的伪元素，pointer-events:none，卡片整体opacity保持1。指针位移8px阈值拦截拖动后的点击；侧卡点击先居中，当前卡点击入房。手机布局下，触屏继续走浏览器原生滚动；鼠标主键横向拖动则暂停scroll-snap并按位移更新scrollLeft，松手按实际中心距离选最近卡片、恢复吸附。鼠标按下时阻止按钮提前聚焦滚动与文字拖选，手势按横/纵方向区分，仅接管横向鼠标拖动。按需注册window pointermove/up/cancel及blur，横向拖动时捕获指针；移出卡片松手、取消/失焦/尺寸变化时收束，卸载释放监听和捕获。新的主动按下清除旧手势点击抑制，避免拖动后快速点击被误挡；没有新按下的合成点击仍拦截。方向键/Home/End移动焦点并横向居中，Enter走原按钮事件，减少动态效果偏好关闭程序滚动的平滑效果。ResizeObserver处理宽度与断点切换，卸载时释放观察和待执行帧。
+
+768px起共享桌面/平板布局：1120px最大页面、960px内部内容容器、calc(236px * 0.8)即188.8px固定卡宽、6:7槽位、16px间距与原生横向滚动，不使用缩放/蒙层。桌面body用#62666B浅灰、首页shell用#41454A深灰，条件样式仅作用首页；导航、标题及卡片在同一内部容器对齐，手机继续保持全宽。卡片内边距20px、头像44px、名称18px，保证缩小后长名称和操作按钮仍完整显示。`src/home.css`集中保存临时灰阶、圆角、间距、比例和宽度变量，媒体查询断点为768px；脚本读取CSS布局标记，避免再定义独立的JS断点。样式以home类名限定，不改变房内与账号中心布局。
+
+`RoomListDialog.vue`只对已有入口做名称/号码即时过滤，不调用外部搜索；点击列表行复用原入房函数。通用`HomeDialog.vue`用原生dialog提供Escape、模态焦点约束、内部滚动、关闭后的焦点恢复及背景滚动锁定；列表打开时轮播保持挂载，关闭不重建。手机列表接近全屏，桌面600px且限制最大高度。`CreateRoomDialog.vue`显示房间名称、可选“私密房间”和确定；私密选项默认浅灰，aria-pressed=true后深灰并显示四位数字密码框。`JoinRoomDialog.vue`只显示六位房间号及确定，均无共享模式切换和说明文字。私密密码严格四位ASCII数字，保留前导零；提交前复制为本次请求参数并清空输入，取消私密/关闭卸载也清空，不进入localStorage、URL或日志。两个组件向HomeDialog传入home-entry-dialog类，仅入口弹窗最大宽400px，布局最小高320px（含边框约322px），以视口高度限幅，表单上下留白与控件间距加大；房间列表保留600px和原滚动规则，不影响其他弹窗。App自动解析账号昵称/本机历史名称/默认游客，仍调用原`enter`；取消连接沿用已有代次与取消逻辑。直达与历史导航会同步加入表单房号。生产界面不提供模拟或AR预览入口；模拟引擎与测试、AR独立页面保留，个人存档仍有房内及账号中心入口。
+
+`App.createNamedRoom`接收可选密码，以本次enter调用参数传递，不加入共享ref；取消选择后的公开创建不携带密码。沿用roomClient.connect已有的access.password与发送后删除机制。`server/roomGateway.mjs`在create分支先验证可选password，再分配房间，在第一次roomStore.save时一起写入既有accessCode/accessVersion/accessAccounts字段（schema仍v4），持久化完成前保持persisting、拒绝加入，失败删除内存占位。合法创建者仍由原ownerToken获得管理权限，普通状态不返回密码；后续改名/账号绑定保留初始访问控制。公开请求无密码，行为不变。此为既有password字段在create消息中的新用途，部署必须同步更新前端并重启网关，旧网关会忽略该创建参数，不允许仅部署静态前端。
+
+`roomCreation.ts`通过已有POST /api/rooms/settings的rename动作保存创建表单名称，不改变服务器接口或房间协议，成员会话令牌仅在Authorization头。App先保存名称再绑定创建时的账号，避免绑定撤销匿名权限后无法改名；名称失败保留已创建房间和管理凭据，报告明确错误，不重复建房或谎报名称成功。模块提供12秒超时和AbortSignal取消，App在离房/取消/卸载清理请求，以房间与操作代次阻止迟到响应和过期账号绑定。`RoomPasswordPrompt.vue`另开原生dialog，标题固定“这是一个加密房间”，仅有密码输入与确定及关闭按钮，保留四位数字、错误重试、输入清空和账号免输机制；初次要求密码的重复提示不显示，失败时才显示错误。
+
+`tests/home-browser.mjs`以正式构建和隔离内存网关创建真实房间，验证六个视口、跨断点调整、长名/溢出、连续缩放/蒙层、CDP滑动防误触与吸附、无触屏普通浏览器窄窗口鼠标双向拖动/连续缩放/吸附/移出松手/短拖防误入/功能按钮拖动不弹窗/失焦释放及随后正常点击、首尾居中、卡片/列表/键盘本地WebSocket进房、功能卡创建与外部加入、空房间自定义名称建房、独立表单及历史房号同步；新增私密选项颜色/输入清理、首次私密建房、另一浏览器错误重试及前导零验证和密码不入缓存。`room-creation.test.mjs`覆盖命名请求成功/失败/取消/超时/迟到响应，demo模拟覆盖自动昵称、先命名后绑定、失败保留房间及取消隔离；原模拟引擎回归继续保留。原入房码/改名、打字回应和成员控件浏览器测试适配新入口与自动名称，入房码组验证自定义名在绑定后保留及密码流程。截图位于ignored `artifacts/home/`与`artifacts/room-access/`；浏览器移动视口和CDP触摸不等于物理设备、Safari、系统软键盘或真实ASR验收。
+
+## 房间名称（2026-10-31，本地实现，未部署）
+
+`roomNames.mjs`共用单行名称校验与游客默认名。`roomStore.mjs`在v4元数据中增加name、guestNumber、nameCustomized，兼容读取v1～v4，缺名的历史房间使用“房间 六位房间号”，编号默认为0。新房间在网关分配递增编号并保存“游客NNN的房间”；异步写盘前保留编号避免并发重号，重启从已有记录的最大编号继续，改名和管理员换号不重置。名称通过既有串行原子写入持久化，不保存成员、音频、字幕或API Key。旧v4代码不保留新增字段，上线和回退需使用保留名称字段的配套版本。
+
+登录建房沿用创建后自动绑定。账号服务在bind签名命令中从真实会话提供nickname，客户端不能提交UID或昵称参与授权；网关将未自定义名称改为“昵称的房间”，defaultAccountRoomName为后缀预留6单位，按剩余18单位裁短旧长昵称；已经改名则保留，之后账号昵称变化不自动改名。rename动作复用匿名房主Bearer及账号Cookie/CSRF/HMAC授权，拒绝普通成员、其他账号和跨域请求。名称统一去除首尾空白、拒绝控制字符与换行，按中英混合长度限制为24单位。先保存再更新内存、广播，失败保留原名、Key及现有ASR连接；不改变访问控制版本、房间码、别名或成员。
+
+`accounts/shared/nameRules.mjs`由账号服务、网关和两套前端共用，无运行依赖；旁边的d.mts仅提供主前端类型。ASCII码点算1单位，其他Unicode码点（含中文标点、全角字符）算2，按码点遍历避免拆开代理对；这属于产品定义，不计算字体实际宽度，也不按组合字素计数。昵称与房内显示名称上限16单位，房间名24；HTML maxlength分别设16/24，仅作原始输入长度上限，混合校验和禁用提交使用同一规则。新注册账号保留原字母/数字/下划线及最少3位规则，最长从32改20；登录与找回仍兼容历史32位账号。注册允许省略或留空nickname，前后端均从规范化账号取前8个字符，密保答案校验使用最终昵称。修改昵称执行16单位校验；不迁移已有账号和昵称，房内只裁短旧长昵称的显示，保留账号原文。首页旧缓存显示名裁短但不丢房间或房主凭据。两套Docker和打包脚本显式包含shared/nameRules.mjs，服务器路径保持与源码相同的相对关系。
+
+`joined`与`room-status`提供name，`roomClient.ts`转交App独立roomName，离房清空。标题、房内状态、账号概览/列表/管理显示名称并单独保留房间码和原链接；RememberedRoom可选roomName只缓存最近收到的名字，原name仍为成员显示名。RoomApiSettings与OwnedRooms提供房主表单，普通成员只读；名称按文本渲染，长名换行，沿用退出/UID变化的迟到响应隔离。
+
+`name-rules.test.mjs`验证汉字/半角/混合/Unicode边界及默认名；`room-names.test.mjs`以隔离文件和真实回环HTTP/WSS覆盖房名12汉字/24半角边界、并发编号、权限/来源/内容校验、广播隔离、失败原子性、历史版本、重启和换号。账号真实SQLite/Cookie/CSRF测试覆盖20/21位注册、纯数字、默认昵称、混合昵称边界、旧长账号登录/找回及资料保留；room-management验证认证昵称、自定义名绑定保留、跨设备重启和改名不停止假ASR。模板/App模拟及room-access-browser（480/390/320px）、workspace-browser（375/768/1440px）覆盖默认值、实时计数、超限阻止、展示、同步、只读、窄屏及HTML文本转义；真实麦克风、豆包与物理手机另验。
+
 ## 四位入房码与账号进房资格（2026-10-31，已部署）
 
 生产发布`room-access-20261030T1733Z`对应功能提交`391fbb0`，北京时间01:46:30配套切换两个服务。基于原Linux镜像复用已核验依赖，仅更新server/dist及package清单，无网络构建；候选容器无生产凭据/卷、无网络、只读根目录，通过网关专项、真实原生SQLite/Argon2账号测试及Cookie/CSRF入房端点测试。生产运行文件52项网关、11项账号哈希匹配，原24房/6账号及配置/卷保留，Caddy未重启。公网真实登录Cookie、跨设备免输、改码撤权、游客验证、收束/回应和WSS打字通过；写入房间v4，账号schema仍v2，最终25房/8账号含新增合成测试资料。已备份并实际解密验证，禁止以不兼容旧网关读取v4；完整归档见[发布记录](RELEASE-20261031.md)。API Key按既有规则随网关重启清空。
@@ -24,6 +171,8 @@
 
 ## 生产宿主机维护（2026-10-29）
 
+2026-10-31仅复查占用和容器状态，未修改生产文件或服务：根分区19%已用、约30.3GiB可用，三个容器运行且网关/账号healthy。发布归档合计约205MiB；Docker显示553.3MB构建缓存，其中大部分标记SHARED，不能视为独立可回收空间。维持现有镜像/持久卷/备份，当前无需紧急清理。详见[复查记录](PRODUCTION-MAINTENANCE-20261029.md#2026-10-31-只读空间复查)。
+
 应用镜像、四个持久卷、Compose及代理/密钥结构保持。升级14个系统/Docker包，补装linux-virtual元包，重启后运行6.8.0-147-generic、Docker29.9.2、Compose5.6.1；宿主机及生产容器无PHP。原5账号全记录/23房、SQLite完整性、秘密配置和证书核验通过，自检后6账号/24房，房间Key遵循重启后失效规则。清理已核验的重复镜像.tar、相同临时文件、构建/APT缓存、hello-world及过期journal，释放约1.97GB；回滚镜像/源码/备份保留，历史九份.tar路径需要时从保留镜像重新导出。保留cloud-init hold及待云平台确认的RETBleed警告。详见[维护记录](PRODUCTION-MAINTENANCE-20261029.md)。
 
 ## XDstar 账号工作台（2026-10-29，已部署）
@@ -38,7 +187,7 @@
 
 测试分层：账号与房主套件使用真实隔离 SQLite/Argon2 与假上游校验认证/CSRF/权限；SFC测试覆盖注册往返、失败重试、页面分区、敏感清理与迟到响应；可选 workspace-browser.mjs 在正式构建和无头Chrome下使用合成API，覆盖375/768/1440px完整交互、滚动/焦点/视口切换及截图。真实手机/真实Key/麦克风/豆包未在此轮验收；生产跨子域Cookie结果见本节上线记录。
 
-## 打字与快捷回应（2026-10-29，已部署）
+## 打字与快捷回应（2026-10-29已部署；本人回应扩展本地完成，未部署）
 
 生产于北京时间17:04部署`captions-20261029T0853Z`，源代码`b8afe0ca719b15a3b8126b20fae3b051864492c9`。只更新网关镜像及前端，账号源码/构建11项与生产逐字节一致，账号/Caddy容器未重建，数据卷与凭据保留。原21房/4账号身份验证保留；独立公网验收新增2间空测试房，总23房。HTTPS页面/音效28项哈希一致、公网WSS八人及正式浏览器打字/回应/词库/MP3试听通过；真实麦克风/豆包与物理手机另验。加密备份、镜像和回滚见ACCOUNT-DEPLOYMENT本期记录。
 
@@ -46,13 +195,13 @@
 
 打字草稿在 App 内存保存，逐字输入不发网络。`typed-caption` 带 UUID 句子请求 ID 和文字；网关按连接身份验证 typing 状态、非空/1000 UTF-16 长度/控制字符以及每连接 1 秒间隔，广播普通 `caption(final)`，句子 ID 加入服务端成员命名空间。UI 统一交给未改动的 `captions.ts`，等待自己的回包确认再清空对应草稿，期间新编辑不会被旧确认覆盖；错误或 10 秒未确认保留草稿。切换模式保留草稿，离房/断线清空。
 
-卡片仅发送本人 `editTyped` 入口事件，App 按当前 typing 状态挂载 `TypingComposer.vue`。输入窗使用全局 fixed 定位，桌面位于页面中下方，触屏在可见视口底部留 12px 间隔；监听 `visualViewport.resize/scroll`，以 height/width/offsetTop/offsetLeft 跟随软键盘及 iOS 聚焦平移，没有该 API 则跟随 window.resize。宽高限制在可见区域内，考虑 safe-area，textarea 使用16px字体避免手机聚焦放大。打开时 preventScroll 聚焦，发送按钮阻止 pointerdown 转移焦点以维持键盘；收起/切换模式/离房卸载并清理监听，草稿继续按 App 生命周期管理。textarea 使用 composition 标志、isComposing、旧 keyCode 229 和 compositionend 后 50ms 保护处理选字事件顺序；Shift+Enter 保留换行。此输入窗只编辑待发送字幕，不展示聊天历史。
+卡片仅发送本人 `editTyped` 入口事件，App 按当前 typing 状态挂载 `TypingComposer.vue`。输入窗使用全局 fixed 定位，桌面位于页面中下方，触屏在可见视口底部留 12px 间隔；监听 `visualViewport.resize/scroll`，以 height/width/offsetTop/offsetLeft 跟随软键盘及 iOS 聚焦平移，没有该 API 则跟随 window.resize。宽高限制在可见区域内，考虑 safe-area，textarea 使用16px字体避免手机聚焦放大。外观为单个白色圆角框，不显示标题或收起按钮；textarea与底部白色操作区通过flex分开，正文独立滚动，左下字数、右下32px方形SVG发送箭头不会被长文字覆盖。打开时 preventScroll 聚焦，发送按钮阻止 pointerdown 转移焦点以维持键盘。window捕获阶段监听框外click，收起编辑器并保留打字模式与草稿；空白点击停止继续传播，防止自己卡片的同一次click再次打开编辑器，按钮和链接等控件仍响应原操作。Escape也可收起；卸载清理视口与click监听。草稿继续按 App 生命周期管理。textarea 使用 composition 标志、isComposing、旧 keyCode 229 和 compositionend 后 50ms 保护处理选字事件顺序；Shift+Enter 保留换行。此输入窗只编辑待发送字幕，不展示聊天历史。
 
-`reaction` 只发送 targetId 与固定词库中的类型；网关完全从 socket 取 senderId，验证目标是本房在线其他成员，每连接 1.5 秒限流，服务端分配事件 UUID 后只广播本房。回应不依赖 mic、字幕或布局，成员列表仍是唯一目标来源。客户端在独立有界数组保存最多 24 条事件，每卡最多显示最新 3 个气泡，共用 50ms 时钟在收到后 2.6 秒移除，不进入字幕生命周期。离房、目标离线清理。两类新消息继承现有总流量/载荷/Origin/背压/会话撤销保护，不写磁盘，也不向新加入者补发。
+`reaction` 只发送 targetId 与固定词库中的类型；网关完全从 socket 取 senderId，验证目标是本房在线成员（本地新版允许本人），每连接 1.5 秒限流，服务端分配事件 UUID 后只广播本房。本人目标与他人目标共用冷却，不接受跨房间或已离线目标；App对本人目标显示“表情 昵称：所选词”，对他人的原有措辞保留。回应不依赖 mic、字幕或布局，成员列表仍是唯一目标来源。客户端在独立有界数组保存最多 24 条事件，每卡最多显示最新 3 个气泡，共用 50ms 时钟在收到后 2.6 秒移除，不进入字幕生命周期。离房、目标离线清理。两类新消息继承现有总流量/载荷/Origin/背压/会话撤销保护，不写磁盘，也不向新加入者补发。
 
 回应菜单最多显示个人选择的5项，底部左取消、右设置。`ReactionSettings.vue` 使用原生dialog和独立选择草稿，从13项固定词库勾选1～5项，选满禁用未选项，支持恢复默认/取消/保存。App管理本人偏好并传给卡片；`roomInteractions.ts` 提供词库、默认5项、去重/白名单/数量归一化及 `hakisub.reaction-selection.v1` 本地存储，仅保存回应类型，不含成员身份或消息。存储损坏/不可用时回退默认，保存失败仍在当前页面生效并提示。个人选择不发网络、不开启账号同步，其他成员无论自己是否勾选都按完整词库渲染收到的回应。网关白名单与词库配套扩展，真实WebSocket测试遍历全部13种，原发送者/房间/限流校验保留；前后端需配套更新并重启网关。
 
-`roomInteractions.ts` 集中 UI 事件类型、固定选项、边界常量、IME判断、回应/音效偏好校验及浏览器存储；实际音频素材加载和播放独立在 `reactionSound.ts`。卡片桌面通过 contextmenu 右键打开回应，手机 Pointer Events 长按500ms打开，左键/轻触不绑定回应；移动超过10px/结束/取消撤销定时器。触屏系统contextmenu仅preventDefault，不提前打开或重定位；其他卡片配合touch-callout和user-select防止系统菜单，自己的textarea保留原生编辑菜单。菜单固定在视口内，可取消/Escape/外部点击关闭，卸载移除监听器与定时器。
+`roomInteractions.ts` 集中 UI 事件类型、固定选项、边界常量、IME判断、回应/音效偏好校验及浏览器存储；实际音频素材加载和播放独立在 `reactionSound.ts`。卡片桌面通过 contextmenu 右键打开回应，手机 Pointer Events 长按500ms打开，自己的卡片和收起头像同样可作为目标；左键/轻触不绑定回应，自己的普通点击继续打字或展开。移动超过10px/结束/取消撤销定时器。卡片捕获阶段跳过麦克风/输入方式控件、打字入口按钮及编辑控件，保留它们的原有手势；长按成功后在捕获阶段拦截一次合成click，新一次pointerdown恢复普通点击，避免误打字或展开。触屏系统contextmenu仅preventDefault，不提前打开或重定位；所有卡片配合touch-callout和user-select防止系统菜单，自己的textarea保留原生编辑菜单。菜单固定在视口内，可取消/Escape/外部点击关闭，卸载移除监听器与定时器。本人回应扩展需要配套部署前端和网关，旧网关仍拒绝本人目标。
 
 全局音效入口在房间顶部，`SoundSettings.vue` 使用原生dialog提供即时开关、音量、按槽位试听及加载/就绪/受限/静音状态。App持有设备级 `SoundPreferences`，所有有效回应统一经过同一音频引擎，不按卡片/目标/麦克风状态过滤，但把reaction类型交给对应MP3槽位。`hakisub.sound-preferences.v1`只持久化enabled和0～100音量；读取校验/损坏回退默认开启60%，写失败仅提示本页已生效，无房间协议或账号同步。音量线性映射到素材增益，最多3个加载中或播放中的声音；关闭/零音量不加载播放，配置变化立即停止旧声音，离房/卸载释放全部节点与AudioContext。resume与异步加载/解码均检查context和操作代次，迟到授权/下载/解码不补播；拒绝/不支持/设备失败均返回状态，不向字幕或WebSocket抛错。试听不发房间消息、不启动采集。
 
@@ -98,7 +247,7 @@ ASR 并发配置（2026-10-22）：`runtimeConfiguration.mjs` 三种部署模式
 
 UID、Room Owner、Member 三者独立：UID关联长期数据，ownerUid关联已绑定房间；未绑定房间继续使用独立匿名凭据。绑定必须同时验证账号会话和本房管理凭据，不能按昵称、房间号或存档认领。房主手动暂停全房豆包ASR已在本地实现，销毁、费用额度/熔断未实施。可选 `compose.accounts.yaml` 和 Caddy 候选文件尚未启用。Linux原生依赖、真实跨子域Cookie及生产费用保护另验；完整风险、数据表和方案见 [账号审查](ACCOUNT-SYSTEM-PLAN.md)，执行见 [账号部署](ACCOUNT-DEPLOYMENT.md)。
 
-房间URL及分享（2026-10-21）：`roomNavigation.ts`严格解析六位数字路径并构造只含origin和正式房间号的分享URL；App在服务器joined确认后从首页pushState，直达/别名路径则replaceState为规范的`/<code>/`。初始深链接及popstate只预填加入信息，不自动连接或开麦；后退/前进先清理成员会话、采集和字幕。pagehide保留路径以支持刷新，断线保留房间路径供重进，返回首页按钮才切换根路径。系统分享失败回退Clipboard，AbortError视为取消，全部受限时提供只读地址；异步结果通过操作编号避免离房后更新。模拟房间不提供联网分享入口。生产静态服务仅额外白名单匹配六位房间路径（可含尾斜线），仍拒绝其他未知路径，资源/API使用根路径。
+房间URL及分享（2026-10-21，复制交互于2026-10-31更新）：`roomNavigation.ts`严格解析六位数字路径并构造只含origin和正式房间号的分享URL；App在服务器joined确认后从首页pushState，直达/别名路径则replaceState为规范的`/<code>/`。初始深链接及popstate只预填加入信息，不自动连接或开麦；后退/前进先清理成员会话、采集和字幕。pagehide保留路径以支持刷新，断线保留房间路径供重进，返回首页按钮才切换根路径。分享按钮直接写入Clipboard，以窗口中央短暂提示反馈成功或失败；异步结果通过操作编号避免离房后更新。模拟房间不提供联网分享入口。生产静态服务仅额外白名单匹配六位房间路径（可含尾斜线），仍拒绝其他未知路径，资源/API使用根路径。
 
 房间换号（2026-10-20）：roomStore的version 1记录增加可选aliases，加载时校验其六位码、去重及与所有正式房间号互斥；旧资料无aliases兼容。renameRoom在串行原子提交中保留ownerHash、解密原Key后以新号为AAD重新加密，删除旧正式记录并保存旧号别名；冲突/非法目标不覆盖资料，保存配置不丢别名。gateway在加入时把别名解析到同一room对象，创建时避开所有别名，不产生第二份成员/配置。joined仅向本房成员提供号码别名，无新增公开管理API。
 
@@ -191,6 +340,8 @@ App.vue（来源选择与麦克风按钮）
 正式模式 `npm start` 由同一 Node HTTP 服务在 127.0.0.1:8787 提供 `dist/` 静态页面、设置接口和 ASR WebSocket，无需 Vite。`staticWebsite.mjs` 只读取构建目录，限制方法、拒绝点文件与路径越界；`/glasses` 返回入口页。允许的本机 Origin 包含 8787，开发模式仍保留 5173/4173。
 
 Windows `scripts/install-local.ps1` 安装当前用户登录触发的 `HakiSub-Local` 计划任务及 Chrome 桌面快捷方式；`start-local.ps1` 隐藏启动 Node 并等待退出，供任务计划程序追踪生命周期。任务不自动启麦、不保存声音，重启会清空内存用量。此方案不是云部署，不能在本机关闭时供其他设备使用。
+
+常驻网页从磁盘读取dist，网关模块则只在Node进程启动时加载；仅构建或刷新可能形成新页面与旧协议实现并行，例为本人回应已出现在菜单而旧网关仍拒绝targetId等于senderId。更新后必须让原任务对应的Node实际退出，再启动并核对新PID及健康检查。Windows停止任务后可能留下旧子进程，应核实8787监听PID及本项目脚本路径后仅清理该进程，避免误停其他Node服务。验收本人回应需覆盖实际运行实例；隔离测试通过不能证明常驻进程已更新。
 
 `server/index.mjs` 通过 `apiKeyStore.mjs` 从根目录 `.env`（或优先的进程环境）读取 Key。禁止把 Key 放入 `VITE_*`、前端构建产物或浏览器存储。健康检查只返回是否已配置。程序不保存音频和识别结果，不转发上游原始错误文本。
 

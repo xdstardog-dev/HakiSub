@@ -6,6 +6,7 @@ import vm from 'node:vm'
 import * as Vue from 'vue'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import { compile } from '@vue/compiler-dom'
+import * as nameRules from '../shared/nameRules.mjs'
 import { renderToString } from '@vue/server-renderer'
 import { openAccountDatabase, allocatePublicUid } from '../server/database.mjs'
 import { createAccountServer } from '../server/accountServer.mjs'
@@ -69,7 +70,7 @@ function component(path, globals = {}) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8'), { descriptor } = parse(source)
   const bindings = Object.keys(compileScript(descriptor, { id: 'interaction-test' }).bindings)
   const script = descriptor.scriptSetup.content.replace(/^import .*$/gm, '')
-  const context = vm.createContext({ ...Vue, onMounted() {}, onUnmounted() {}, window: { addEventListener() {}, removeEventListener() {} }, ...globals })
+  const context = vm.createContext({ ...nameRules, ...Vue, onMounted() {}, onUnmounted() {}, window: { addEventListener() {}, removeEventListener() {} }, ...globals })
   vm.runInContext(script + '\nglobalThis.model = {' + bindings.join(',') + '}', context)
   const render = new Function('Vue', compile(descriptor.template.content, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   return { state: context.model, html: () => renderToString(Vue.createSSRApp({ components: { QuestionFields: { render: () => null }, OwnedRooms: { render: () => null }, AccountNavigation: { render: () => null } }, setup: () => context.model, render })) }
@@ -98,6 +99,14 @@ const workflow = component('../src/AccountApp.vue', {
 })
 const state = workflow.state
 state.checking.value = false; state.navigate('register')
+assert.match(await workflow.html(), /id="username"[^>]*maxlength="20"/)
+assert.match(await workflow.html(), /id="nickname"[^>]*maxlength="16"/)
+state.username.value = 'a'.repeat(21); state.password.value = state.confirmPassword.value = 'fixture-password'
+state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /3～20/)
+state.username.value = 'abcdefghijklmnopqrst'; state.nickname.value = ''
+state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 2); assert.equal(state.registrationNickname.value, 'abcdefgh')
+state.previousRegistrationStep(); state.nickname.value = '中'.repeat(9)
+state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /8个汉字/)
 state.username.value = 'fixture_user'; state.nickname.value = '合成昵称'; state.password.value = 'fixture-password'; state.confirmPassword.value = 'different-password'
 state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /不一致/)
 state.confirmPassword.value = state.password.value; state.nextRegistrationStep()

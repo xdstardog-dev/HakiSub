@@ -30,7 +30,7 @@ async function joinPeer(code, name) {
   return event => peer.send(JSON.stringify(event))
 }
 const own = page => page.locator('.member-tile').filter({ has: page.locator('h2 small') })
-const ownAvatar = page => page.getByRole('button', { name: '展开Self的卡片（我），保持闭麦', exact: true })
+const ownAvatar = page => page.getByRole('button', { name: '展开游客的卡片（我），保持闭麦，长按或右键发送快捷回应', exact: true })
 async function blur(page) { await page.evaluate(() => document.activeElement?.blur()) }
 async function validateLayout(page) {
   const geometry = await page.locator('.member-caption-surface').evaluate(element => {
@@ -51,6 +51,12 @@ async function validateLayout(page) {
     assert.ok(a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1, '展开卡片不能重叠')
   }
 }
+async function dismissComposer(page) {
+  const width = page.viewportSize().width
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) await page.touchscreen.tap(width - 2, 80)
+  else await page.mouse.click(width - 2, 80)
+  await page.locator('.typing-composer').waitFor({ state: 'detached' })
+}
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
   for (const [width, height] of [[480, 900], [390, 844], [320, 568]]) {
@@ -70,21 +76,24 @@ try {
     page.setDefaultTimeout(5000)
     page.on('pageerror', error => errors.push(error.message))
     await page.clock.install()
-    await page.goto(origin)
-    await page.getByLabel('显示名称', { exact: true }).fill('Self')
+    await page.goto(origin + '/?debug=1')
+    await page.getByRole('button', { name: '创建房间', exact: true }).click()
+    await page.getByLabel('输入房间名称', { exact: true }).fill('Self')
     await page.locator('form button[type="submit"]').click()
-    await page.getByRole('button', { name: '收起配置', exact: true }).click()
+    await page.getByRole('checkbox', { name: '动态自适应布局', exact: true }).uncheck()
     const code = /\d{6}/.exec(new URL(page.url()).pathname)[0]
     const senders = []
     for (let index = 0; index < 7; index++) senders.push(await joinPeer(code, `Peer${index}`))
     await page.waitForFunction(() => document.querySelectorAll('.member-tile').length === 8)
-    await page.clock.pauseAt(new Date())
+    // 以浏览器的模拟时钟为基准，避免建房请求耗时后主进程时间落在过去。
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100))
     await blur(page)
     await page.clock.fastForward(4050)
     assert.equal(await page.locator('.contracted-member').count(), 0, '未满5秒不能收起')
     await page.clock.fastForward(1100)
     assert.equal(await page.locator('.contracted-member').count(), 8)
     assert.equal(await page.locator('.member-tile').count(), 0)
+    const idlePanelBounds = await page.locator('.grid-empty').boundingBox()
     const row = await page.locator('.contracted-members').evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth, rows: new Set([...element.children].map(child => child.getBoundingClientRect().top)).size }))
     assert.equal(row.rows, 1); if (mobile) assert.ok(row.scrollWidth > row.width, '窄屏头像单行横向滚动')
     const otherAvatar = page.getByRole('button', { name: 'Peer1，闭麦，长按或右键发送快捷回应', exact: true })
@@ -100,7 +109,7 @@ try {
     await page.getByRole('button', { name: '👍 赞同', exact: true }).click()
     await page.locator('.contracted-reaction').waitFor()
     assert.equal(await page.locator('.member-tile').count(), 0, '头像回应不自动展开卡片')
-    assert.match(await page.locator('.contracted-reaction').getAttribute('aria-label'), /Self 赞同了 Peer1/)
+    assert.match(await page.locator('.contracted-reaction').getAttribute('aria-label'), /游客 赞同了 Peer1/)
     const avatarBox = await otherAvatar.boundingBox(), avatarCenter = { x: avatarBox.x + avatarBox.width / 2, y: avatarBox.y + avatarBox.height / 2 }
     if (mobile) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [avatarCenter] })
     else { await page.mouse.move(avatarCenter.x, avatarCenter.y); await page.mouse.down() }
@@ -111,10 +120,27 @@ try {
       assert.equal(await page.locator('.member-tile').count(), 0, '长按松手也不能展开他人卡片')
       await page.getByRole('dialog', { name: '快捷回应' }).getByRole('button', { name: '取消', exact: true }).click()
     } else await page.mouse.up()
+    await page.clock.fastForward(1000)
+    await ownAvatar(page).click({ button: 'right' })
+    await page.getByRole('dialog', { name: '快捷回应' }).waitFor()
+    assert.equal(await page.locator('.member-tile').count(), 0, '右键自己的收起头像不展开卡片')
+    await page.keyboard.press('Escape')
+    if (mobile) {
+      const ownBox = await ownAvatar(page).boundingBox()
+      const ownCenter = { x: ownBox.x + ownBox.width / 2, y: ownBox.y + ownBox.height / 2 }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [ownCenter] })
+      await page.clock.fastForward(600)
+      await page.getByRole('dialog', { name: '快捷回应' }).waitFor()
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      assert.equal(await page.locator('.member-tile').count(), 0, '长按自己的收起头像松手不展开卡片')
+      await page.getByRole('dialog', { name: '快捷回应' }).getByRole('button', { name: '取消', exact: true }).click()
+    }
     await page.screenshot({ path: fileURLToPath(new URL(`all-muted-${width}.png`, output)) })
     await ownAvatar(page).click()
     // Vue 会忽略早于监听器挂载的冒泡事件；冻结时钟后需跨过新控件的挂载毫秒。
     await page.clock.fastForward(10)
+    const singleCardBounds = await own(page).boundingBox()
+    for (const edge of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(idlePanelBounds[edge] - singleCardBounds[edge]) < 1, '空闲隔层与单人卡片占用同一范围')
     assert.equal(await own(page).locator('.tile-status').innerText(), '麦克风关闭')
     assert.equal(await page.evaluate(() => window.testStarts), 0, '展开不能采音')
     await page.getByLabel('识别来源').selectOption('browser')
@@ -124,13 +150,16 @@ try {
     assert.equal(await page.locator('.typing-composer').count(), 0, '短按不进入打字')
     await page.clock.fastForward(4050); assert.equal(await own(page).count(), 1)
     await page.clock.fastForward(1100); assert.equal(await own(page).count(), 0, '指针点击留下的按钮焦点不能阻止收束')
+    await page.clock.fastForward(10)
     await ownAvatar(page).click(); await page.clock.fastForward(10)
     // 桌面右键和键盘可达，打开选项不改变闭麦状态。
     await mic.click({ button: 'right' })
     await page.getByRole('menu', { name: '输入方式' }).waitFor()
+    assert.equal(await page.getByRole('menuitem', { name: '切换打字', exact: true }).innerText(), '', '键盘选项没有可见文字')
+    await page.screenshot({ path: fileURLToPath(new URL('keyboard-option-' + width + '.png', output)) })
     await page.keyboard.press('Escape')
     await mic.press('ArrowLeft')
-    await page.getByRole('menuitem', { name: '⌨ 切换打字', exact: true }).waitFor()
+    await page.getByRole('menuitem', { name: '切换打字', exact: true }).waitFor()
     await page.keyboard.press('Escape')
     // 真实 Pointer Events：手机走 CDP 触摸，桌面使用鼠标按住。
     const box = await mic.boundingBox(), start = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
@@ -142,16 +171,37 @@ try {
     else await page.mouse.up()
     assert.equal(await own(page).locator('.tile-status').innerText(), '麦克风关闭')
     assert.equal(await page.evaluate(() => window.testStarts), 1, '长按松手不额外开麦')
-    await page.getByRole('menuitem', { name: '⌨ 切换打字', exact: true }).click()
+    await page.getByRole('menuitem', { name: '切换打字', exact: true }).click()
     await page.getByLabel('输入字幕', { exact: true }).waitFor()
-    await page.getByRole('button', { name: '收起输入框', exact: true }).click()
+    assert.equal(await own(page).locator('.mode-options-trigger').count(), 0)
+    assert.equal(await page.locator('.room-bottom-bar .mode-options-trigger').count(), 0)
+    const input = page.getByLabel('输入字幕', { exact: true })
+    assert.equal(await page.getByRole('button', { name: '收起输入框', exact: true }).count(), 0)
+    await input.fill('点击空白后保留草稿')
+    const blank = own(page).locator('.tile-text')
+    if (mobile) await blank.tap({ position: { x: 5, y: 5 } })
+    else await blank.click({ position: { x: 5, y: 5 } })
+    await page.locator('.typing-composer').waitFor({ state: 'detached' })
+    await page.clock.fastForward(10)
+    if (mobile) await blank.tap({ position: { x: 5, y: 5 } })
+    else await blank.click({ position: { x: 5, y: 5 } })
+    assert.equal(await input.inputValue(), '点击空白后保留草稿', '空白点击收起不立即重开，下一次点击继续原草稿')
+    await page.clock.fastForward(10)
+    if (mobile) await input.tap()
+    else await input.click()
+    assert.equal(await page.locator('.typing-composer').count(), 1, '框内点击继续编辑')
+    await page.locator('.typing-composer').screenshot({ path: fileURLToPath(new URL('composer-compact-' + width + '.png', output)) })
+    await dismissComposer(page)
+    await mic.click({ button: 'right' }); assert.equal(await page.locator('.member-mode-menu').count(), 0)
+    await page.locator('.room-bottom-bar .tile-mic').click({ button: 'right' }); assert.equal(await page.locator('.member-mode-menu').count(), 0)
+    await page.screenshot({ path: fileURLToPath(new URL('typing-mode-' + width + '.png', output)) })
     await mic.click(); assert.equal(await own(page).locator('.tile-status').innerText(), '麦克风关闭')
     assert.equal(await page.evaluate(() => window.testStarts), 1, '退出打字先闭麦')
     // 再次长按后左滑，只有松手命中选项才进入打字。
     if (mobile) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
     else { await page.mouse.move(start.x, start.y); await page.mouse.down() }
     await page.clock.fastForward(600)
-    const option = await page.getByRole('menuitem', { name: '⌨ 切换打字', exact: true }).boundingBox()
+    const option = await page.getByRole('menuitem', { name: '切换打字', exact: true }).boundingBox()
     const target = { x: option.x + option.width / 2, y: option.y + option.height / 2 }
     if (mobile) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [target] })
     else await page.mouse.move(target.x, target.y)
@@ -159,7 +209,7 @@ try {
     if (mobile) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     else await page.mouse.up()
     await page.getByLabel('输入字幕', { exact: true }).waitFor()
-    await page.getByRole('button', { name: '收起输入框', exact: true }).click()
+    await dismissComposer(page)
     await mic.click(); await blur(page)
     await page.clock.fastForward(4050)
     assert.equal(await own(page).count(), 1, '恢复后重新计时')
@@ -175,8 +225,8 @@ try {
     await page.clock.fastForward(1100); assert.equal(await peerTile.count(), 0)
     // 自己收起后仍能用常驻底部控件直接进入打字，卡片立即恢复。
     await page.locator('.room-bottom-bar .mode-options-trigger').click()
-    await page.getByRole('menuitem', { name: '⌨ 切换打字', exact: true }).click()
-    await page.getByRole('button', { name: '收起输入框', exact: true }).click()
+    await page.getByRole('menuitem', { name: '切换打字', exact: true }).click()
+    await dismissComposer(page)
     assert.equal(await own(page).count(), 1)
     await blur(page); await page.clock.fastForward(15000)
     assert.equal(await own(page).count(), 1, '打字无发送也不收起')

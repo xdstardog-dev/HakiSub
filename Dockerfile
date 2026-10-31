@@ -11,6 +11,7 @@ WORKDIR /app
 # 网关唯一第三方运行依赖是 ws；模型和 Vue 由浏览器加载 dist。
 COPY --from=dependencies /app/node_modules/ws ./node_modules/ws
 COPY server/ ./server/
+COPY accounts/shared/ ./accounts/shared/
 COPY dist/ ./dist/
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node

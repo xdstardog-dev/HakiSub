@@ -6,8 +6,10 @@ import { once } from 'node:events'
 import { readFile, mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
+import { assertPinInput, exercisePinInput } from '../../tests/pin-input-browser-helpers.mjs'
 
 const { chromium } = await import(process.argv[2] ?? 'playwright')
+const pinOnly = process.argv.includes('--pin-only')
 const output = fileURLToPath(new URL('../../artifacts/account-workspace/', import.meta.url))
 await mkdir(output, { recursive: true })
 const root = fileURLToPath(new URL('../dist/', import.meta.url))
@@ -26,7 +28,7 @@ const origin = `http://127.0.0.1:${server.address().port}`
 let browser
 const errors = []
 const fixtureUser = { uid: '123456', username: 'fixture_user', nickname: '小地', createdAt: 1793000000000 }
-const fixtureRoom = { code: '114514', bound: true, configured: true, keyState: 'configured', asrEnabled: true, busy: false }
+const fixtureRoom = { code: '114514', name: '小地的房间', bound: true, configured: true, keyState: 'configured', asrEnabled: true, busy: false, requiresPassword: true }
 async function openPage(width) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: width <= 768, reducedMotion: 'reduce' })
   const page = await context.newPage()
@@ -47,6 +49,7 @@ async function openPage(width) {
     if (path.endsWith('/register')) {
       if (state.failNextRegistration) { state.failNextRegistration = false; return send({ message: '合成注册失败，请重试' }, 503) }
       assert.equal(body.questions.length, 3); assert.equal(body.password, 'fixture-password')
+      state.user.username = body.username; state.user.nickname = body.nickname
       state.loggedIn = true; return send({ user: state.user }, 201)
     }
     if (path.endsWith('/login')) { state.loggedIn = true; return send({ user: state.user }) }
@@ -57,12 +60,14 @@ async function openPage(width) {
     if (path.endsWith('/rooms')) return send({ rooms: state.rooms })
     if (path.endsWith('/manage')) {
       const room = state.rooms.find(item => path.includes(item.code))
-      if (body.action === 'reveal') return send({ apiKey: 'synthetic-room-key' })
+      if (body.action === 'reveal') throw Error('Saved keys must never be requested')
       if (body.action === 'test') return send({ ok: true, message: '合成连接测试通过' })
       if (body.action === 'save' && state.failNextSave) { state.failNextSave = false; return send({ message: '合成保存失败' }, 503) }
       if (body.action === 'save') { room.configured = true; room.keyState = 'configured' }
       if (body.action === 'delete') { room.configured = false; room.keyState = 'deleted' }
       if (body.action === 'asr') room.asrEnabled = body.enabled
+      if (body.action === 'rename') room.name = body.name
+      if (body.action === 'access-code') room.requiresPassword = !!body.accessCode
       return send({ room, message: '房间设置已更新' })
     }
     if (path.endsWith('/presets')) return send({ presets: state.presets })
@@ -104,8 +109,10 @@ try {
       await page.screenshot({ path: join(output, `login-${width}.png`) })
       await page.getByRole('button', { name: '注册账号', exact: true }).click()
       assert.equal(await page.locator('.question-pair').count(), 0)
-      await page.getByLabel('登录账号', { exact: true }).fill('fixture_user')
-      await page.getByLabel('用户昵称', { exact: true }).fill('小地')
+      const account = page.getByLabel('账号', { exact: true })
+      assert.equal(await account.getAttribute('maxlength'), '20')
+      await account.fill('abcdefghijklmnopqrst')
+      assert.equal(await page.getByLabel('用户昵称', { exact: true }).getAttribute('placeholder'), 'abcdefgh')
       await page.getByLabel('设置密码', { exact: true }).fill('fixture-password')
       await page.getByLabel('确认密码', { exact: true }).fill('mismatched-password')
       await page.getByRole('button', { name: '下一步 →', exact: true }).click()
@@ -127,6 +134,7 @@ try {
       assert.equal(await page.locator('#answer-0').inputValue(), 'synthetic answer 0')
       await page.getByRole('button', { name: '完成注册', exact: true }).click()
       await page.getByRole('heading', { name: '总览', exact: true }).waitFor()
+      assert.equal(state.user.nickname, 'abcdefgh', '留空时使用默认昵称')
     }
     await page.locator('.room-card').first().waitFor()
     assert.equal(await page.locator('main input').count(), 0)
@@ -158,14 +166,48 @@ try {
     await page.getByRole('button', { name: '管理房间', exact: true }).first().waitFor()
     assert.equal(await page.locator('main input').count(), 0)
     await page.getByRole('button', { name: '管理房间', exact: true }).first().click()
+    await page.locator('.current-access-code').filter({ hasText: '房间密码已设置' }).waitFor()
+    assert.equal(await page.getByLabel('更换四位入房码', { exact: true }).getAttribute('type'), 'text')
+    const pin = page.getByLabel('更换四位入房码', { exact: true })
+    await exercisePinInput(page, pin, page.getByRole('button', { name: '保存入房码', exact: true }))
+    await pin.fill('0001')
+    await page.screenshot({ path: join(output, `pin-entered-${width}.png`), fullPage: true })
+    await page.getByRole('button', { name: '保存入房码', exact: true }).click()
+    await page.getByRole('status').filter({ hasText: '房间设置已更新' }).waitFor()
+    assert.equal(state.calls.at(-1).body.accessCode, '0001')
+    await assertPinInput(pin)
+    await page.getByRole('button', { name: '返回房间列表', exact: false }).click()
+    await page.getByRole('button', { name: '管理房间', exact: true }).first().click()
+    await assertPinInput(pin)
+    await assertNoOverflow(page)
+    await page.screenshot({ path: join(output, `pin-empty-${width}.png`), fullPage: true })
+    if (pinOnly) { await context.close(); continue }
+    const roomName = '中'.repeat(12)
+    await page.getByLabel('房间名称', { exact: true }).fill('中'.repeat(13))
+    assert.equal(await page.getByRole('button', { name: '保存房间名称', exact: true }).isDisabled(), true)
+    await page.getByLabel('房间名称', { exact: true }).fill('a'.repeat(24))
+    await page.getByRole('button', { name: '保存房间名称', exact: true }).click()
+    await page.getByRole('heading', { name: 'a'.repeat(24), exact: true }).waitFor()
+    await page.getByLabel('房间名称', { exact: true }).fill(roomName)
+    await page.getByRole('button', { name: '保存房间名称', exact: true }).click()
+    await page.getByRole('heading', { name: roomName, exact: true }).waitFor()
+    assert.equal(state.calls.at(-1).body.name, roomName)
+    await assertNoOverflow(page)
+    await page.screenshot({ path: join(output, `room-name-${width}.png`), fullPage: true })
     const key = page.locator('#key-114514')
     assert.equal(await key.getAttribute('type'), 'password')
     assert.equal(state.calls.filter(call => call.body?.action === 'reveal').length, 0)
-    await page.getByRole('button', { name: '显示', exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('#key-114514')?.value === 'synthetic-room-key')
-    await page.getByRole('button', { name: '隐藏', exact: true }).click()
     assert.equal(await key.inputValue(), '********')
-    await key.fill('synthetic-replacement-key'); await page.getByRole('button', { name: '保存 Key', exact: true }).click()
+    await page.getByRole('button', { name: '更换密钥', exact: true }).click()
+    assert.equal(await key.inputValue(), '')
+    await key.fill('synthetic-replacement-key')
+    await page.getByRole('button', { name: '隐藏', exact: true }).click()
+    assert.equal(await key.getAttribute('type'), 'password')
+    assert.equal(await key.inputValue(), 'synthetic-replacement-key')
+    await page.getByRole('button', { name: '显示', exact: true }).click()
+    assert.equal(await key.getAttribute('type'), 'text')
+    assert.equal(state.calls.filter(call => call.body?.action === 'reveal').length, 0)
+    await page.getByRole('button', { name: '保存 Key', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '房间设置已更新' }).waitFor()
     assert.notEqual(await key.inputValue(), 'synthetic-replacement-key')
     await page.getByRole('button', { name: '测试 Key', exact: true }).click()
@@ -203,6 +245,11 @@ try {
     await page.getByRole('heading', { name: '还没有房间存档', exact: true }).waitFor()
     await page.getByRole('button', { name: '刷新存档', exact: true }).click()
     await navigate(page, '个人资料')
+    await page.getByLabel('新的用户昵称', { exact: true }).fill('中'.repeat(9))
+    assert.equal(await page.getByRole('button', { name: '保存昵称', exact: true }).isDisabled(), true)
+    await page.getByLabel('新的用户昵称', { exact: true }).fill('abcdefghijklmnop')
+    await page.getByRole('button', { name: '保存昵称', exact: true }).click()
+    await page.getByRole('status').filter({ hasText: '用户昵称已更新' }).waitFor()
     await page.getByLabel('新的用户昵称', { exact: true }).fill('小地的新昵称')
     await page.getByRole('button', { name: '保存昵称', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '用户昵称已更新' }).waitFor()

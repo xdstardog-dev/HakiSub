@@ -13,6 +13,7 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
+COPY shared ./shared
 COPY dist ./dist
 RUN mkdir -p /app/data && chown node:node /app/data && chmod 700 /app/data
 USER node

@@ -5,6 +5,10 @@ import ts from 'typescript'
 import * as Vue from 'vue'
 import { compile } from '@vue/compiler-dom'
 import { renderToString } from '@vue/server-renderer'
+import * as nameRules from '../accounts/shared/nameRules.mjs'
+import { loadVueComponent } from './load-vue-component.mjs'
+
+const PinCodeInput = await loadVueComponent(new URL('../accounts/shared/PinCodeInput.vue', import.meta.url))
 
 const source = readFileSync(new URL('../src/components/ApiSettings.vue', import.meta.url), 'utf8')
 const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
@@ -13,27 +17,47 @@ const render = new Function('Vue', compile(template, { mode: 'function', prefixI
 const localConfiguration = { configured: false, readOnly: false, source: 'file', csrfToken: 'fixture-csrf', busy: false }
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
 
-function createView(fetchResponse) {
-  const calls = [], timers = new Map()
+function createView(fetchResponse, props = {}) {
+  const calls = [], timers = new Map(), events = []
   let unmount, mount, nextTimer = 0
   const context = vm.createContext({
-    ...Vue, AbortController, Error,
-    defineEmits: () => () => {},
+    ...Vue, ...nameRules, AbortController, Error,
+    defineProps: () => props, defineEmits: () => (...args) => events.push(args),
     onMounted: callback => { mount = callback }, onUnmounted: callback => { unmount = callback },
     setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer }, clearTimeout: id => timers.delete(id),
     fetch: (url, options) => { calls.push({ url, options }); return fetchResponse(url, options, calls.length) },
   })
-  vm.runInContext(ts.transpile(script + '\nglobalThis.settings = { configuration,revealedKey,keyVisible,editingKey,editKey,toggleKey,managedByServer,serverConfigured,configurationState,configurationLabel,apiKey,message,failed,busy,confirmDelete,keyInput,requestConfiguration,emit };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+  vm.runInContext(ts.transpile(script + '\nglobalThis.settings = { props,countNameUnits,isValidDisplayName,ROOM_NAME_MAXIMUM_UNITS,newRoomName,newAccessCode,roomMessage,saveRoomName,saveAccessCode,configuration,revealedKey,keyVisible,editingKey,editKey,toggleKey,managedByServer,serverConfigured,configurationState,configurationLabel,apiKey,message,failed,busy,confirmDelete,keyInput,requestConfiguration,emit };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
   assert.equal(typeof mount, 'function')
   const state = context.settings
   return {
-    state, calls, timers, unmount: () => unmount(),
+    state, calls, timers, events, unmount: () => unmount(),
     html: () => renderToString(Vue.createSSRApp({
-      components: { AsrUsageStatistics: { render: () => Vue.h('div', { 'data-fixture-usage': '' }, 'usage-panel') } },
+      components: { PinCodeInput, AsrUsageStatistics: { render: () => Vue.h('div', { 'data-fixture-usage': '' }, 'usage-panel') } },
       setup: () => state, render,
     })),
   }
 }
+
+const simulation = createView(() => { throw Error('模拟元数据设置不应访问网关') }, { roomName: '模拟初始房间', accessCode: '0042' })
+assert.match(await simulation.html(), /房间密码已设置/)
+assert.doesNotMatch(await simulation.html(), /0042/)
+assert.match(await simulation.html(), /id="simulation-access-code"[^>]*type="text"/)
+simulation.state.newRoomName.value = '  模拟新名称  '
+simulation.state.saveRoomName()
+assert.deepEqual(simulation.events.at(-1), ['rename', '模拟新名称'])
+simulation.state.newRoomName.value = '中'.repeat(13)
+simulation.state.saveRoomName()
+assert.equal(simulation.events.length, 1)
+simulation.state.saveAccessCode('0081')
+assert.deepEqual(simulation.events.at(-1), ['access-code', '0081'])
+simulation.state.saveAccessCode('')
+assert.deepEqual(simulation.events.at(-1), ['access-code', ''])
+const eventsBeforeInvalid = simulation.events.length
+simulation.state.saveAccessCode('123')
+assert.equal(simulation.events.length, eventsBeforeInvalid)
+assert.equal(simulation.calls.length, 0)
+simulation.unmount()
 
 // 私有服务的404只触发只读健康查询；页面与脚本均不提供密钥写入或用量轮询。
 let configured = false

@@ -7,7 +7,7 @@ export function createRoomSettingsHandler(rooms, { allowedOrigins }) {
     const token = request.headers.authorization?.match(/^Bearer ([a-f0-9-]{36})$/)?.[1]
     const member = token && rooms.findSession(token)
     if (!member) { reply(403, { message: '房间身份已失效，请重新进入房间。' }); return }
-    const status = () => ({ ...rooms.publicStatus(member.room), readOnly: !rooms.anonymousOwner(member) })
+    const status = () => ({ ...(rooms.anonymousOwner(member) ? rooms.ownerStatus(member.room) : rooms.publicStatus(member.room)), readOnly: !rooms.anonymousOwner(member) })
     if (request.method === 'GET') { reply(200, status()); return }
     if (request.method !== 'POST') { reply(405, { message: '不支持的房间配置操作。' }); return }
     if (!allowedOrigins.includes(request.headers.origin) || !rooms.anonymousOwner(member)) { reply(403, { message: '请使用合法房主身份；已绑定房间请登录个人中心管理。' }); return }
@@ -21,7 +21,7 @@ export function createRoomSettingsHandler(rooms, { allowedOrigins }) {
       }
       let command
       try { command = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { reply(400, { message: '配置格式不正确。' }); return }
-      if (!['save', 'delete', 'test', 'asr', 'reveal', 'access-code'].includes(command?.action)) { reply(400, { message: '无效的房间管理操作。' }); return }
+      if (!['save', 'delete', 'test', 'asr', 'access-code', 'rename', 'avatar'].includes(command?.action)) { reply(400, { message: '无效的房间管理操作。' }); return }
       const result = await rooms.manageAnonymous(member, command)
       reply(200, { ...status(), ...result, busy: false })
     } catch (error) { reply(error.statusCode ?? 500, { message: error.statusCode ? error.message : '房间操作失败，请重试。' }) }

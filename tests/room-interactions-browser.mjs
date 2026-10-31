@@ -2,6 +2,7 @@
 // 先 npm run build；使用临时端口/内存房间和假 Web Speech，不读取 .env 或现有数据。
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 import { createAsrGateway } from '../server/asrGateway.mjs'
@@ -43,11 +44,18 @@ async function openPage(mobile = false) {
   return page
 }
 async function enter(page, name, code) {
-  await page.goto(origin + (code ? `/${code}/` : '/'))
-  await page.getByLabel('显示名称', { exact: true }).fill(name)
+  await page.goto(origin + '/?debug=1')
+  await page.evaluate(([name, code]) => localStorage.setItem('hakisub.rooms.v1', JSON.stringify([{ code: code || '100000', name }])), [name, code])
+  await page.goto(origin + (code ? `/${code}/?debug=1` : '/?debug=1'))
+  if (!code) {
+    const create = page.getByRole('button', { name: '创建房间', exact: true })
+    await create.focus(); await create.press('Enter')
+  }
+  if (!code) await page.getByLabel('输入房间名称', { exact: true }).fill(name)
   await page.locator('form button[type="submit"]').click()
   await page.locator('.member-tile').first().waitFor()
-  if (!code) await page.getByRole('dialog').getByRole('button', { name: '收起配置', exact: true }).click()
+  // 本套件保留原固定布局场景；新默认动态及两种切换由重构与控件专项覆盖。
+  await page.getByRole('checkbox', { name: '动态自适应布局', exact: true }).uncheck()
 }
 const selfTile = page => page.locator('.member-tile').filter({ has: page.locator('h2 small') })
 const captionWith = (page, text) => page.locator('.caption-message').filter({ hasText: text })
@@ -57,8 +65,15 @@ async function expandOwnMember(page, name) {
   if (await avatar.count()) await avatar.click()
 }
 async function selectTyping(page, tile) {
+  if (!await tile.locator('.mode-options-trigger').count()) { await tile.locator('.start-typing').click(); return }
   await tile.locator('.mode-options-trigger').click()
-  await page.getByRole('menuitem', { name: /切换打字|继续打字/ }).click()
+  await page.getByRole('menuitem', { name: '切换打字', exact: true }).click()
+}
+async function dismissComposer(page) {
+  const width = page.viewportSize().width
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) await page.touchscreen.tap(width - 2, 80)
+  else await page.mouse.click(width - 2, 80)
+  await page.locator('.typing-composer').waitFor({ state: 'detached' })
 }
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
@@ -216,6 +231,7 @@ try {
   await bob.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).tap()
 
   // 恢复语音沿用原广播/撤回路径，关麦后再进打字，草稿保留。
+  await selectTyping(alice, own)
   await input.fill('切换后保留草稿')
   await alice.getByLabel('识别来源').selectOption('browser')
   await own.locator('.tile-mic').click()
@@ -247,6 +263,14 @@ try {
   await expandOwnMember(bob, 'B')
   await selectTyping(bob, mobileSelf)
   const mobileInput = bob.getByLabel('输入字幕', { exact: true })
+  await mobileInput.fill('中'.repeat(1000))
+  const longComposer = await mobileInput.evaluate(editor => {
+    editor.scrollTop = editor.scrollHeight
+    const panel = editor.closest('.typing-composer'), footer = panel.querySelector('.composer-actions'), send = panel.querySelector('.composer-send')
+    const inputBounds = editor.getBoundingClientRect(), footerBounds = footer.getBoundingClientRect(), sendBounds = send.getBoundingClientRect()
+    return { scrolling: editor.scrollHeight > editor.clientHeight, separated: inputBounds.bottom <= footerBounds.top + 1, background: getComputedStyle(footer).backgroundColor, square: Math.abs(sendBounds.width - sendBounds.height) < 1 }
+  })
+  assert.equal(longComposer.scrolling, true); assert.equal(longComposer.separated, true); assert.equal(longComposer.background, 'rgb(241, 241, 238)'); assert.equal(longComposer.square, true)
   await mobileInput.fill('八人手机打字')
   const layout = await mobileInput.evaluate(editor => {
     const panel = editor.closest('.typing-composer').getBoundingClientRect()
@@ -269,15 +293,15 @@ try {
   await bob.evaluate(() => { window.testViewport.height = innerHeight; window.testViewport.offsetTop = 0; window.testViewport.dispatchEvent(new Event('resize')) })
   await bob.waitForFunction(() => document.querySelector('.typing-composer').getBoundingClientRect().bottom > 700)
   await mobileInput.fill('收起后保留的草稿')
-  await bob.getByRole('button', { name: '收起输入框' }).tap()
+  await dismissComposer(bob)
   await alice.getByRole('button', { name: '全局音效设置', exact: true }).click()
   await soundSettings.getByRole('checkbox', { name: '启用快捷回应音效' }).uncheck()
   await soundSettings.getByRole('button', { name: '关闭音效设置' }).click()
   assert.equal(await bob.locator('.typing-composer').count(), 0)
   await mobileSelf.locator('.start-typing').tap()
   assert.equal(await mobileInput.inputValue(), '收起后保留的草稿')
-  await bob.getByRole('button', { name: '收起输入框' }).tap()
-  await alice.getByRole('button', { name: '返回首页', exact: true }).click()
+  await dismissComposer(bob)
+  await alice.getByRole('button', { name: '退出房间', exact: true }).click()
   assert.equal(await alice.locator('textarea').count(), 0)
   await alice.reload(); await enter(alice, 'A again', code)
   assert.match(await alice.getByRole('button', { name: '全局音效设置', exact: true }).innerText(), /关/)
@@ -286,6 +310,51 @@ try {
   assert.equal(await alice.getByRole('button', { name: '🙏 谢谢', exact: true }).count(), 1, '刷新后恢复个人菜单')
   assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 0)
   await alice.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).click()
+  // 自己的卡片支持右键/真实触屏长按；松手不能误打开打字框，回应仍广播同房。
+  const output = new URL('../artifacts/room-interactions/', import.meta.url)
+  await mkdir(output, { recursive: true })
+  await expandOwnMember(alice, 'A again')
+  await selectTyping(alice, selfTile(alice))
+  await input.fill('自己的快捷回应不清除草稿')
+  await dismissComposer(alice)
+  await selfTile(alice).locator('.tile-text').click({ button: 'right' })
+  await alice.getByRole('dialog', { name: '快捷回应' }).waitFor()
+  await alice.screenshot({ path: fileURLToPath(new URL('self-reaction-desktop.png', output)) })
+  await alice.getByRole('button', { name: '❓ 疑问', exact: true }).click()
+  for (const page of [alice, bob, observer]) await reactionWith(page, '❓ A again：疑问').waitFor()
+  assert.equal(await alice.locator('.typing-composer').count(), 0, '右键回应不改变打字状态或开启输入框')
+  assert.equal(await other.locator('.reaction-bubble, .contracted-reaction').count(), 0, '回复自己不广播到其他房间')
+  await selfTile(alice).locator('.tile-text').click({ button: 'right' })
+  assert.equal(await alice.getByRole('button', { name: '❓ 疑问', exact: true }).isDisabled(), true, '自己和他人共用回应冷却')
+  await alice.keyboard.press('Escape')
+  await selfTile(alice).locator('.tile-text').click()
+  assert.equal(await input.inputValue(), '自己的快捷回应不清除草稿')
+  await dismissComposer(alice)
+  const selfTouch = mobileSelf.locator('.tile-text')
+  await bob.bringToFront()
+  // 等待另一成员的打字状态展开卡片，避免广播到达时改变触摸坐标。
+  await bob.locator('.member-tile').filter({ has: bob.getByRole('heading', { name: 'A again', exact: true }) }).getByText('打字模式', { exact: true }).waitFor()
+  await selfTouch.scrollIntoViewIfNeeded()
+  await selfTouch.tap({ trial: true })
+  const selfBounds = await selfTouch.boundingBox()
+  const selfTouchPoint = { x: selfBounds.x + selfBounds.width / 2, y: selfBounds.y + Math.min(20, selfBounds.height / 2) }
+  const touchTarget = await bob.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y)
+    return { matches: !!target?.closest('.tile-text.can-type'), target: target?.outerHTML.slice(0, 300), scrollY }
+  }, selfTouchPoint)
+  assert.equal(touchTarget.matches, true, JSON.stringify({ selfBounds, selfTouchPoint, ...touchTarget }))
+  const cdp = await bob.context().newCDPSession(bob)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [selfTouchPoint] })
+  await bob.getByRole('dialog', { name: '快捷回应' }).waitFor()
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  assert.equal(await bob.locator('.typing-composer').count(), 0, '长按自己的打字卡片松手不打开输入框')
+  assert.equal(await bob.locator('.member-mode-menu').count(), 0, '卡片长按不触发麦克风的打字菜单')
+  await bob.screenshot({ path: fileURLToPath(new URL('self-reaction-mobile.png', output)) })
+  await bob.getByRole('button', { name: '✅ 收到', exact: true }).tap()
+  for (const page of [alice, bob, observer]) await reactionWith(page, '✅ B：收到').waitFor()
+  await selfTouch.tap()
+  assert.equal(await mobileInput.inputValue(), '收起后保留的草稿', '长按后下一次轻触仍正常编辑原草稿')
+  await dismissComposer(bob)
   assert.deepEqual(errors, [])
   console.log(`通过：${assets.length}个素材MP3在正式静态服务中正确MIME/实际解码/非静音/时长与峰值验证、默认和逐项试听真实BufferSource播放；桌面/移动双房间/八成员、全局静音/音量/旁观成员/隔离/偏好及打字/回应/假ASR回归。未验收物理扬声器听感、真机键盘或真实麦克风/豆包。`)
 } finally {

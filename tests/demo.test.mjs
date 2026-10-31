@@ -1,9 +1,11 @@
+import * as nameRules from '../accounts/shared/nameRules.mjs'
+import * as roomAvatars from '../accounts/shared/roomAvatars.mjs'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import assert from 'node:assert/strict'
 import { webcrypto } from 'node:crypto'
 import ts from 'typescript'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 const source = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const script = source('../src/App.vue').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
 const simulationTypes = source('../src/simulation/types.ts').replace(/^export /gm, '')
@@ -13,9 +15,12 @@ const materialPacks = [JSON.parse(readFileSync(new URL('../materials/example.jso
 const asrModel = source('../src/browserAsr.ts').replace(/^import .*$/gm, '').replace(/^export type \{.*$/gm, '').replace(/^export /gm, '')
 const sessionModel = source('../src/asrSession.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const model = source('../src/captions.ts').replace(/^export /gm, '')
-const rememberedModel = source('../src/rememberedRooms.ts').replace(/^export /gm, '')
+const rememberedModel = source('../src/rememberedRooms.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const navigationModel = source('../src/roomNavigation.ts').replace(/^export /gm, '')
 const interactionsModel = source('../src/roomInteractions.ts').replace(/^export /gm, '')
+const entranceModel = source('../src/captionEntrance.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
+const preferencesModel = source('../src/roomPreferences.ts').replace(/^export /gm, '')
+const speechSoundModel = source('../src/speechSound.ts').replace(/^export /gm, '')
 const reactionSoundModel = source('../src/reactionSound.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 let time = 1_800_000_000_000
 const timers = []
@@ -34,26 +39,45 @@ const browser = { history: { pushState: (_state, _unused, path) => updatePath('p
 const documentStub = { hidden: false, addEventListener: (name, fn) => documentEvents.set(name, fn), removeEventListener: name => documentEvents.delete(name) }
 let doubaoCallbacks, doubaoStopped = false, doubaoRoomToken, roomCallbacks, roomSent = [], roomClosed = false
 const roomConnections = []
-const accountAccessCalls = []
+const accountAccessCalls = [], createdNameCalls = [], bindCalls = []
+let createdNameResponse = async name => name
 let accountAccessResponse = async () => ({ requiresPassword: true, message: '需要入房码' })
-const context = vm.createContext({ createRoomClient: callbacks => {
+const context = vm.createContext({ ...nameRules, ...roomAvatars, AbortController,
+  saveCreatedRoomName: (_token, value, signal) => { createdNameCalls.push({ value, signal }); return createdNameResponse(value) }, createRoomClient: callbacks => {
   roomCallbacks = callbacks
   return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event); return true }, getToken: () => 'self-room-token', close() { roomClosed = true } }
-}, createAccountClient: () => ({ roomAccess: (...args) => { accountAccessCalls.push(args); return accountAccessResponse(...args) }, cancel() {} }), createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
+}, createAccountClient: () => ({ bindRoom: async (...args) => { bindCalls.push(args) }, roomAccess: (...args) => { accountAccessCalls.push(args); return accountAccessResponse(...args) }, cancel() {} }), createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
   doubaoRoomToken = roomToken
   doubaoCallbacks = callbacks
   return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
-}, window: browser, document: documentStub, clearTimeout, ref, computed, onUnmounted: fn => cleanup = fn, location: pageLocation, URL, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
-const exported = 'globalThis.demo = {accountUser,roomPasswordOpen,roomPasswordMessage,cancelRoomPassword,typedDraft,typedSending,typingEditorOpen,selectMemberTyping,sendTypedCaption,sendReaction,reactions,room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,shareCurrentRoom,sharing,shareMessage,manualShare};'
-vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+}, window: browser, document: documentStub, clearTimeout, ref, computed, watch, onUnmounted: fn => cleanup = fn, location: pageLocation, URL, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
+const exported = 'globalThis.demo = {renameSimulationRoom,updateSimulationAccessCode,simulationAccessCode,createNamedRoom,joinRoomByCode,requestedRoomName,entryOpen,accountUser,roomName,roomPasswordOpen,roomPasswordMessage,cancelRoomPassword,typedDraft,typedSending,typingEditorOpen,selectMemberTyping,sendTypedCaption,sendReaction,reactions,room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,copyCode,shareCurrentRoom,copyMessage};'
+vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + entranceModel + preferencesModel + speechSoundModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
 assert.equal(d.roomMode.value, 'online', '默认进入真实联网房间流程')
 d.roomMode.value = 'simulation'
 const advance = ms => { time += ms; d.tick() }
 d.enter(); assert.equal(d.joined.value, false)
+for (const name of ['中'.repeat(9), 'a'.repeat(17), '中'.repeat(7) + 'abc']) {
+  d.name.value = name; d.enter(); assert.equal(d.joined.value, false)
+}
 d.name.value = '测试'; d.mode.value = 'join'; d.code.value = 'abc'; d.enter(); assert.equal(d.joined.value, false)
 d.code.value = '123456'; d.enter(); assert.equal(d.joined.value, true)
+assert.equal(d.roomName.value, '测试的房间')
+const simulatedMemberIds = d.members.value.map(member => member.id).join(',')
+d.renameSimulationRoom('模拟改名生效')
+assert.equal(d.roomName.value, '模拟改名生效')
+d.renameSimulationRoom('中'.repeat(13))
+assert.equal(d.roomName.value, '模拟改名生效')
+d.updateSimulationAccessCode('0042')
+assert.equal(d.simulationAccessCode.value, '0042')
+d.updateSimulationAccessCode('123')
+assert.equal(d.simulationAccessCode.value, '0042')
+assert.equal(d.members.value.map(member => member.id).join(','), simulatedMemberIds, '改名及设置入房码不重建成员')
+d.sendReaction(d.me.value.id, 'question')
+assert.equal(d.reactions.value.at(-1).message, '❓ 测试：疑问', '模拟模式支持在自己的卡片表达预制想法')
+advance(2600); assert.equal(d.reactions.value.length, 0)
 for (const [length, duration] of [[1,3000],[15,3000],[16,6000],[30,6000],[31,10000]]) {
   assert.equal(d.displayDuration('中'.repeat(length)), duration)
 }
@@ -247,6 +271,9 @@ d.leave()
 d.roomMode.value = 'online'; d.mode.value = 'create'; d.enter()
 assert.equal(d.connecting.value, true); assert.equal(d.joined.value, false)
 roomCallbacks.onJoined('654321', 'self')
+assert.equal(d.roomName.value, '房间 654321')
+roomCallbacks.onRoomStatus({ name: '朋友交流', bound: false, asrEnabled: true, configured: true })
+assert.equal(d.roomName.value, '朋友交流')
 assert.equal(pageLocation.pathname, '/654321/')
 assert.equal(historyChanges.at(-1).method, 'push')
 roomCallbacks.onMembers([{ id: 'other', name: 'Other', mic: true, color: '' }, { id: 'self', name: 'Me', mic: false, color: '' }])
@@ -313,6 +340,14 @@ roomCallbacks.onReaction({ id: 'r', senderId: 'self', targetId: 'other', reactio
 roomCallbacks.onReaction({ id: 'r', senderId: 'self', targetId: 'other', reaction: 'agree' })
 assert.equal(d.reactions.value.length, 1); assert.equal(d.captions.value.length, captionCount)
 advance(2600); assert.equal(d.reactions.value.length, 0)
+d.sendReaction('self', 'question')
+assert.equal(roomSent.at(-1).targetId, 'self'); assert.equal(roomSent.at(-1).reaction, 'question')
+const selfReactionCount = roomSent.length
+d.sendReaction('other', 'agree'); assert.equal(roomSent.length, selfReactionCount, '回复自己和他人共享发送冷却')
+roomCallbacks.onReaction({ id: 'self-reaction', senderId: 'self', targetId: 'self', reaction: 'question' })
+assert.equal(d.reactions.value.at(-1).message, '❓ Me：疑问')
+assert.equal(d.captions.value.length, captionCount, '回复自己不进入字幕生命周期')
+advance(2600); assert.equal(d.reactions.value.length, 0)
 d.changeInputMode({ target: { value: 'simulation' } })
 assert.equal(d.inputMode.value, 'microphone', '联网模式不混入模拟成员')
 roomCallbacks.onClose()
@@ -346,19 +381,48 @@ assert.equal(historyChanges.at(-1).method, 'replace', '别名或直达地址在�
 roomCallbacks.onMembers([{ id: 'member', name: 'Me', mic: false, color: '' }])
 d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
 assert.equal(doubaoStopped, false)
+roomCallbacks.onRoomStatus({ asrEnabled: false, configured: true })
+assert.equal(doubaoStopped, true); assert.equal(d.members.value.find(member => member.id === 'member').mic, false)
+d.toggleMemberMic('member'); d.toggleRealMic(); assert.equal(doubaoStopped, true, '房间关闭ASR后不能重新启动豆包采集')
+d.changeAsrProvider({ target: { value: 'browser' } })
+const blockedBrowserCount = FakeRecognition.instances.length
+d.toggleMemberMic('member'); d.toggleRealMic()
+assert.equal(FakeRecognition.instances.length, blockedBrowserCount, '房间关闭ASR也禁止浏览器识别绕过')
+roomCallbacks.onRoomStatus({ asrEnabled: true, configured: true })
+assert.equal(FakeRecognition.instances.length, blockedBrowserCount, '恢复ASR不会自动开启麦克风')
+d.toggleMemberMic('member'); assert.equal(FakeRecognition.instances.length, blockedBrowserCount + 1)
+roomCallbacks.onRoomStatus({ asrEnabled: false, configured: true })
+assert.equal(d.members.value.find(member => member.id === 'member').mic, false, '关闭ASR停止正在运行的浏览器识别')
+roomCallbacks.onRoomStatus({ asrEnabled: true, configured: true })
+d.changeAsrProvider({ target: { value: 'doubao' } }); d.toggleRealMic()
 pageLocation.pathname = '/'; browserEvents.get('popstate')()
 assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(d.mode.value, 'create')
 pageLocation.pathname = '/114514/'; browserEvents.get('popstate')()
 assert.equal(d.code.value, '114514'); assert.equal(d.joined.value, false, '前进只准备加入，不自动开麦')
 d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
 let completeShare
-context.navigator.share = () => new Promise(resolve => { completeShare = resolve })
+const copiedValues = []
+context.navigator.share = () => { throw Error('不应打开系统分享') }
+context.navigator.clipboard = { writeText: async value => { copiedValues.push(value) } }
+await d.copyCode()
+assert.equal(copiedValues.at(-1), '114514'); assert.equal(d.copyMessage.value, '复制房间号成功')
+await d.shareCurrentRoom()
+assert.equal(copiedValues.at(-1), 'https://hakisub.xdstar.work/114514/'); assert.equal(d.copyMessage.value, '复制链接成功')
+context.navigator.clipboard.writeText = async () => { throw Error('denied') }
+await d.copyCode(); assert.equal(d.copyMessage.value, '复制失败，请重试')
+await d.shareCurrentRoom(); assert.equal(d.copyMessage.value, '复制失败，请重试')
+context.navigator.clipboard.writeText = () => new Promise(resolve => { completeShare = resolve })
 const sharingPending = d.shareCurrentRoom()
-assert.equal(d.sharing.value, true)
+assert.equal(d.copyMessage.value, '')
 d.leave(); completeShare(); await sharingPending
-assert.equal(d.shareMessage.value, '', '离房后不显示迟到分享结果')
+assert.equal(d.copyMessage.value, '', '离房后不显示迟到复制结果')
 d.mode.value = 'join'; d.code.value = '114514'; d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
+const copyingPending = d.copyCode()
+context.navigator.clipboard.writeText = async () => {}
+await d.shareCurrentRoom(); completeShare(); await copyingPending
+assert.equal(d.copyMessage.value, '复制链接成功', '后续点击使上一次迟到的房号复制回调失效')
 browserEvents.get('pagehide')()
+assert.equal(d.copyMessage.value, '', '页面离开清理提示及计时器')
 assert.equal(pageLocation.pathname, '/114514/', '刷新和关闭页面保留房间地址')
 d.leave(); d.mode.value = 'join'; d.code.value = '123456'; d.name.value = '凭证测试'
 await d.enter(); roomCallbacks.onPasswordRequired('123456', '需要四位入房码')
@@ -387,10 +451,53 @@ const switchedAccount = d.enter(); d.accountUser.value = { uid: '654321', nickna
 resolveAccess({ accessTicket: 'old-account', requiresPassword: true }); await switchedAccount
 assert.equal(roomConnections.length, connectionCount, '账号切换后旧授权不能进房')
 d.leave()
+// 极简表单自动使用账号/游客身份，先保存名称再绑定；取消后迟到响应不得操作新房间。
+d.accountUser.value = null; d.name.value = ''; d.rememberedRooms.value = []
+d.createNamedRoom('中'.repeat(13)); assert.equal(d.connecting.value, false)
+for (const password of ['123', '12345', 'abcd', 1234]) { d.createNamedRoom('私密测试', password); assert.equal(d.connecting.value, false) }
+d.createNamedRoom('  手动命名房间  ', '0042')
+assert.equal(roomConnections.at(-1)[1], '游客')
+assert.equal(roomConnections.at(-1)[4].password, '0042', '私密密码进入初次建房请求')
+roomCallbacks.onJoined('555555', 'guest-new', { isOwner: true, aliases: [], ownerToken: 'synthetic-owner' })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(createdNameCalls.at(-1).value, '手动命名房间')
+assert.equal(d.roomName.value, '手动命名房间')
+d.leave(); d.accountUser.value = { uid: '123456', nickname: '账号昵称' }
+let resolveCreatedName
+createdNameResponse = () => new Promise(resolve => { resolveCreatedName = resolve })
+const bindCount = bindCalls.length
+d.createNamedRoom('账号的自定义名')
+assert.equal(roomConnections.at(-1)[1], '账号昵称')
+assert.equal(roomConnections.at(-1)[4], undefined, '下一次公开创建不复用私密密码')
+roomCallbacks.onJoined('555556', 'account-new', { isOwner: true, aliases: [], ownerToken: 'synthetic-owner' })
+assert.equal(bindCalls.length, bindCount, '名称保存前不绑定')
+resolveCreatedName('账号的自定义名'); await new Promise(resolve => setImmediate(resolve))
+assert.equal(bindCalls.length, bindCount + 1)
+assert.equal(d.roomName.value, '账号的自定义名')
+d.leave(); d.createNamedRoom('迟到命名')
+roomCallbacks.onJoined('555557', 'cancelled-new', { isOwner: true, aliases: [], ownerToken: 'synthetic-owner' })
+const interrupted = createdNameCalls.at(-1)
+d.leave(); resolveCreatedName('迟到命名'); await new Promise(resolve => setImmediate(resolve))
+assert.equal(interrupted.signal.aborted, true)
+assert.equal(d.roomName.value, '')
+assert.equal(bindCalls.length, bindCount + 1)
+createdNameResponse = async () => { throw Error('synthetic name save failure') }
+d.createNamedRoom('失败后仍保留房间')
+roomCallbacks.onJoined('555558', 'failed-new', { isOwner: true, aliases: [], ownerToken: 'synthetic-owner' })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(d.joined.value, true, '房间已经创建，名称失败不假称尚未创建或重复建房')
+assert.equal(bindCalls.length, bindCount + 1)
+d.leave(); d.requestedRoomName.value = ''
+d.roomMode.value = 'simulation'; d.mode.value = 'create'; d.name.value = '模拟访客'; d.requestedRoomName.value = '创建时指定的模拟名'
+d.enter(); assert.equal(d.roomName.value, '创建时指定的模拟名')
+d.updateSimulationAccessCode('0051'); d.leave()
+assert.equal(d.simulationAccessCode.value, ''); assert.equal(d.roomName.value, '')
+d.requestedRoomName.value = ''; d.roomMode.value = 'online'
+
 d.mode.value = 'join'; d.code.value = '123456'
-const unmountedEntry = d.enter()
+const unmountedConnectionCount = roomConnections.length, unmountedEntry = d.enter()
 cleanup(); resolveAccess({ accessTicket: 'after-unmount', requiresPassword: true }); await unmountedEntry
-assert.equal(roomConnections.length, connectionCount, '卸载后迟到授权不能连接房间')
+assert.equal(roomConnections.length, unmountedConnectionCount, '卸载后迟到授权不能连接房间')
 assert.ok(timers.every(t => t.cleared))
 assert.equal(browserEvents.size, 0); assert.equal(documentEvents.size, 0)
 console.log('通过：真实识别接入现有生命周期、模式隔离、授权失败、切屏保持/离页关闭、字数边界、独立生命周期、渐隐中加入新句、Interim 原位更新与确认、重复 Final、成员隔离与静音、六种模拟、一分钟压力测试（81 句）、1～8 人切换、离房及卸载清理。')

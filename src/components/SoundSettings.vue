@@ -34,19 +34,19 @@ onUnmounted(() => settingsDialog.value?.close())
 </template>
 
 <style scoped>
-.sound-settings { width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 18px; overflow: auto; border: 1px solid #bacbb7; border-radius: 14px; background: #fff; color: #243b34; box-shadow: 0 8px 32px #18342130; }
-.sound-settings::backdrop { background: #17271e55; }
+.sound-settings { width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 18px; overflow: auto; border: 1px solid var(--home-border); border-radius: 14px; background: var(--room-card-bg); color: var(--home-text); box-shadow: 0 8px 32px #00000030; }
+.sound-settings::backdrop { background: #181a1d80; }
 .sound-heading, .sound-actions, .volume-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sound-heading h2 { margin: 0; font-size: 18px; }
 .sound-heading button { min-height: 36px; padding: 6px 8px; font-size: 13px; }
-.sound-help { margin: 12px 0; color: #666; font-size: 12px; line-height: 1.6; }
+.sound-help { margin: 12px 0; color: var(--home-secondary-text); font-size: 12px; line-height: 1.6; }
 .sound-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
-.sound-toggle input { width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: #52744d; }
+.sound-toggle input { width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: var(--home-bg); }
 .volume-label { margin: 12px 0 4px; font-size: 14px; }
-input[type="range"] { display: block; width: 100%; min-height: 40px; padding: 0; accent-color: #52744d; }
-select { width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid #c8d4c3; border-radius: 8px; background: #fff; color: inherit; font: inherit; font-size: 14px; }
+input[type="range"] { display: block; width: 100%; min-height: 40px; padding: 0; accent-color: var(--home-bg); }
+select { width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid var(--home-border); border-radius: 8px; background: var(--room-card-bg); color: inherit; font: inherit; font-size: 14px; }
 .sound-status { margin: 8px 0; font-size: 12px; line-height: 1.6; }
-.sound-actions { border-top: 1px solid #e0e6db; padding-top: 12px; margin-top: 14px; }
-.sound-actions small { color: #666; font-size: 11px; }
-.sound-actions button { min-height: 40px; padding: 8px 12px; border-radius: 8px; background: #e8f0e3; font-size: 13px; }
+.sound-actions { border-top: 1px solid var(--home-border); padding-top: 12px; margin-top: 14px; }
+.sound-actions small { color: var(--home-secondary-text); font-size: 11px; }
+.sound-actions button { min-height: 40px; padding: 8px 12px; border-radius: 8px; background: #dedfdb; font-size: 13px; }
 </style>

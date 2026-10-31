@@ -166,6 +166,42 @@ test('并发注册的用户名唯一和滚动成功额度不能穿透，重启�
     const target = resolve(directory); assert.ok(target.startsWith(resolve(tmpdir()) + sep)); await rm(target, { recursive: true, force: true })
   }
 })
+test('账号20位、默认昵称及中英等价上限；旧长账号仍可登录和恢复', async () => {
+  const server = await createAccountServer({ ...base, databasePath: ':memory:', limits: { registrationAttempts: 100, registrationSuccesses: 20, dailyWarning: 100 } })
+  const person = client(server, '192.0.2.40')
+  try {
+    for (const username of ['ab', 'a'.repeat(21), '账号中文']) assert.equal((await person.write('/api/account/register', registration(username))).status, 400)
+    const numeric = registration('12345678901234567890'); delete numeric.nickname
+    const created = await person.write('/api/account/register', numeric)
+    assert.equal(created.status, 201); assert.equal(created.body.user.nickname, '12345678')
+    const second = await person.write('/api/account/register', { ...registration('ABCDEFGHIJKLMNOPQRST'), nickname: '   ' })
+    assert.equal(second.status, 201); assert.equal(second.body.user.username, 'abcdefghijklmnopqrst'); assert.equal(second.body.user.nickname, 'abcdefgh')
+    const valid = ['一二三四五六七八', 'abcdefghijklmnop', '一二三四五六七ab']
+    for (const nickname of valid) {
+      const saved = await person.write('/api/account/nickname', { nickname }, 'PATCH')
+      assert.equal(saved.status, 200); assert.equal(saved.body.user.nickname, nickname)
+    }
+    for (const nickname of ['一二三四五六七八九', 'abcdefghijklmnopq', '一二三四五六七abc', '坏\n名字']) {
+      assert.equal((await person.write('/api/account/nickname', { nickname }, 'PATCH')).status, 400)
+      assert.equal((await person.request('/api/account/me')).body.user.nickname, valid.at(-1))
+    }
+    const before = server.database.prepare('SELECT COUNT(*) AS count FROM users').get().count
+    assert.equal((await person.write('/api/account/register', { ...registration('invalid'), nickname: '中'.repeat(9) })).status, 400)
+    assert.equal(server.database.prepare('SELECT COUNT(*) AS count FROM users').get().count, before, '非法昵称不能创建用户')
+    const empty = await person.write('/api/account/register', { ...registration('emptyname'), nickname: '' })
+    assert.equal(empty.status, 201); assert.equal(empty.body.user.nickname, 'emptynam')
+    const legacyAccount = 'legacy_account_longer_than_20'
+    server.database.prepare('UPDATE users SET username=?, nickname=? WHERE public_uid=?').run(legacyAccount, '旧昵称'.repeat(5), second.body.user.uid)
+    await person.write('/api/account/logout', {})
+    const legacy = await person.write('/api/account/login', { username: legacyAccount, password: numeric.password })
+    assert.equal(legacy.status, 200); assert.equal(legacy.body.user.nickname, '旧昵称'.repeat(5), '不迁移或截断已有账号资料')
+    await person.write('/api/account/logout', {})
+    assert.equal((await person.write('/api/account/recovery/start', { username: legacyAccount })).status, 200)
+    const password = 'recovered legacy password'
+    assert.equal((await person.write('/api/account/recovery/reset', { answers: numeric.questions.map(entry => entry.answer), password, confirmPassword: password })).status, 200)
+    assert.equal((await person.write('/api/account/login', { username: legacyAccount, password })).status, 200)
+  } finally { await server.app.close() }
+})
 test('来源头只信任明确代理、IPv6聚合和精确滚动窗口', () => {
   const db = new Database(':memory:'); db.exec('CREATE TABLE rate_limit_events(action,subject,created_at)')
   let now = 1000

@@ -12,12 +12,8 @@ export function roomShareUrl(roomCode: string, origin: string): string {
   return new URL(roomPath(roomCode), new URL(origin).origin).href
 }
 
-export async function shareRoomLink(roomCode: string, origin: string, browser: Pick<Navigator, 'share' | 'clipboard'> = navigator): Promise<'shared' | 'copied' | 'cancelled' | 'unavailable'> {
+export async function shareRoomLink(roomCode: string, origin: string, browser: Pick<Navigator, 'clipboard'> = navigator): Promise<'copied' | 'unavailable'> {
   const url = roomShareUrl(roomCode, origin)
-  if (browser.share) {
-    try { await browser.share({ title: `HakiSub 字幕房间 ${roomCode}`, url }); return 'shared' }
-    catch (error) { if ((error as { name?: string })?.name === 'AbortError') return 'cancelled' }
-  }
   try { await browser.clipboard.writeText(url); return 'copied' }
   catch { return 'unavailable' }
 }

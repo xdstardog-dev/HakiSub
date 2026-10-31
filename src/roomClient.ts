@@ -1,9 +1,9 @@
 import type { CaptionEvent } from './captionEvents'
 import type { MemberMode, RoomReaction } from './roomInteractions'
 
-export type RoomMember = { id: string; name: string; mic: boolean; color: string; mode?: MemberMode }
+export type RoomMember = { id: string; name: string; mic: boolean; color: string; mode?: MemberMode; toneSlot?: number }
 type RoomCallbacks = {
-  onJoined: (code: string, memberId: string, ownership: { ownerToken?: string; isOwner: boolean; aliases: string[] }) => void
+  onJoined: (code: string, memberId: string, ownership: { ownerToken?: string; isOwner: boolean; aliases: string[]; name?: string; avatarId?: string }) => void
   onMembers: (members: RoomMember[]) => void
   onCaption: (event: CaptionEvent) => void
   onReaction?: (event: RoomReaction) => void
@@ -12,7 +12,7 @@ type RoomCallbacks = {
   onClose: () => void
   onPasswordRequired?: (code: string, message: string) => void
   onAccessRevoked?: (code: string, message: string) => void
-  onRoomStatus?: (status: { bound: boolean; asrEnabled: boolean; configured: boolean }) => void
+  onRoomStatus?: (status: { name?: string; avatarId?: string; bound: boolean; asrEnabled: boolean; configured: boolean }) => void
 }
 export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/rooms`)) {
   let socket: WebSocket | undefined, token = ''
@@ -46,6 +46,8 @@ export function createRoomClient(callbacks: RoomCallbacks, createSocket = () => 
           const event = JSON.parse(message.data)
           if (event.type === 'joined') { clearTimeout(connectionTimer); token = event.token; callbacks.onJoined(event.code, event.memberId, {
             ownerToken: event.ownerToken, isOwner: event.isOwner === true,
+            name: typeof event.name === 'string' ? event.name : undefined,
+            ...(typeof event.avatarId === 'string' ? { avatarId: event.avatarId } : {}),
             aliases: Array.isArray(event.aliases) ? event.aliases.filter((code: unknown) => typeof code === 'string' && /^\d{6}$/.test(code)) : [],
           }) }
           else if (event.type === 'members') callbacks.onMembers(event.members)

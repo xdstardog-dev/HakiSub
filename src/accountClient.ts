@@ -1,5 +1,5 @@
 export type AccountIdentity = { uid: string; nickname: string }
-export type OwnedRoom = { code: string; bound: boolean; configured: boolean; keyState: 'configured' | 'missing' | 'deleted'; asrEnabled: boolean; busy: boolean; source: 'room' | 'none'; requiresPassword?: boolean }
+export type OwnedRoom = { code: string; name: string; avatarId?: string; bound: boolean; configured: boolean; keyState: 'configured' | 'missing' | 'deleted'; asrEnabled: boolean; busy: boolean; source: 'room' | 'none'; requiresPassword?: boolean }
 export type RoomPresetConfiguration = { schemaVersion: 1; asrProvider: 'browser' | 'doubao'; adaptiveCards: boolean }
 export type RoomPreset = { id: string; name: string; configuration: RoomPresetConfiguration; createdAt: number; updatedAt: number }
 const configuredOrigin = import.meta.env.VITE_ACCOUNT_ORIGIN
@@ -33,7 +33,7 @@ export function createAccountClient(fetchRequest: typeof fetch = fetch) {
     rooms: () => request<{ rooms: OwnedRoom[] }>('/rooms'),
     roomAccess: (code: string, password?: string) => request<{ code: string; requiresPassword: boolean; accessTicket?: string; message?: string }>('/rooms/' + encodeURIComponent(code) + '/access', 'POST', password === undefined ? {} : { password }),
     bindRoom: (code: string, ownerToken: string) => request('/rooms/' + encodeURIComponent(code) + '/bind', 'POST', { ownerToken }),
-    manageRoom: (code: string, command: object) => request<{ room?: OwnedRoom; apiKey?: string; ok?: boolean; message?: string }>('/rooms/' + encodeURIComponent(code) + '/manage', 'POST', command),
+    manageRoom: (code: string, command: object) => request<{ room?: OwnedRoom; ok?: boolean; message?: string }>('/rooms/' + encodeURIComponent(code) + '/manage', 'POST', command),
     presets: () => request<{ presets: RoomPreset[] }>('/presets'),
     save: (name: string, configuration: RoomPresetConfiguration) => request<{ preset: RoomPreset }>('/presets', 'POST', { name, configuration }),
     rename: (id: string, name: string) => request<{ preset: RoomPreset }>('/presets/' + encodeURIComponent(id), 'PATCH', { name }),

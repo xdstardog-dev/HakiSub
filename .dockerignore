@@ -4,6 +4,9 @@
 !package-lock.json
 !server/
 !server/*.mjs
+!accounts/
+!accounts/shared/
+!accounts/shared/*.mjs
 !dist/
 !dist/**
 # 即使白名单目录出现误放文件，也不将凭据发送到构建上下文。

@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'node:crypto'
 import { isIP } from 'node:net'
+import { isValidDisplayName, NICKNAME_MAXIMUM_UNITS } from '../shared/nameRules.mjs'
 
 export const tokenHash = token => createHash('sha256').update(token).digest('hex')
 export function problem(statusCode, message) { const error = Error(message); error.statusCode = statusCode; return error }
@@ -8,7 +9,11 @@ export function requireText(value, minimum, maximum, label) {
   if (typeof value !== 'string' || value.length < minimum || value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)) throw problem(400, `${label}长度或格式不正确。`)
   return value
 }
-export function requireNickname(value) { return requireText(typeof value === 'string' ? value.trim() : value, 1, 20, '用户昵称') }
+export function requireNickname(value) {
+  const nickname = typeof value === 'string' ? value.trim() : value
+  if (!isValidDisplayName(nickname, NICKNAME_MAXIMUM_UNITS)) throw problem(400, '昵称最多8个汉字或16个英文／数字，不能包含换行或控制字符。')
+  return nickname
+}
 export function requirePassword(body) {
   const password = requireText(body.password, 8, 128, '密码')
   if (password !== body.confirmPassword) throw problem(400, '两次输入的密码不一致。')

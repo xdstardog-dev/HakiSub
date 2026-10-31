@@ -24,6 +24,7 @@ async function tree(path) {
 }
 for (const path of ['accounts/package.json', 'accounts/package-lock.json', 'accounts/Dockerfile', 'accounts/.dockerignore', 'accounts/README.md', 'accounts/THIRD-PARTY.md', 'deploy/compose.accounts.yaml', 'deploy/caddy/Caddyfile.accounts.candidate', 'deploy/accounts.env.example', 'docs/ACCOUNT-SYSTEM-PLAN.md', 'docs/ACCOUNT-DEPLOYMENT.md']) await copy(path)
 await tree('accounts/server'); await tree('accounts/dist')
+await tree('accounts/shared')
 await writeFile(join(output, 'RELEASE.json'), JSON.stringify({ release, files }, null, 2))
 const archive = output + '.tar.gz'
 const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'

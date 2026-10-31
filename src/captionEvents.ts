@@ -1,5 +1,5 @@
 export type AsrState = 'idle' | 'starting' | 'listening' | 'reconnecting' | 'error'
-export type CaptionEvent = { memberId: string; utteranceId: string; text: string; state: 'interim' | 'final' }
+export type CaptionEvent = { memberId: string; utteranceId: string; text: string; state: 'interim' | 'final'; source?: 'speech' | 'typing' }
 export type AsrUsageEvent = { requestId: string; submittedAudioSeconds: number; completedAudioSeconds: number; serverAudioSeconds: number | null }
 export type AsrCallbacks = {
   onState: (state: AsrState, message: string) => void

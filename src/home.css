@@ -1,0 +1,143 @@
+/* 首页临时灰阶主题。布局断点统一为 768px；JS 从 --home-carousel-mobile 读取布局模式。 */
+:root {
+  --home-bg: #41454a;
+  --home-outer-bg: #62666b;
+  --room-card-bg: #f1f1ee;
+  --home-text: #242629;
+  --home-secondary-text: #62666a;
+  --home-light-text: #f1f1ee;
+  --home-border: #c9cac7;
+  --home-card-radius: 28px;
+  --home-control-radius: 12px;
+  --home-space: 16px;
+  --home-card-gap: 8px;
+  --home-page-gutter: 24px;
+  --mobile-card-ratio: 3 / 4;
+  --desktop-card-ratio: 6 / 7;
+  --card-active-scale: 1;
+  --card-inactive-scale: 0.9;
+  --card-overlay-color: 128, 128, 128;
+  --card-overlay-opacity: 0.4;
+  --home-content-max-width: 1120px;
+  --home-inner-max-width: 960px;
+  --home-desktop-card-width: calc(236px * 0.8);
+  --home-entry-dialog-width: 400px;
+  --home-entry-dialog-min-height: 320px;
+  --home-layout-breakpoint: 768px;
+}
+.app-shell.home-shell { max-width: none; width: 100%; padding: 0 0 env(safe-area-inset-bottom, 0px); background: var(--home-bg); color: var(--home-light-text); box-shadow: none; }
+.home-container { width: 100%; max-width: var(--home-content-max-width); margin-inline: auto; padding-inline: var(--home-page-gutter); }
+.home-header { display: flex; align-items: center; justify-content: space-between; gap: var(--home-space); min-height: 100px; padding-top: env(safe-area-inset-top, 0px); }
+.home-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.home-brand b { display: block; font-size: 20px; letter-spacing: -.4px; }
+.home-brand small { display: block; margin-top: 3px; font-size: 12px; }
+.home-logo { display: block; flex: 0 0 56px; width: 56px; height: 56px; overflow: hidden; border: 1px solid var(--home-border); border-radius: var(--home-control-radius); background: var(--room-card-bg); }
+.home-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.home-header nav { display: flex; align-items: center; justify-content: flex-end; gap: 20px; min-width: 0; }
+.home-list-button { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border-radius: var(--home-control-radius); }
+.home-list-button > span { font-size: 22px; line-height: 1; }
+.home-header .account-access { color: var(--home-light-text); border: 0; background: none; padding: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
+.home-content { padding-block: clamp(36px, 8vh, 80px) 36px; }
+.home-room-heading { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.home-content h1 { margin: 0; font-size: 24px; font-weight: 600; }
+.home-status { margin: 12px var(--home-page-gutter); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.home-carousel {
+  --home-carousel-mobile: 1;
+  --home-card-width: min(80vw, 340px);
+  display: flex; position: relative; gap: var(--home-card-gap); width: 100%;
+  overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+  padding: 20px max(10vw, calc((100% - 340px) / 2)); scrollbar-width: none;
+}
+.home-carousel::-webkit-scrollbar { display: none; }
+.home-carousel-item { --card-distance: 1; position: relative; flex: 0 0 var(--home-card-width); min-width: 0; aspect-ratio: var(--mobile-card-ratio); scroll-snap-align: center; }
+.home-room-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
+  width: 100%; height: 100%; min-height: 0; padding: 28px; border-radius: var(--home-card-radius);
+  color: var(--home-text); background: var(--room-card-bg); text-align: left; isolation: isolate;
+  transform: scale(calc(var(--card-active-scale) - (var(--card-active-scale) - var(--card-inactive-scale)) * var(--card-distance)));
+}
+/* 覆盖内容的中性灰蒙层随槽位距离变化；不改变卡片或文字的整体透明度。 */
+.home-room-card::after { content: ''; position: absolute; z-index: 1; inset: 0; border-radius: inherit; pointer-events: none; background: rgba(var(--card-overlay-color), calc(var(--card-overlay-opacity) * var(--card-distance))); }
+.home-room-card:disabled { opacity: 1; cursor: progress; }
+.home-room-avatar-space { display: grid; place-items: center; flex: 1; width: 100%; min-height: 0; }
+.home-room-avatar { display: grid; place-items: center; width: clamp(88px, 26vw, 120px); aspect-ratio: 1; border-radius: 50%; background: #dedfdb; color: var(--home-text); }
+.home-room-avatar .room-avatar-icon { width: 58%; height: 58%; }
+.home-room-details { display: block; width: 100%; min-width: 0; }
+.home-room-details strong { display: block; font-size: clamp(20px, 5vw, 26px); line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
+.home-room-details small { display: block; margin-top: 12px; font-size: 13px; color: var(--home-secondary-text); }
+.home-function-card { justify-content: center; }
+.home-function-actions { width: 100%; display: grid; gap: 10px; }
+.home-function-actions button { display: flex; align-items: center; justify-content: center; width: 100%; padding: 10px 12px; border: 1px solid #bfc1bd; border-radius: var(--home-control-radius); background: #e3e4e0; color: var(--home-text); font-size: 14px; }
+.home-function-actions button:first-child { background: #3f4347; color: var(--home-light-text); border-color: #3f4347; }
+.home-shell :is(button, a, input):focus-visible { outline: 2px solid #c5c7c9; outline-offset: 4px; }
+.home-room-card:focus-visible, .home-function-actions button:focus-visible { outline-color: #242629; }
+.home-dialog { width: min(600px, calc(100% - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid var(--home-border); border-radius: 24px; background: var(--room-card-bg); color: var(--home-text); overflow: hidden; }
+.home-dialog::backdrop { background: #181a1db3; }
+.home-dialog-layout { display: flex; flex-direction: column; max-height: min(778px, calc(100dvh - 50px)); min-height: 0; }
+.home-dialog.home-entry-dialog { width: min(var(--home-entry-dialog-width), calc(100% - 24px)); }
+.home-entry-dialog .home-dialog-layout { min-height: min(var(--home-entry-dialog-min-height), calc(100dvh - 50px)); }
+.home-entry-dialog .home-entry-form { flex: 1; align-content: space-between; gap: 28px; padding: 32px; }
+.home-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; padding: 16px 24px; border-bottom: 1px solid var(--home-border); }
+.home-dialog-header h2 { margin: 0; font-size: 21px; }
+.home-icon-button { width: 44px; height: 44px; border-radius: var(--home-control-radius); font-size: 28px; }
+.home-list-search { padding: 16px 24px; flex-shrink: 0; }
+.home-search-field { display: flex; align-items: center; gap: 10px; padding-inline: 14px; border: 1px solid var(--home-border); border-radius: var(--home-control-radius); background: #fafaf8; }
+.home-search-field:focus-within { border-color: #565a5e; }
+.home-search-field > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--home-secondary-text); }
+.home-search-field input { flex: 1; min-width: 0; padding: 13px 0; border: 0; border-radius: 0; background: transparent; color: var(--home-text); }
+.home-dialog input:focus { border-color: #686c70; box-shadow: 0 0 0 2px #6c707422; }
+.home-dialog :is(button, a, input, select):focus-visible { outline: 2px solid #565a5e; outline-offset: 2px; }
+/* 搜索框只由外层绘制焦点边线，避免通用输入框和键盘焦点样式叠出双框。 */
+.home-dialog .home-search-field input:is(:focus, :focus-visible) { border: 0; outline: none; box-shadow: none; }
+.home-room-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 20px; }
+.home-room-list > button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 0; border-bottom: 1px solid var(--home-border); text-align: left; }
+.home-room-list > button:hover { background: #e4e5e1; }
+.home-list-avatar { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--home-control-radius); background: #dedfdb; font-size: 30px; }
+.home-list-details { flex: 1; min-width: 0; }
+.home-list-details strong { display: block; overflow-wrap: anywhere; font-size: 16px; line-height: 1.5; }
+.home-list-details small { display: block; margin-top: 4px; font-size: 12px; color: var(--home-secondary-text); }
+.home-list-empty { padding-block: 28px; color: var(--home-secondary-text); text-align: center; line-height: 1.7; }
+.home-entry-form { display: grid; gap: 20px; min-height: 0; overflow-y: auto; padding: 24px; }
+.home-entry-form input { border-color: var(--home-border); border-radius: var(--home-control-radius); background: #fafaf8; color: var(--home-text); }
+.home-entry-form input:focus-visible { outline: 2px solid #565a5e; outline-offset: 2px; }
+.home-entry-form > button { width: 100%; min-height: 48px; padding: 12px; border-radius: var(--home-control-radius); background: #3f4347; color: var(--home-light-text); }
+.home-entry-form > .home-private-option { justify-self: start; width: fit-content; min-height: 44px; padding: 8px 14px; background: #e3e4e0; color: var(--home-text); font-size: 15px; }
+.home-private-option[aria-pressed="true"] { background: #3f4347; color: var(--home-light-text); }
+.home-entry-error { margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .home-carousel { user-select: none; -webkit-user-select: none; }
+  .home-carousel .home-room-card:not(:disabled) { cursor: grab; }
+  .home-carousel.is-dragging, .home-carousel.is-dragging *, .home-carousel.is-dragging .home-room-card { cursor: grabbing; }
+  .home-header { --home-page-gutter: 16px; gap: 12px; min-height: 88px; }
+  .home-header nav { gap: 12px; }
+  .home-header .account-access { max-width: 118px; font-size: 12px; }
+  .home-brand { gap: 8px; }
+  .home-brand b { font-size: 17px; }
+  .home-content { padding-inline: 0; }
+  .home-room-heading { padding-inline: var(--home-page-gutter); }
+  .home-content h1 { font-size: 21px; }
+  .home-room-card { padding: clamp(20px, 6vw, 28px); }
+  .home-dialog { width: calc(100% - 20px); max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); border-radius: 20px; }
+  .home-dialog-layout { max-height: calc(100dvh - 26px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  .home-dialog:has(.home-room-list) .home-dialog-layout { height: calc(100dvh - 26px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  .home-dialog-header { padding: 12px 16px; }
+  .home-list-search { padding: 16px; }
+  .home-room-list { padding-inline: 16px; }
+  .home-entry-form { padding: 20px 16px; }
+  .home-entry-dialog .home-entry-form { padding: 28px 20px; }
+}
+@media (min-width: 768px) {
+  body:has(.home-shell) { background: var(--home-outer-bg); }
+  .app-shell.home-shell { max-width: var(--home-content-max-width); }
+  .home-container { max-width: var(--home-inner-max-width); }
+  .home-carousel { --home-carousel-mobile: 0; --home-card-width: var(--home-desktop-card-width); --home-card-gap: 16px; padding: 20px 4px; scroll-snap-type: none; scrollbar-width: thin; scrollbar-color: #969a9e transparent; }
+  .home-carousel::-webkit-scrollbar { display: block; height: 8px; }
+  .home-carousel::-webkit-scrollbar-thumb { background: #969a9e; border-radius: 8px; }
+  .home-carousel-item { aspect-ratio: var(--desktop-card-ratio); }
+  .home-room-card { padding: 20px; border-radius: 24px; transform: none; }
+  .home-room-card::after { display: none; }
+  .home-room-avatar { width: 88px; }
+  .home-room-details strong { font-size: 18px; }
+  .home-room-details small { margin-top: 8px; font-size: 12px; }
+  .home-function-actions button { font-size: 13px; }
+}

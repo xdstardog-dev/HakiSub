@@ -13,7 +13,7 @@ const script = readFileSync(new URL('../src/components/MemberCaptionGrid.vue', i
 const interactions = readFileSync(new URL('../src/roomInteractions.ts', import.meta.url), 'utf8').replace(/^export /gm, '')
 const contraction = readFileSync(new URL('../src/memberContraction.ts', import.meta.url), 'utf8').replace(/^export /gm, '')
 const captionModel = readFileSync(new URL('../src/captions.ts', import.meta.url), 'utf8').replace(/^export /gm, '')
-const props = reactive({ members: [{ id: 'a' }, { id: 'b' }], captions: [], now: 0, adaptive: false, selfId: 'a', liveInput: true, onlineRoom: false, reactions: [], typingCooldownUntil: 0, reactionCooldownUntil: 0 })
+const props = reactive({ members: [{ id: 'a' }, { id: 'b' }], captions: [], now: 0, adaptive: false, selfId: 'a', liveInput: true, onlineRoom: false, microphoneUnavailable: false, reactions: [], typingCooldownUntil: 0, reactionCooldownUntil: 0 })
 let time = 1000, timerId = 0
 const timers = new Map(), emitted = []
 class Clock extends Date { static now() { return time } }
@@ -21,7 +21,7 @@ const context = vm.createContext({ Date: Clock, window: { innerWidth: 390, inner
   setTimeout: fn => { timers.set(++timerId, fn); return timerId }, clearTimeout: id => timers.delete(id),
   computed, reactive, watch, ref, nextTick, onMounted: () => {}, onUnmounted: () => {}, defineProps: () => props, defineEmits: () => (...args) => emitted.push(args) })
 const scope = effectScope()
-scope.run(() => vm.runInContext(ts.transpile(interactions + contraction + captionModel + script + '\nglobalThis.latest = latestCaptionIds; globalThis.view = {tiles,visibleTiles,contractedTiles,contractionStates,restoreMember,pressedMembers,focusedMemberId,modeMenuMemberId,handleFocusIn,handleFocusOut,latestCaptionIds,tileStyle,gridElement,emit,reactionMenu,selectedReactionOptions,openReactionSettings,handleCardContextMenu,startLongPress,moveLongPress,finishLongPress,selectReaction,editTypedCaption,handleCardKeydown,dismissReactionMenu,handleEscape};', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context))
+scope.run(() => vm.runInContext(ts.transpile(interactions + contraction + captionModel + script + '\nglobalThis.latest = latestCaptionIds; globalThis.view = {tiles,visibleTiles,contractedTiles,contractionStates,restoreMember,pressedMembers,focusedMemberId,modeMenuMemberId,handleFocusIn,handleFocusOut,latestCaptionIds,tileStyle,gridElement,emit,reactionMenu,selectedReactionOptions,openReactionSettings,handleCardContextMenu,handleCardClick,startLongPress,moveLongPress,finishLongPress,selectReaction,editTypedCaption,handleCardKeydown,dismissReactionMenu,handleEscape};', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context))
 const add = async (memberId, id, state = 'final') => { props.captions.push({ memberId, id, state, text: '字幕', finalizedAt: null, holdMs: 0 }); await nextTick() }
 await add('a', 'old-long')
 await add('b', 'other')
@@ -63,8 +63,13 @@ assert.doesNotMatch(await html(), /<textarea/, '卡片只提供入口，不再�
 assert.match(await html(), /继续编辑草稿/)
 assert.match(await html(), /打字模式/)
 const contextMenu = { button: 2, clientX: 380, clientY: 840, preventDefault() { this.prevented = true } }
-view.handleCardContextMenu(contextMenu, 'a'); assert.equal(view.reactionMenu.value, null)
-assert.equal(contextMenu.prevented, undefined, '自己卡片保留原生文字编辑菜单')
+view.handleCardContextMenu(contextMenu, 'a'); assert.equal(view.reactionMenu.value.memberId, 'a')
+assert.equal(contextMenu.prevented, true, '自己的卡片也打开快捷回应')
+view.selectReaction('question'); assert.deepEqual(Array.from(emitted.at(-1)), ['react', 'a', 'question'])
+const controlTarget = { closest: () => ({}) }
+const controlContext = { ...contextMenu, prevented: false, target: controlTarget }
+view.handleCardContextMenu(controlContext, 'a'); assert.equal(controlContext.prevented, false, '输入与麦克风控件保留各自菜单')
+assert.equal(view.reactionMenu.value, null)
 view.handleCardContextMenu(contextMenu, 'b'); assert.equal(view.reactionMenu.value.memberId, 'b')
 assert.equal(contextMenu.prevented, true, '其他成员卡片以回应菜单替代浏览器菜单')
 assert.ok(view.reactionMenu.value.left <= 390 - 224)
@@ -89,7 +94,17 @@ view.moveLongPress({ ...touch, clientX: 55 }); assert.equal(timers.size, 0)
 view.startLongPress(touch, 'b'); view.finishLongPress(touch); assert.equal(timers.size, 0)
 view.handleCardContextMenu(contextMenu, 'b'); assert.equal(view.reactionMenu.value, null, '轻触后的系统 contextmenu 不提前弹菜单')
 time += 1000
-view.startLongPress(touch, 'a'); assert.equal(timers.size, 0, '自己卡片不会启动长按')
+view.startLongPress({ ...touch, target: controlTarget }, 'a'); assert.equal(timers.size, 0, '长按控件不启动卡片回应')
+view.startLongPress(touch, 'a'); assert.equal(timers.size, 1, '自己的卡片支持长按')
+;[...timers.values()][0]()
+assert.equal(view.reactionMenu.value.memberId, 'a')
+view.finishLongPress(touch)
+const syntheticClick = { detail: 1, preventDefault() { this.prevented = true }, stopPropagation() { this.stopped = true } }
+view.handleCardClick(syntheticClick, 'a'); assert.equal(syntheticClick.prevented, true); assert.equal(syntheticClick.stopped, true)
+view.selectReaction('received'); assert.deepEqual(Array.from(emitted.at(-1)), ['react', 'a', 'received'])
+const regularClick = { ...syntheticClick, prevented: false, stopped: false }
+view.startLongPress({ ...touch, pointerType: 'mouse' }, 'a')
+view.handleCardClick(regularClick, 'a'); assert.equal(regularClick.prevented, false, '下一次普通点击可正常打字或展开')
 view.startLongPress(touch, 'b'); [...timers.values()][0]()
 assert.equal(view.reactionMenu.value.memberId, 'b')
 view.finishLongPress(touch)

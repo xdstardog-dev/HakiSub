@@ -36,6 +36,8 @@ for (const entry of await readdir(join(root, 'server'), { withFileTypes: true })
   else throw Error('server目录包含非预期内容，已停止打包。')
 }
 await copyDirectory('dist')
+await copyFile('accounts/shared/nameRules.mjs')
+await copyFile('accounts/shared/roomAvatars.mjs')
 await copyDirectory('deploy/xdstar')
 await copyFile('deploy/prepare-room-storage.sh')
 await writeFile(join(directory, 'RELEASE.json'), JSON.stringify({ release, createdAt: new Date().toISOString(), files }, null, 2) + '\n')

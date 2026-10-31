@@ -36,20 +36,20 @@ onUnmounted(() => settingsDialog.value?.close())
 </template>
 
 <style scoped>
-.reaction-settings { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 18px; overflow: auto; border: 1px solid #bacbb7; border-radius: 14px; background: #fff; color: #243b34; box-shadow: 0 8px 32px #18342130; }
-.reaction-settings::backdrop { background: #17271e55; }
+.reaction-settings { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 18px; overflow: auto; border: 1px solid var(--home-border); border-radius: 14px; background: var(--room-card-bg); color: var(--home-text); box-shadow: 0 8px 32px #00000030; }
+.reaction-settings::backdrop { background: #181a1d80; }
 .settings-heading, .settings-actions, .settings-actions > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .settings-heading h2 { margin: 0; font-size: 18px; }
 .settings-heading button { min-height: 36px; font-size: 13px; padding: 6px 8px; }
-.settings-help { margin: 10px 0; color: #666; font-size: 12px; line-height: 1.6; }
+.settings-help { margin: 10px 0; color: var(--home-secondary-text); font-size: 12px; line-height: 1.6; }
 .selection-count { margin: 10px 0; font-size: 13px; font-weight: 600; }
-.selection-count small { color: #666; font-size: 11px; font-weight: 400; }
+.selection-count small { color: var(--home-secondary-text); font-size: 11px; font-weight: 400; }
 .reaction-vocabulary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.reaction-vocabulary label { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px; border: 1px solid #d6dfd1; border-radius: 8px; font-size: 14px; cursor: pointer; }
-.reaction-vocabulary label.is-selected { border-color: #70956b; background: #f0f6ec; }
+.reaction-vocabulary label { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px; border: 1px solid var(--home-border); border-radius: 8px; font-size: 14px; cursor: pointer; }
+.reaction-vocabulary label.is-selected { border-color: var(--home-bg); background: #dedfdb; }
 .reaction-vocabulary label.is-disabled { opacity: .5; cursor: default; }
-.reaction-vocabulary input { width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: #52744d; flex-shrink: 0; }
-.settings-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e0e6db; }
+.reaction-vocabulary input { width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--home-bg); flex-shrink: 0; }
+.settings-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--home-border); }
 .settings-actions button { min-height: 40px; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
-.save-selection { background: #e8f0e3; }
+.save-selection { background: #dedfdb; }
 </style>

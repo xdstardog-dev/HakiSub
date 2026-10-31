@@ -15,7 +15,9 @@ try {
     const legacy = { ...metadata, encryptedKey: { ciphertext: 'unreadable-old-ciphertext' }, apiKey: 'synthetic-disk-key', keyState: 'configured' }
     await writeFile(path, JSON.stringify({ version, rooms: [legacy] }))
     const store = await createRoomStore(path)
-    assert.deepEqual(store.list(), [metadata], '旧密文损坏或主密钥丢失不阻断元数据读取，也不加载任何Key')
+    const { accessCode: ignoredCode, ...safeMetadata } = metadata
+    const namedMetadata = { ...safeMetadata, passwordHash: '', name: '房间 114514', avatarId: 'home', guestNumber: 0, nameCustomized: false }
+    assert.deepEqual(store.list(), [namedMetadata], '旧密文损坏或主密钥丢失不阻断元数据读取，也不加载任何Key')
     gateway = createRoomGateway({ roomStore: store, probe: async () => ({ ok: true }) })
     const command = { uid: ownerUid, code: '985529' }
     assert.equal((await gateway.manageAccount({ uid: ownerUid, action: 'list' })).rooms[0].configured, false)
@@ -29,8 +31,8 @@ try {
     assert.equal((await gateway.manageAccount({ uid: ownerUid, action: 'list' })).rooms[0].keyState, 'missing')
     await gateway.manageAccount({ ...command, action: 'asr', enabled: false })
     const saved = JSON.parse(await readFile(path, 'utf8'))
-    assert.equal(saved.version, 4)
-    assert.deepEqual(saved.rooms, [{ ...metadata, asrEnabled: false }], '成功保存时全文件剥离旧Key字段，保留身份/别名/开关')
+    assert.equal(saved.version, 5)
+    assert.deepEqual(saved.rooms, [{ ...namedMetadata, asrEnabled: false }], '成功保存时全文件剥离旧Key字段，保留身份/别名/开关与补全的名称')
     await gateway.close(); gateway = undefined
   }
   const blockedParent = join(directory, 'not-a-directory')

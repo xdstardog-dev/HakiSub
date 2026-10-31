@@ -1,9 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import AsrUsageStatistics from './AsrUsageStatistics.vue'
+import PinCodeInput from '../../accounts/shared/PinCodeInput.vue'
+import { countNameUnits, isValidDisplayName, ROOM_NAME_MAXIMUM_UNITS } from '../../accounts/shared/nameRules.mjs'
 
 type Configuration = { configured: boolean; readOnly: boolean; source: 'environment' | 'file'; csrfToken: string; busy: boolean }
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ roomName?: string; accessCode?: string }>()
+const localDialog = ref<HTMLDialogElement | null>(null)
+const emit = defineEmits<{ close: []; rename: [name: string]; 'access-code': [code: string] }>()
+const newRoomName = ref(''), newAccessCode = ref(''), roomMessage = ref('')
+function saveRoomName() {
+  if (props.roomName === undefined || !isValidDisplayName(newRoomName.value.trim(), ROOM_NAME_MAXIMUM_UNITS)) return
+  emit('rename', newRoomName.value.trim()); newRoomName.value = ''; roomMessage.value = '房间名称已保存。'
+}
+function saveAccessCode(value: string) {
+  if (props.roomName === undefined || (value !== '' && !/^\d{4}$/.test(value))) return
+  emit('access-code', value); newAccessCode.value = ''; roomMessage.value = value ? '入房码已保存。' : '已移除入房码。'
+}
 const configuration = ref<Configuration | null>(null)
 const managedByServer = ref(false), serverConfigured = ref(false)
 const configurationState = ref<'loading' | 'available' | 'unavailable'>('loading')
@@ -73,13 +86,26 @@ async function requestConfiguration(action?: 'save' | 'delete' | 'test' | 'revea
     }
   } finally { clearTimeout(timeout); if (!disposed) busy.value = false }
 }
-onMounted(() => { void requestConfiguration() })
-onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; clearKeyDisplay() })
+onMounted(() => { localDialog.value?.showModal?.(); void requestConfiguration() })
+onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; newAccessCode.value = ''; localDialog.value?.close?.(); clearKeyDisplay() })
 </script>
 
 <template>
-  <section class="api-settings" aria-labelledby="api-settings-title">
+  <component :is="props.roomName === undefined ? 'section' : 'dialog'" ref="localDialog" class="api-settings" aria-labelledby="api-settings-title" @cancel.prevent="emit('close')">
     <div class="settings-heading"><h1 id="api-settings-title">设置</h1><button @click="emit('close')">返回房间</button></div>
+    <div v-if="props.roomName !== undefined" class="settings-card simulation-room-settings">
+      <h2>房间设置</h2><p>房间名称：{{ props.roomName }}</p>
+      <form @submit.prevent="saveRoomName"><label for="simulation-room-name">房间名称</label><input id="simulation-room-name" v-model="newRoomName" :placeholder="props.roomName" maxlength="24" required />
+        <p class="settings-note">最多12个汉字或24个英文／数字，混合折算 {{ countNameUnits(newRoomName.trim()) }}/24。</p>
+        <button type="submit" :disabled="!isValidDisplayName(newRoomName.trim(), ROOM_NAME_MAXIMUM_UNITS)">保存房间名称</button>
+      </form>
+      <p class="current-access-code">{{ props.accessCode ? '房间密码已设置；只能更换或移除。' : '入房码：未设置，可直接加入' }}</p>
+      <form @submit.prevent="saveAccessCode(newAccessCode)"><label for="simulation-access-code">{{ props.accessCode ? '更换四位入房码' : '设置四位入房码' }}</label><PinCodeInput id="simulation-access-code" v-model="newAccessCode" />
+        <div class="settings-actions"><button type="submit" :disabled="!/^\d{4}$/.test(newAccessCode)">保存入房码</button><button v-if="props.accessCode" type="button" @click="saveAccessCode('')">移除入房码</button></div>
+      </form>
+      <p class="settings-note">本地模拟设置仅当前房间有效，离房清空；入房码用于演示，不参与联网验证。</p>
+      <p v-if="roomMessage" role="status">{{ roomMessage }}</p>
+    </div>
     <div class="settings-card">
       <h2>豆包语音识别</h2>
       <p>ASR 2.0 · 小时版</p>
@@ -116,22 +142,25 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; cle
       <p v-if="busy" role="status">正在处理，请稍候…</p>
       <p v-if="message" :class="{ 'settings-error': failed }" role="status">{{ message }}</p>
     </div>
-  </section>
+  </component>
 </template>
 
 <style scoped>
 .secret-field{display:flex;gap:8px;align-items:center}.secret-field input{min-width:0;flex:1}.secret-field button{flex-shrink:0}
 .api-settings { padding: 20px 0 32px; }
+dialog.api-settings { margin: auto; padding: 18px; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; border: 1px solid var(--home-border); border-radius: 14px; background: var(--room-card-bg); color: var(--home-text); }
+dialog.api-settings::backdrop { background: #181a1d80; }
+.simulation-room-settings { margin-bottom: 16px; }
 .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 h1 { font-size: 24px; } h2 { margin: 0; font-size: 20px; }
-.settings-card { background: white; border: 1px solid #dce4d8; border-radius: 18px; padding: 20px; }
+.settings-card { background: var(--room-card-bg); color: var(--home-text); border: 1px solid var(--home-border); border-radius: 18px; padding: 20px; }
 p { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
-.settings-note { color: #617267; font-size: 13px; }
+.settings-note { color: var(--home-secondary-text); font-size: 13px; }
 label { display: block; margin: 20px 0 8px; font-size: 14px; }
-input { display: block; width: 100%; min-height: 44px; border: 1px solid #bac9c0; border-radius: 8px; padding: 10px; }
+input { display: block; width: 100%; min-height: 44px; border: 1px solid var(--home-border); border-radius: 8px; padding: 10px; background: #fafaf8; color: var(--home-text); }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-button { border-radius: 8px; padding: 8px 12px; background: #eef3ed; font-size: 13px; }
-.save-key { background: #1b604e; color: white; }
+button { border-radius: 8px; padding: 8px 12px; background: #dedfdb; font-size: 13px; }
+.save-key { background: var(--home-bg); color: var(--home-light-text); }
 .settings-error { color: #a32c2c; }
 .delete-confirm { padding: 8px; border: 1px solid #d9b2a8; border-radius: 8px; margin-top: 12px; }
 .delete-confirm button { margin-right: 8px; }

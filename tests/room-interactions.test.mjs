@@ -56,7 +56,7 @@ try {
   await waitFor(() => bob.events.some(event => event.type === 'caption'))
   const caption = bob.events.find(event => event.type === 'caption')
   assert.equal(caption.memberId, alice.identity.memberId, '忽略客户端伪造身份')
-  assert.equal(caption.state, 'final'); assert.equal(caption.text, message.text)
+  assert.equal(caption.source, 'typing'); assert.equal(caption.state, 'final'); assert.equal(caption.text, message.text)
   assert.equal(caption.utteranceId, `typed-${alice.identity.memberId}-${message.utteranceId}`)
   await waitFor(() => alice.events.some(event => event.utteranceId === caption.utteranceId))
   await expectError(alice, typed('刷屏'), /发送过快/)
@@ -66,9 +66,10 @@ try {
   for (let index = 0; index < 6; index++) extras.push(await connect(`成员${index}`, alice.identity.code))
   const roomClients = [alice, bob, ...extras]
   await waitFor(() => alice.events.at(-1)?.members?.length === 8)
+  assert.deepEqual(alice.events.at(-1).members.map(member => member.toneSlot), [0,1,2,3,4,5,6,7], '八成员按加入顺序统一分配音阶')
   assert.ok(extras.every(client => !client.events.some(event => event.type === 'caption')), '后来加入没有历史补发')
   await expectError(bob, { type: 'reaction', targetId: other.identity.memberId, reaction: 'agree' }, /无效/)
-  await expectError(bob, { type: 'reaction', targetId: bob.identity.memberId, reaction: 'agree' }, /无效/)
+  await expectError(bob, { type: 'reaction', targetId: 'missing-member', reaction: 'agree' }, /无效/)
   await expectError(bob, { type: 'reaction', targetId: alice.identity.memberId, reaction: 'custom' }, /无效/)
   // 遍历完整前端词库，实际验证服务端白名单与八成员广播一致。
   const kinds = Array.from(context.interactions.QUICK_REACTIONS, option => option.type)
@@ -76,7 +77,7 @@ try {
     if (index && index % 7 === 0) await new Promise(resolve => setTimeout(resolve, 1550))
     const sender = roomClients[index % 7 + 1]
     if (index === 1) sender.send({ type: 'mode', mode: 'typing' })
-    const targetId = index === 4 ? bob.identity.memberId : alice.identity.memberId
+    const targetId = index === 0 ? sender.identity.memberId : index === 4 ? bob.identity.memberId : alice.identity.memberId
     sender.send({ type: 'reaction', reaction, targetId, senderId: other.identity.memberId })
     await waitFor(() => roomClients.every(client => client.events.some(event => event.type === 'reaction' && event.reaction === reaction)))
     const received = alice.events.find(event => event.type === 'reaction' && event.reaction === reaction)
@@ -87,8 +88,12 @@ try {
   await expectError(bob, { type: 'reaction', targetId: alice.identity.memberId, reaction: 'agree' }, /发送过快/)
   assert.equal(other.events.some(event => ['caption', 'reaction'].includes(event.type)), false, '不同房间没有字幕或回应串流')
   await new Promise(resolve => setTimeout(resolve, 1550))
-  bob.send({ type: 'reaction', targetId: alice.identity.memberId, reaction: 'agree' })
+  bob.send({ type: 'reaction', targetId: bob.identity.memberId, reaction: 'agree' })
   await waitFor(() => alice.events.filter(event => event.type === 'reaction').length === kinds.length + 1)
+  const selfReaction = alice.events.filter(event => event.type === 'reaction').at(-1)
+  assert.equal(selfReaction.senderId, bob.identity.memberId); assert.equal(selfReaction.targetId, bob.identity.memberId)
+  await expectError(bob, { type: 'reaction', targetId: alice.identity.memberId, reaction: 'agree' }, /发送过快/)
+  assert.equal(other.events.some(event => event.type === 'reaction'), false, '回复自己仍只广播本房且共用发送冷却')
   const boundary = typed('中'.repeat(1000)); alice.send(boundary)
   await waitFor(() => bob.events.some(event => event.text === boundary.text))
   alice.send({ type: 'mode', mode: 'muted' })

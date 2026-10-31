@@ -50,6 +50,16 @@ try {
   await waitFor(() => alice.events.some(event => event.type === 'joined'))
   const identity = alice.events.find(event => event.type === 'joined')
   assert.match(identity.code, /^\d{6}$/)
+  const displayBoundary = await connect()
+  for (const name of ['中'.repeat(9), 'a'.repeat(17), '中'.repeat(7) + 'abc']) {
+    const count = displayBoundary.events.length
+    displayBoundary.send({ type: 'join', code: identity.code, name })
+    await waitFor(() => displayBoundary.events.length > count)
+    assert.equal(displayBoundary.events.at(-1).type, 'error')
+  }
+  displayBoundary.send({ type: 'join', code: identity.code, name: '中'.repeat(7) + 'ab' })
+  await waitFor(() => displayBoundary.events.some(event => event.type === 'joined'))
+  displayBoundary.socket.close(); await once(displayBoundary.socket, 'close')
   const bob = await connect(); bob.send({ type: 'join', code: identity.code, name: 'Bob' })
   await waitFor(() => bob.events.some(event => event.type === 'members' && event.members.length === 2))
   const bobIdentity = bob.events.find(event => event.type === 'joined')
@@ -130,7 +140,7 @@ try {
 const source = readFileSync(new URL('../src/roomClient.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const context = vm.createContext({ setTimeout, clearTimeout })
 vm.runInContext(ts.transpile(source + '\nglobalThis.factory = createRoomClient', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
-let fake, joined, members, caption, reaction, discarded, closed = 0, error, passwordRequired, accessRevoked
+let fake, joined, members, caption, reaction, discarded, closed = 0, error, passwordRequired, accessRevoked, roomStatus
 const client = context.factory({
   onJoined: (...args) => joined = args, onMembers: value => members = value,
   onCaption: value => caption = value, onDiscard: (...args) => discarded = args,
@@ -138,14 +148,22 @@ const client = context.factory({
   onClose: () => closed++, onError: value => error = value,
   onPasswordRequired: (...args) => passwordRequired = args,
   onAccessRevoked: (...args) => accessRevoked = args,
+  onRoomStatus: value => roomStatus = value,
 }, () => fake = { readyState: 1, bufferedAmount: 0, sent: [], send(data) { this.sent.push(JSON.parse(data)) }, close() { this.closed = true } })
 client.connect('create', 'Alice', ''); fake.onopen()
 assert.equal(fake.sent[0].name, 'Alice')
+const privateCreation = { password: '0042' }
+client.connect('create', 'Alice', '', undefined, privateCreation); fake.onopen()
+assert.equal(fake.sent[0].type, 'create'); assert.equal(fake.sent[0].password, '0042')
+assert.deepEqual(Object.keys(privateCreation), [], '初次建房密码发送后清空')
 const emit = event => fake.onmessage({ data: JSON.stringify(event) })
 emit({ type: 'joined', code: '123456', memberId: 'alice', token: 'ephemeral' })
 assert.deepEqual(joined.slice(0, 2), ['123456', 'alice']); assert.equal(joined[2].isOwner, false); assert.equal(client.getToken(), 'ephemeral')
-emit({ type: 'joined', code: '114514', memberId: 'alice', token: 'ephemeral', aliases: ['985529', 123456, 'bad'] })
+emit({ type: 'joined', code: '114514', name: 'Alice的房间', memberId: 'alice', token: 'ephemeral', aliases: ['985529', 123456, 'bad'] })
 assert.deepEqual(Array.from(joined[2].aliases), ['985529'])
+assert.equal(joined[2].name, 'Alice的房间')
+emit({ type: 'room-status', name: '新房间名称', bound: false, asrEnabled: true, configured: false })
+assert.equal(roomStatus.name, '新房间名称')
 emit({ type: 'members', members: [{ id: 'alice' }] }); assert.equal(members[0].id, 'alice')
 emit({ type: 'caption', memberId: 'alice', text: '你好' }); assert.equal(caption.text, '你好')
 emit({ type: 'reaction', id: 'r', senderId: 'bob', targetId: 'alice', reaction: 'agree' }); assert.equal(reaction.targetId, 'alice')

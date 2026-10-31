@@ -783,3 +783,426 @@ npm test、npm run build全通过；首次room-renaming子进程受沙箱限制�
 公网正式Chrome不代理账号身份，真实注册/UID登录、host-only Secure/HttpOnly/SameSite=Lax Cookie、跨子域身份和CSRF/HMAC链路通过。桌面/390/320px验证入房码设置、错误清空、前导零、首次输入、同账号另一浏览器免输、游客只读、改码在线非房主撤权/再次授权、移除恢复公开；另验5秒收束、轻触他人头像不展开/右键回应与真实WSS打字同步。公网静态28项与构建哈希一致，含14个audio/mpeg文件，内部管理/挑战/.env/源码路径404，页面无JS异常，已目视320px弹窗及桌面字幕截图。新增2个标记明确的合成账号及1测试房，最终8账号/25房；测试房移除入房码、暂停ASR、无Key，所有测试成员离房，三组测试账号会话退出。随机验收密码/密保/PIN只在测试进程内存，不写报告或Git。
 
 此前完整npm test、test:accounts、test:room-management、两端构建和入房码/原房间交互/成员控制/账号工作台四组浏览器回归通过；归档收尾再次npm test全套和npm run build通过，git diff --check通过。真实物理手机/软键盘、麦克风和豆包API未验；跨重启免输由隔离持久化集成测试覆盖，没有为验收再次重启生产。证据在本地ignored artifacts/room-access-20261030T1733Z/verification/；自动审批因报告含合成账号UID/房间号拒绝附件上传，故截图/报告保留本地，服务器源码/运行包、部署收据和加密备份已归档，部署不受影响，无功能阻塞。
+
+## 2026-10-31 · 服务器历史文件清理必要性复查
+
+用户询问是否需要清理已无用途的历史文件。先核对10月29日维护与最新发布记录，再通过既有SSH只读执行df、项目/系统目录du、docker system df -v、docker ps -a及journalctl --disk-usage。根分区19%已用、32,558,288,896字节（约30.3GiB）可用；项目约226MiB，其中发布归档共约205MiB，包含当前发布约33MiB。三个生产容器运行、网关/账号healthy，四卷均被引用，无停止容器。构建缓存报告553.3MB但大部分共享镜像层，不将其全额计入可释放收益；日志约40.7MiB、journal报告27.8M、临时目录与APT缓存均较小。
+
+结论为当前无需紧急清理，后续版本稳定并逐项核实用途后再整理重复传输包、临时验证文件和过旧归档。没有删除或修改任何生产文件，没有prune、升级、部署或重启；未读取生产数据库、房间配置或秘密配置内容。保留当前v4兼容镜像、发布清单、备份及对应口令，历史镜像不能只因未被容器引用就视为无用。更新README、ARCHITECTURE与PRODUCTION-MAINTENANCE-20261029的只读复查结果，未编辑DEEPSEEK-MEMORY。
+
+本地npm test全套、npm run build及git diff --check通过。首次沙箱内测试因房间换号CLI子进程未能启动而失败，构建报esbuild spawn EPERM；正常权限下完整重跑两项均通过，未修改业务代码。无真实麦克风、豆包API或浏览器功能验收，无清理执行结果可宣称；服务器检查是实际SSH结果，非模拟。无阻塞，未提交或推送Git。
+
+## 2026-10-31 · 房间默认名称与房主改名（本地完成，未部署）
+
+按用户要求增加独立房间名称：登录新建房间自动绑定后为“昵称的房间”，游客建房为“游客001的房间”等服务端递增编号，不使用客户端成员显示名冒充账号身份。编号在并发建房前保留，随元数据持久化，改名、管理员换号和重启后不重置；登录建房也经过初始编号阶段，编号可有间隔。历史无名房间回退“房间 六位房间号”，不推断历史创建者。绑定昵称来自账号服务真实会话的签名命令，已经自定义的名称不被绑定覆盖，之后昵称修改不自动影响房间名称。
+
+新增roomNames.mjs校验与默认名，roomStore在v4增加name/guestNumber/nameCustomized，兼容v1～v4并保留其他房间资料。rename复用匿名房主或绑定账号管理通道，去掉首尾空白，长度1～40（与HTML maxlength一致），拒绝控制字符/换行。先原子保存再广播，失败保留原名、Key及现有语音连接；改名不改变房间号、链接、访问资格或成员。旧v4程序写入会丢弃新字段，后续部署/回退需配套兼容版本。
+
+App标题、房内设置和账号概览/列表/管理显示名称，房主可在两处设置界面改名，普通成员只读；同房收到room-status即时更新。首页保留入口增加可选roomName缓存，原name继续表示成员显示名；匿名凭据清理和旧入口迁移保留名称。长名窄屏换行，HTML片段只按文本显示，无音频/字幕历史保存或密钥持久化改动。
+
+新增room-names.test.mjs并加入npm test，覆盖并发编号、旧版本、权限/来源/内容校验、广播隔离、落盘失败、重启与管理员换号。扩展账号真实SQLite/Cookie/CSRF/HMAC联调，验证服务端昵称、拒绝他人改名/伪造昵称、已自定义名称绑定后保留、跨设备/重启保留、改名成功与写入失败均不停止假ASR；扩展客户端、App、模板与首页缓存模拟。最终npm test全套、npm run test:accounts、npm run test:room-management、npm run build、npm run build:accounts通过。首次沙箱内完整测试在换号CLI子进程受限、构建在esbuild spawn EPERM处失败，正常权限重跑通过；旧Key元数据测试因增加合法字段需更新精确期望后通过，一条模板测试因改名清空入房码草稿而调整用例输入顺序后通过。Python命令不可用，文件替换改用已有Node完成，无新增依赖。
+
+Chrome真实本地浏览器room-access-browser覆盖480/390/320px默认账号名/游客名、两端同步、重启、成员只读、40字长名、HTML文本转义及首页缓存，原入房码全流程回归通过；workspace-browser在375/768/1440px验证个人中心改名、长名布局及原账号/Key/ASR/存档功能。两组浏览器均使用隔离资料或合成接口，不读取生产凭据，真实账号鉴权边界由独立集成测试覆盖。截图位于ignored artifacts/room-access/与artifacts/account-workspace/，已目视320px长名/设置及375px账号页。README、accounts/README及ARCHITECTURE同步更新，保留原工作区维护文档修改，未编辑DEEPSEEK-MEMORY。未提交、推送或部署，未调用真实麦克风/豆包或物理手机；模拟与浏览器测试不代替这些验收。当前无功能阻塞。
+
+## 2026-10-31 · 账号、昵称与房间名的最终长度规则（本地完成，未部署）
+
+用户最终确认账号是用于登录的账号名，新注册最长20个字符；昵称默认取账号前8个字符，最多8个汉字或16个英文/数字；房间名最多12个汉字或24个英文/数字，混合累计。本条替代此前40字及中途10字/12字符的实验限制。账号保留最少3位及字母/数字/下划线规则，纯数字20位可注册；规范化仍为去首尾空白、转小写。现有长账号继续支持原登录与找回，不改写账号、UID、密码、密保或数据库结构。
+
+新增accounts/shared/nameRules.mjs及类型声明，两套前端和服务端共用：ASCII算1单位，其他Unicode码点算2，昵称/房内显示名上限16、房间名24。按码点遍历避免拆开代理对，中文/全角标点算2；这是产品折算规则，不计算字体宽度或组合字素。注册允许nickname省略、空字符串或纯空白，默认取最终规范化账号前8个字符，密保答案校验使用最终昵称；自定义注册和修改昵称均校验混合长度及控制字符。旧昵称不批量改写，进入房间时仅裁短旧长昵称用于本次显示；加载旧入口同样裁短显示名并保留房间/房主凭据。默认房名给“的房间”预留6单位，当前合法昵称可完整保留，旧长昵称按剩余18单位截取。房主改名的权限、保存失败保留原名/Key/语音会话、持久化/重启/换号规则沿用上一条。
+
+注册界面明确区分账号与昵称：账号maxlength20，昵称可留空并预览默认值，注册昵称和个人资料maxlength16、房间名maxlength24，同时实时显示折算计数，前后端均拒绝混合超限。普通成员仍只读，修改房间名称不影响既有字幕、语音、入房码或分享链接。主前端显示名称采用相同昵称上限，模拟模式及音频/字幕生命周期保留。
+
+新增name-rules.test.mjs并加入npm test，扩展网关真实HTTP/WSS边界、App/设置/缓存/SFC模拟和账号真实SQLite/Cookie/CSRF测试，覆盖20/21位账号、纯数字、默认昵称、8/9汉字与16/17半角昵称、12/13汉字与24/25半角房名、中英混合、标点、Unicode、旧长账号登录/找回及旧昵称资料不改写。最终npm test全套、npm run test:accounts、npm run test:room-management、npm run build、npm run build:accounts全部通过。Chrome的room-access-browser（480/390/320px）与workspace-browser（375/768/1440px）通过，包含20位注册/留空昵称默认、超限昵称/房名不能保存、24半角和12汉字房名、同步/重启/只读、原入房码及账号/Key/ASR功能。浏览器使用隔离资料与合成账号接口，真实鉴权由独立集成测试覆盖；截图仍在artifacts/room-access与artifacts/account-workspace，已目视320px设置与375px账号房间页。
+
+共享模块存放于账号包内，根网关和账号运行路径分别引用accounts/shared及shared；两套Dockerfile、dockerignore及两份本地发布脚本均已显式包含模块。npm run package:private-test与npm run package:accounts实际通过，生成ignored归档hakisub-20261031T054512Z及xdstar-accounts-20261031T054513Z；逐份核验共享文件清单/SHA256，加载归档内网关模块和账号昵称校验模块成功。未运行Docker镜像或部署验收，不将本地打包当作生产部署成功。
+
+README、accounts/README、ARCHITECTURE及本日志更新；保留原维护文档修改，未编辑DEEPSEEK-MEMORY。无新增运行依赖、Git提交/推送、生产配置或数据库操作。未调用真实麦克风/豆包或物理手机，模拟/浏览器结果不代替真实设备与API验收。当前无本地阻塞。
+
+
+## 2026-10-31 · 首页房间卡片 UI V1（本地完成，未部署）
+
+先检查App、路径导航、rememberedRooms及账号身份/房间入口，再在现有未提交修改上局部集成；保留此前房间名称和长度规则工作。新增HomePage、RoomCard、RoomCarousel、RoomListDialog及HomeDialog五个组件与home.css。App只增加入口弹窗状态、原表单搬迁和首页组合，原enter/reenterRoom、创建/加入、账号身份/个人中心路径、入房码、房主凭据与历史导航继续使用。个人存档、模拟模式和AR预览移至入口弹窗内保留，未编辑DEEPSEEK-MEMORY。
+
+首页直接使用本浏览器真实最近访问记录及其原顺序，无硬编码示例、置顶字段或跨设备同步。导航仅保留品牌、房间列表和账号入口。手机卡片80vw/最大340px、3:4、大圆角，原生横向滚动/scroll-snap配合对称首尾留白；帧内先批量读取槽位距离再更新CSS进度，缩放1到0.9、灰色覆盖0到0.4，蒙层覆盖全部内容且不接收事件，卡片整体不降透明度。拖动位移拦截误入，侧卡先居中，支持方向键/Home/End/Enter、减少动态效果偏好和ResizeObserver清理。768px起共用1120px最大容器、236px固定宽度和6:7比例，统一间距与横向滚动，不缩放或遮罩。截图检查后手机间距调整为8px，让320px邻卡露出更清晰；桌面20px。
+
+“我的房间”默认隐藏，名称/房号即时过滤本机入口，列表行调用原入房函数；功能卡的外部房间号加入保持独立。原生dialog提供近全屏/600px居中布局、内部滚动、Escape、焦点约束与恢复和背景滚动锁定；列表打开时保留轮播挂载及位置。样式集中在home.css并限定home类名，未改房内或账号页样式。本轮未修改网关、服务器API、数据库、房间协议、音频和字幕生命周期，无新增运行/开发依赖。
+
+新增tests/home-browser.mjs及test:home:browser脚本，用正式构建、隔离内存网关与真实WebSocket创建12间测试房，覆盖320/390/767/768/1024/1440px比例、长中文/24位英文/无溢出、0.9与0.4精确值、中点连续变化、CDP滑动防误触和居中吸附、首尾居中、功能卡创建与外部加入、列表筛选/空结果/内部滚动/关闭位置与焦点、键盘/鼠标/轻触及列表真实WSS进房、空房间和模拟模式、跨768px切换。原三组浏览器测试仅适配新建房入口，room-access另将旧首页记录选择器改为卡片。截图在ignored artifacts/home/，已目视320px首页/长名/列表与1440px桌面；原入房码/改名截图继续在artifacts/room-access/。
+
+初次构建受沙箱esbuild spawn EPERM阻断，初次完整测试在换号CLI子进程受限处失败；正常权限重跑后通过。新浏览器测试首轮在搜索框非空时按Escape只触发原生清空，改为先清空再验证关闭；另在原生弹窗恢复功能卡焦点后的滚动动画尚未结束就记录位置，等待动画稳定后验证通过。原入房码测试第二次建房时功能卡已处于侧边，改用键盘聚焦后激活，与新轮播规则一致。扩展模拟回归时，真实房间退出后原输入模式仍是麦克风，按既有控件切回模拟后验证，无业务逻辑修改。
+
+最终npm test全套、npm run build（vue-tsc/Vite）、npm run test:room-management、test:home:browser通过；原test:room-access:browser、test:room-interactions:browser、test:member-controls:browser均通过。浏览器使用既有file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs及Chrome，未安装依赖。README和ARCHITECTURE已同步更新，git diff --check通过。保留原工作区修改，无Git提交、推送或生产部署；真实物理手机、Safari、系统软键盘、真实麦克风与豆包API未验收，移动视口/CDP/假上游不能替代这些验收。现有入口只在本浏览器保存、房名需重进刷新，沿用既有数据边界；当前无本地阻塞。
+
+
+## 2026-10-31 · 首页功能卡精简（本地完成，未部署）
+
+按用户截图要求，RoomCard移除功能卡的大加号图标、“新的房间”标题和按钮尾部装饰，仅保留“创建房间”“加入房间”两个按钮。home.css将按钮组和文字居中，清除失效标题样式，保留卡片原尺寸、圆角、滑动与蒙层和现有创建/加入事件。调整既有home-browser的按钮定位，README及ARCHITECTURE同步说明。无新增依赖，无服务器、账号、音频或字幕逻辑改动。
+
+实际npm test全套、npm run build、test:home:browser（320/390/767/768/1024/1440px及原创建/加入流程）均通过，已目视桌面功能卡截图，git diff --check通过。保留原工作区修改，未提交/推送/部署，未编辑DEEPSEEK-MEMORY；真实物理手机、麦克风和豆包API未验收，本次仅调整首页展示。
+
+
+## 2026-10-31 · 创建、加入与密码入口独立精简（本地完成，未部署）
+
+按用户对入口弹窗的新要求，新增CreateRoomDialog和JoinRoomDialog两个独立组件，分别只保留“输入房间名称”或“输入房间号”输入框及“确定”，取消原共用模式页签、显示名输入、使用方式选择、隐私/字幕说明、个人存档及AR入口。保留关闭按钮及仅在失败时出现的校验/连接错误。正式界面不再提供本地模拟入口，原模拟引擎和回归测试继续保留；个人存档仍有房内/账号中心入口，AR独立页面保留且界面不再放入口。此处按用户最新指令收窄原V1保留入口要求。
+
+App自动使用登录账号昵称；游客复用本浏览器已有名称或默认“游客”，继续通过既有成员名称校验和原enter/reenterRoom逻辑。创建名称遵循12汉字/24半角混合长度边界，错误后修改输入会清除本地提示。加入框只接收六位房号，独立状态监听历史导航的预填房号。密码流程关闭加入卡后新开原RoomPasswordPrompt，标题改为“这是一个加密房间”，只保留密码框和确定（以及关闭按钮），移除账号/游客说明和初次重复提示；错误时显示原服务端失败消息。原四位数字、前导零、账号免输、改码撤权、取消/重试和输入清空规则不变，不修改密码协议。
+
+现有建房协议不支持初始名称，本轮复用原房主rename接口而不改服务器API或数据库。新增roomCreation.ts发送会话令牌头和名称到已有/api/rooms/settings，12秒超时及外部AbortSignal取消，结束释放定时器/监听并拒绝迟到成功。App先保存用户填写的名称，再绑定创建时的账号，避免绑定撤销匿名权限后改名失败，账号变化不绑定给新账号。离房/取消/卸载中止命名与绑定并用操作代次/房间号阻止迟到UI变更。名称保存失败保留已经创建的房间与原管理凭据，明确提示到房间设置重试，不重复创建或假称名称成功。无服务器、房间协议、音频或字幕生命周期修改，无新增依赖。
+
+新增room-creation.test.mjs并加入npm test，模拟成功/失败/异常响应、令牌/正文边界、取消/超时/迟到响应和资源释放；扩展demo模拟覆盖自动游客/账号昵称、名称校验、先命名后绑定、失败保留房间及离房取消后不改状态/不绑定。更新密码模板模拟及原四组浏览器入口定位，home-browser覆盖单输入/无选择器、长度校验和修正、自定义名称真实WSS建房、独立加入及历史导航同步。room-access浏览器验证填写名称在账号绑定后不被默认昵称覆盖、精简密码框错误/前导零/重启/改码/移除，真实Cookie/CSRF边界仍由原集成测试覆盖；没有将合成身份当作正式账号验收。room-interactions以合成本机旧入口指定测试参与者名称，覆盖自动名称兼容；home-browser的房间数据仍由真实隔离网关产生。
+
+初次新增demo用例增加连接次数后，末尾卸载断言仍比较旧基线，更新为用例开始时计数后通过。成员浏览器原pauseAt使用主进程时间，建房异步请求增加后出现“Cannot fast-forward to the past”；首次尝试在挂载前暂停时钟会令Vue同毫秒事件保护忽略点击，已撤回该尝试，改用建房完成后的浏览器模拟时钟加100ms作为暂停点，三视口回归通过。两处均为测试基线/时钟修正，未放宽生产字幕计时或交互规则。
+
+最终npm test全套、npm run build（vue-tsc/Vite）通过，test:home:browser、test:room-access:browser、test:room-interactions:browser、test:member-controls:browser均通过。截图在ignored artifacts/home/create-320.png、join-320.png及artifacts/room-access/password-390.png，已目视三个精简弹窗和创建校验修正后的截图。README、ARCHITECTURE更新，git diff --check通过。未提交、推送或部署，保留原工作区修改，未编辑DEEPSEEK-MEMORY；物理手机/Safari/系统软键盘、真实麦克风和豆包API未验收，本次模拟与Chrome移动视口不代替这些验收。当前无本地功能阻塞。
+
+
+## 2026-10-31 · 桌面卡片缩小、入口弹窗与内外层次（本地完成，未部署）
+
+按用户截图要求先检索官方设计规范。Carbon Tile最新指南按网格/间距模式确定宽度、按内容和比例确定高度，未给本项目这类房间卡片统一固定尺寸，故采用用户指定的现有0.8倍。参考：https://www.carbondesignsystem.com/building-blocks/core/components/tile/guidelines 。只参考尺寸决策，不引入设计系统、组件或主题。
+
+home.css新增外层灰色、内部最大宽度、桌面卡宽及入口弹窗尺寸变量。768px起页面shell仍最大1120px、#41454A深灰，body外侧为更浅#62666B；导航、标题与卡片所在home-container再收窄为960px居中，保留响应式边距。桌面卡宽从236px变为calc(236px * 0.8)即188.8px，6:7比例对应约220px高；间距16px、内边距20px、头像44px和名称18px，长名继续换行且按钮保持最小可操作尺寸。手机卡片的3:4/滑动/缩放/蒙层规则不变，房内和AR页面不应用外层灰色。
+
+CreateRoomDialog和JoinRoomDialog只增加home-entry-dialog类，沿用原HomeDialog与事件，无表单或业务逻辑修改。入口弹窗由600px收为最大400px，内部布局最小320px（含边框实际约322px），表单padding32px、上下控件间距加大；手机收缩、矮视口限制高度和内部滚动。房间列表仍为原600px及手机近全屏，密码和房内设置弹窗不改。
+
+扩展既有home-browser几何检查，覆盖桌面卡宽0.8、1120px页面/960px内容、内外背景不同、长名称无裁切、两个入口弹窗宽高，以及640×360矮视口。实际test:home:browser通过320/390/767/768/1024/1440px和原进房/创建/加入/键盘/触摸流程，已目视initial-1440.png、create-1440.png及join-1440.png；证据在ignored artifacts/home/。npm test全套与npm run build通过，git diff --check通过。README、ARCHITECTURE已更新，无新增依赖或服务器/账号/音频/字幕逻辑改动，保留原工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。未验收物理手机、Safari、系统软键盘、真实麦克风和豆包API，移动视口不代替真机验收；当前无本地阻塞。
+
+
+## 2026-10-31 · 创建房间增加私密选项（本地完成，未部署）
+
+按用户截图在CreateRoomDialog房间名下增加原生可键盘操作的“私密房间”切换按钮，默认浅灰#E3E4E0，选中深灰#3F4347，aria-pressed同步。选中才显示密码框，严格四位ASCII数字且支持前导零；必填/长度/pattern与组件校验并存，连接中禁用切换和输入。取消选择、提交前及关闭卸载清空密码，公开创建不携带旧密码；样式沿用现有灰阶/圆角/间距，长表单自然增高，矮视口内部滚动。无额外说明或装饰模块。
+
+检查现有设置流程后，为避免先公开创建再设置入房码的窗口，未采用建房后调用access-code的方案。App以本次enter的可选creationPassword参数传递（不加入共享ref），复用roomClient既有password字段和发出后清空参数。网关create分支新增可选password的严格校验，并在首次持久化前写入既有accessCode/accessVersion/accessAccounts，persisting期间不可加入，失败清除内存占位且不返回joined；不新增数据库字段或版本，不改变后续密码/账号/权限机制。名称仍经原rename保存后绑定账号，创建时密码在绑定后保留。普通状态不回传密码，API Key和音频/字幕规则不变。
+
+扩展room-creation组件VM验证公开无密码、无效/全角/长度拒绝、前导零、忙碌保护、提交/取消/卸载清理；demo验证密码在初次create及后续公开不复用；rooms客户端验证create密码只放首包并删除参数。room-access以真实隔离HTTP/WS和临时持久化资料验证初次落盘含密码、未验证无成员/字幕、前导零成功、无效密码无资料、落盘失败无可加入房间、重启仍受保护，原改码/账号/票据回归保留。所有数据为合成资料，无真实服务调用。
+
+home-browser覆盖六视口及320px私密建房、浅灰/深灰精确值、取消清空、640×360矮视口，另一390px浏览器首次输入密码、错误重试/正确前导零、进入同房及本机记录无密码字段。room-access-browser改为账号创建时选私密，验证初次已设码、绑定后保留及原改码/重启/跨设备免输；首次回归仍定位“设置四位入房码”而超时，因为初次建房已设密码，改为“更换四位入房码”后通过，未修改产品行为。已目视公开/私密桌面和320px截图，位于ignored artifacts/home/create-1440.png、create-private-1440.png及create-private-320.png。
+
+最终npm test全套、npm run build（vue-tsc/Vite）、test:home:browser和test:room-access:browser通过，git diff --check通过。README、ARCHITECTURE及本日志更新。无新增依赖，无生产数据操作、Git提交/推送或部署，保留原工作区修改，未编辑DEEPSEEK-MEMORY。此功能需要配套前端与新网关：本地应重启正在运行的旧网关，旧版会忽略create消息中的password，不能只更新静态前端；本轮浏览器使用新建隔离网关实例，没有重启用户其他服务。真实物理手机/Safari/软键盘、麦克风与豆包API未验收，移动视口与模拟不代替真机验收；当前无本地功能阻塞。
+
+
+## 2026-10-31 · 模拟改名接线与设置入房码常驻明文（本地完成，未部署）
+
+用户确认问题位于页面的本地模拟模式。检查发现模拟分支只建立房号与成员、未初始化roomName，标题还固定显示“字幕房间”，并且ApiSettings原先仅管理本机语音配置，无法修改模拟房间元数据。修复为模拟进入时使用指定名称或“显示名称的房间”，统一标题读取roomName，新增仅模拟会话可用的改名及四位入房码状态/校验；不会重建成员、清空字幕或停止语音。模拟设置关闭重开保留，离房清空，不修改真实房间或浏览器存储。ApiSettings新增可选房间属性和事件，模拟时呈现可滚动原生dialog，保留原语音配置与404健康查询行为，原独立用法仍为section。
+
+按用户要求，房内房主设置和个人中心单房间管理始终显示已保存的四位入房码明文，输入新码也使用type=text，无隐藏按钮，前导零保留；关闭重开与网关正常重启后重新从服务端读取。网关将ownerStatus与publicStatus分开，只有合法匿名房主设置GET、既有鉴权后的管理结果和本人绑定房间列表包含accessCode，无码为空串。普通成员、joined/room-status、字幕/成员广播及access票据响应仍无明文码或已验证账号名单。所有权、Cookie/CSRF/HMAC、改码撤权/资格持久化及API Key按需显示/仅内存规则不变，未新增存储字段或接口路由。
+
+扩展App、ApiSettings、RoomApiSettings和OwnedRooms的实际模板/状态测试，验证模拟初始化/改名/长度边界/状态独立/离房清理、元数据操作不发送请求、当前码明文及文本输入。扩展真实回环HTTP/WSS与账号SQLite/Cookie/CSRF联调，验证匿名房主重开读取、绑定房主跨设备/重启读取、改码返回新值、普通成员及广播不含码。新增simulation-settings-browser与npm run test:simulation-settings:browser，用envFile:false的隔离Vite加载真实开发SFC，经Vue开发实例进入已有模拟分支，不增加生产入口。在480/320px验证实际改名/标题同步、0042明文、关闭重开、12汉字/24半角边界、原生弹窗滚动/Escape和离房清理，确认没有房间写请求；不读取.env或连接真实网关/ASR。
+
+最终npm test全套、npm run test:accounts、npm run test:room-management、npm run build及npm run build:accounts通过。simulation-settings-browser（480/320px）、room-access-browser（480/390/320px）和workspace-browser（375/768/1440px）通过，后两者覆盖房主常驻码、关闭重开/重启读取、成员只读和既有入房/账号/Key功能。截图在ignored artifacts/simulation-settings、artifacts/room-access及artifacts/account-workspace，已目视模拟320/480px弹窗。模拟浏览器仅验证开发SFC本地状态，联网浏览器使用正式构建与隔离网关/合成账号代理，真实Cookie边界由独立集成测试覆盖，不把这些结果当作生产或真机验收。
+
+README、accounts/README和ARCHITECTURE已更新，保留既有首页/入口/私密创建等工作区修改，未编辑DEEPSEEK-MEMORY。没有新增运行依赖、Git提交/推送、部署或生产资料操作；未调用真实麦克风/豆包或物理手机。当前无本地功能阻塞。
+
+
+## 2026-10-31 · 手机布局滑动选卡与窄窗口鼠标拖动（本地完成，未部署）
+
+用户要求手机模式通过滑动移动并选择卡片。检查发现触屏已有原生横向滚动，但普通电脑浏览器只收窄窗口后，鼠标pointermove只记录位移以防误触，并不更新scrollLeft。RoomCarousel新增仅手机布局的主键横向鼠标拖动，触屏仍交给浏览器原生滚动。拖动超过8px并判断为横向后暂停scroll-snap，以起始scrollLeft和鼠标位移实时更新位置；松手同步计算实际最近槽位，恢复吸附并居中，缩放和灰色蒙层继续使用原距离进度。没有新增轮播库、复杂动画或卡片外按钮。
+
+鼠标按下阻止按钮提前聚焦滚动，手机卡片禁止文字拖选并使用抓手/拖动光标。按需监听window指针移动、抬起、取消和失焦，拖动中捕获指针以支持移出卡片松手；新主动按下清除旧手势点击抑制，拖动后的合成点击仍拦截，普通点击仍可进房或打开功能弹窗。窗口失焦、尺寸变化和卸载会释放手势、指针捕获、监听；同步读取进度时取消尚未执行的帧，避免卸载遗留回调。桌面布局维持原横向浏览，键盘方向键/Home/End/Enter保持原行为。
+
+扩展既有home-browser，新增无触屏模拟的390px普通浏览器验证，覆盖鼠标双向拖动、拖动100px时实时跟随和中间缩放、松手最近卡片吸附、移出卡片区域松手不入房、短距离拖动回弹不误入、从功能按钮开始拖动不弹窗、失焦释放状态以及随后的普通点击进入真实隔离WebSocket房间。原六视口、CDP触摸滑动、创建/加入、私密/密码和列表回归继续通过。npm test全套、npm run build和test:home:browser通过，git diff --check通过；无新增依赖，无网关/账号/音频/字幕业务改动。
+
+README、ARCHITECTURE与本日志更新，保留当前工作区其他修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。普通Chrome窄窗口及CDP触屏均为实际浏览器结果，未验收物理手机、Safari、系统软键盘或真实麦克风/豆包API；模拟结果不替代这些验收。当前无本地功能阻塞。
+
+
+## 2026-10-31 · 自己的卡片与头像支持快捷回应（本地完成，未部署）
+
+按用户要求，MemberCaptionGrid取消本人目标限制，自己的字幕卡片及收起头像都可通过桌面右键、手机长按500ms打开原快捷回应菜单，复用个人选择的1～5项预制词。自己的卡片可键盘聚焦，头像标签补充回应手势。卡片捕获阶段排除麦克风/输入方式控件、打字入口及编辑控件，保留原长按/右键打字和原生文本编辑；长按成功后拦截合成click，避免松手误开输入框或展开头像，新一次pointerdown恢复普通点击。原普通点击打字/展开、底部提示及固定/动态布局保留。
+
+App发送和roomGateway同时允许本人targetId，沿用既有reaction消息，不新增协议字段或接口。网关仍从socket绑定senderId，验证目标在线且在本房，所有目标共享每连接1.5秒冷却和固定词库白名单；本房广播、跨房/离房隔离及不补发历史保留。本人回应显示“表情 昵称：所选词”，对他人的措辞保留；共用原2.6秒气泡、音效和离房清理，不进入captions生命周期。模拟模式同样可回复自己。
+
+扩展caption-grid、demo和真实隔离WebSocket测试，覆盖本人右键/长按/事件发送、控件排除、合成点击抑制及下次点击恢复、模拟/联网本人表达、共享冷却、本人广播与身份防伪和房间隔离。扩展room-interactions-browser，使用正式构建和真实回环网关，验证自己的卡片桌面右键、CDP触屏长按、松手防误开、原草稿保持、同房三个上下文同步及跨房隔离；扩展member-controls-browser覆盖480/390/320px的本人收起头像右键/长按不展开及原麦克风/打字/收束/布局回归。新增触屏用例等待另一成员的状态广播和文字区达到可操作状态后取坐标，避免布局更新将长按误落到打字按钮；冻结时钟下跨过新挂载头像的监听器时间后再点击。
+
+最终npm test全套、npm run build（vue-tsc/Vite）、test:room-interactions:browser、test:member-controls:browser及git diff --check通过；前期test:room-interactions专项也通过。首轮完整检查与构建被沙箱限制本地子进程，改用允许子进程的执行环境后通过。浏览器使用已有Playwright和Chrome，无新增依赖；已目视artifacts/room-interactions/self-reaction-desktop.png、self-reaction-mobile.png，原三视口截图在artifacts/member-controls/。所有网关、身份及语音输入均为隔离合成资料或假Web Speech；未调用真实麦克风/豆包API，未验收物理手机、Safari或物理扬声器听感，自动测试不代替这些验收。
+
+README、ARCHITECTURE和本日志同步更新，保留此前首页/私密建房/模拟设置等工作区修改，未编辑DEEPSEEK-MEMORY。无Git提交、推送、部署或生产数据操作；需要配套发布前端和网关，旧网关仍拒绝本人目标。当前无本地功能阻塞。
+
+## 2026-10-31 · 房间内部 UI 完整重构（本地完成，未部署）
+
+检查origin/main与HEAD均为fa90fde，保留当前工作区已有首页、账号、命名、模拟设置及本人回应等改动。未触及生产服务器、实际房间资料或密钥，未提交或推送。
+
+App重排为头像设置入口、名称／六位房号／分享／退出、原中央字幕和底部主控，电脑仍最大480px窄框。RoomApiSettings复用为普通／房主二级页面：两条独立音量、动态默认／固定布局、本机持久偏好；ASR滑动开关和暂停状态；房间名铅笔编辑；Key明文输入、保存即清空、重入掩码、更换空白且不可回读；密码开关待保存、四位ASCII过滤／0000及失败恢复。保留MemberModeControl、TypingComposer、卡片收束、草稿确认、快捷回应、账号登录和模拟／浏览器ASR回退。房内存档入口及preset链接自动加载移除，账号和存档数据／接口保留；debug=1显式参数才显示原技术控件及详细MP3试听，普通路径无额外操作。
+
+新增roomPreferences、captionEntrance、speechSound和roomPassword四个实现模块，无新增Vue组件或依赖。统一入场判定在旧字幕入队前按成员检查captionOpacity，包含打字占位和完整渐隐；首条非空语音interim或直接final触发同一个事件，同时更新头像两圈涟漪、650ms／1.015倍整卡呼吸和成员音阶。interim更新、重复final、字幕重叠、打字／回应／布局不重播。Web Animations仅改变transform，几何布局沿用原adaptiveLayout；减少动态跳过动画。Web Audio使用C4～C5同音色短音，独立音量和幂曲线、八音上限、交互解锁、未解锁丢弃，离房／卸载释放；0音量保留视觉。
+
+网关按加入顺序分配最小空闲toneSlot并广播，退出不重编号他人，新增成员复用空槽；成员槽位不持久化。CaptionEvent增加可选source，兼容旧typed-命名空间。原文本rename、房主鉴权／账号签名链路、stopRoomAsr、访问票据及限流继续使用。取消房间与账号管理的reveal。房间资料写v5 passwordHash，带随机盐scrypt摘要；旧v1～v4非空明文密码加载时校验后原子迁移，失败不启动，保留所有权、名称、号码／别名、访问版本和已授权账号，账号SQLite仍v2。Key仍只存当前进程内存、不落盘、重启重填。旧公开房间空码验证不会抛异常，写失败保留原保护状态。需配套发布两套前后端；旧镜像不能直接读取v5回退。
+
+通过npm test、npm run build、npm run build:accounts、test:accounts、test:room-management、test:room-refactor:browser、test:member-controls:browser、test:room-interactions:browser、test:room-access:browser、test:home:browser、test:simulation-settings:browser和git diff --check（Windows CRLF规则）。新增测试覆盖首条／去重／渐隐边界／打字占位、八音阶／独立音量／设备失败与清理、旧密码迁移、真实隔离WebSocket槽位分配／退出复用、二级设置／失败开关恢复及实际Chrome多人音高／动画／减少动态／320、390、1280窄框。原固定布局浏览器套件显式关闭新默认动态，以继续覆盖原场景；动态及切换另由专项验证。首轮子进程EPERM属于沙箱限制，允许执行Node／esbuild子进程后通过。更新旧设置文字／入口与取消回读预期，未移除既有回归能力。
+
+已目视artifacts/room-refactor/下窄屏、桌面窄框、普通设置、房主设置和减少动态截图。所有网关、账号、语音及音频验证使用隔离合成数据、假Web Speech／上游或浏览器Web Audio调用；未进行真实麦克风、豆包API、物理手机／Safari、系统键盘或扬声器听感验收。正式配色、动画曲线和听感仍待人工调整；未添加拖动卡片、自由缩放、复杂桌面或音色编辑器。
+
+README、accounts/README、ARCHITECTURE同步当前实现；文件列表、复用说明、数据兼容及完整验收见docs/ROOM-UI-REFACTOR-20261031.md。未编辑DEEPSEEK-MEMORY。当前无本地实现阻塞。
+
+## 2026-10-31 · 按截图调整房间顶部与底栏（本地完成，未部署）
+
+分享按钮移到房间名称／房号右侧。收起头像与无文字的麦克风主控共用最底部一行，去掉头像下方姓名／“我”、底部状态说明、手势提示和识别来源文字；右侧主控为64×56px、16px圆角的图标按钮，保留左侧小箭头、短按、长按、右键和键盘打字入口。异常提示仍在内容上方显示，调试／模拟用量放在字幕区上方。
+
+仅修改src/App.vue、src/components/MemberCaptionGrid.vue、src/style.css及文档，没有新增组件／依赖、网关或音频通信改动。controls插槽让原主控与收起头像在同一贴底容器；保留所有头像的无障碍名称、麦克风状态和回应功能。实际Chrome发现贴底长按菜单可能覆盖原触点，调整为有空间时在触点下方展开、底侧时向上展开并保留间隔，修复松手误点。
+
+npm test完整套件、npm run build、test:member-controls:browser、test:room-refactor:browser及git diff --check通过；菜单位置修改后另跑caption-grid测试和最终完整npm test。Chrome480／390／320px验证八成员单行收束、恢复、短按／长按／右键／左滑、固定／动态布局及打字草稿。另用无debug参数的隔离房间检查320／480／1280视口：分享位于名称右侧、无横向溢出，头像底部距可见区底10px，主控距底6px（不含设备安全区）；截图artifacts/room-refactor/footer-320.png、footer-480.png、footer-1280.png已目视。原重构多成员截图同步更新。
+
+README与ARCHITECTURE已更新。保留工作区此前所有改动，未编辑DEEPSEEK-MEMORY；无Git提交、推送或生产部署。未使用真实麦克风／豆包、真机或物理扬声器；本次为视觉与相关手势回归，不代表这些验收已完成。
+
+## 2026-10-31 · 设置面板喇叭静音、布局开关与房主分区（本地完成，未部署）
+
+两条音量滑块左侧新增喇叭按钮，分别静音／恢复，静音时滑块置灰并不可拖动，保留静音前的百分比与位置。再次点击恢复原音量，关闭重开设置或刷新后仍保留个人静音状态及音量。卡片布局改为默认开启的滑动开关，开启显示“动态自适应”，关闭显示“固定分布”。房主管理区采用浅蓝灰底，ASR与布局开关左侧对齐，进入房主详细页的按钮改名为“房间设置”。
+
+修改RoomApiSettings.vue的音量行、喇叭SVG／无障碍标签、滑块禁用、布局与ASR开关对齐、房主管理区底色及入口文案。发言静音新增roomPreferences.ts的speechEnabled字段，旧localStorage记录默认true；保留speechVolume，不把静音当成改成0。回应直接复用现有enabled／volume。App分别保存音量和静音状态，以有效音量0停止发言声音，点击恢复时在用户交互内解锁AudioContext；配置同步watch与布局保存分离，布局变化不截断短音。当前设置会话里手动拖到0也能恢复最近非零值；不增加服务端状态、通信、组件或依赖。
+
+扩展原room-settings-view测试验证两种音效互不干扰、静音保留音量／禁用、恢复及0值边界、布局状态文案；speech-sound测试验证新开关的兼容默认与持久化保留54%。实际Chrome回归验证54%／100%分别静音和恢复、关闭重开／刷新保留、恢复后无需额外点击即可播放下一条发言、静音仍有入场动画、开关对齐、底色区别、房主入口权限及320／390／1280设置弹窗无横向溢出。home-browser和room-access-browser按新入口类名适配，原功能回归能力保留。
+
+npm test、npm run build、test:room-refactor:browser、房间配置／音效专项及git diff --check通过。settings-updated-390.png、settings-muted.png已目视，320／1280截图同在artifacts/room-refactor/。README及ARCHITECTURE同步当前规则，保留已有工作区修改，未编辑DEEPSEEK-MEMORY。未提交、推送或部署，未访问生产资料、真实麦克风／豆包或物理扬声器；浏览器记录不代替真机听感验收。
+
+## 2026-10-31 · 设置页去标题、叉号关闭和深色入口（本地完成，未部署）
+
+按标注图修改RoomApiSettings.vue：移除个人设置页顶部可见标题及“音量与布局只影响自己，并保存在本浏览器”说明，关闭按钮改为透明底×，保留44px点击范围、关闭设置的无障碍名称和原关闭／Escape行为；dialog使用动态aria-label，房主详细页仍保留自身标题。“房间设置”入口改为深色底白字并提供深色悬停状态，管理分区原底色保留。无业务、权限、音量、数据结构或依赖变更。
+
+npm test、npm run build、test:room-refactor:browser及git diff --check通过。实际Chrome320／390／1280设置截图已生成，目视settings-updated-390.png确认去字、×与深色按钮，原静音恢复、布局与房主详细页流程继续通过。仅调整现有组件和README／ARCHITECTURE／本日志，未新增测试或组件，未编辑DEEPSEEK-MEMORY，未提交、推送、部署或访问真实API／麦克风。
+
+## 2026-10-31 · 房主原位改名、Key按钮层级及移除确认（本地完成，未部署）
+
+房主详细页的名称改为原位编辑，铅笔变为确认勾号，点击编辑行外或按Escape取消。Key保存放在输入框右侧，保存和取消更换为深色按钮；移除密钥只在更换状态显示，采用浅色低存在感样式，并在独立确认弹窗中再次确认。测试连接采用带插头图标的虚线文字控件，结果紧随其后显示，成功为“key测试通过！”，失败也在同一处提示。
+
+修改RoomApiSettings.vue，未新增组件或依赖。名称使用同一编辑行及pointerdown外部判断，保留确认按钮命中，避免blur先取消再提交；支持Enter提交和Escape取消，沿用原单行名称校验／rename接口。Key保存与取消更换为深色，保存位于输入框右侧；移除只在更换时出现、浅色弱化，原生模态确认中先取消聚焦，取消不发送delete。移除确认后调用原接口并清空明文。测试控件与深色／浅色按钮区分，结果就地展示；有未保存Key草稿时禁用测试，保存后测试真实服务端已保存值。清除原长说明及冗长成功提示，保留实际失败信息。
+
+原requestConfiguration的test结果分支改为独立结果状态，匿名房主与绑定账号共用同一展示；测试、改名、读取状态等非Key操作不再无条件丢弃Key草稿，保存／删除、取消更换、返回／卸载仍清理。旧保存／删除／测试／权限链路保持，无服务端、账号数据库或持久化结构改动。
+
+扩展room-settings-view测试覆盖编辑行内／外点击、未提交取消、确认弹窗打开不发删除、取消保留输入、测试成功及HTTP失败就地展示、普通成员限制。扩展room-refactor-browser，使用隔离网关的probeRoomKey假返回，验证原位高度不变、点击别处取消、确认改名同步、移除入口仅更换时出现、取消确认不删除、明确确认后删除及重新保存、inline测试成功与原有设置／动画回归。npm test、npm run build、test:room-refactor:browser、test:room-access:browser和git diff --check通过；绑定账号及匿名房主改名／权限／重启访问回归保留。
+
+已目视owner-key-tested.png、owner-key-editing.png、owner-key-remove-confirm.png（artifacts/room-refactor/）。截图中的key测试通过为合成probe结果；未使用真实密钥、豆包API、真实麦克风或物理设备，不代表真实API验收。README、ARCHITECTURE同步，未编辑DEEPSEEK-MEMORY，保留工作区此前修改，无提交、推送或部署。
+
+
+## 2026-10-31 · 本机旧网关导致回复自己报错（本机运行态已修复，公网未部署）
+
+用户截图显示“无效的回应类型或目标成员”。核对当前App与roomGateway均已允许本人目标；本机8787实际监听的却是2026-10-30晚启动的常驻Node进程13388，来自HakiSub-Local任务，网页dist已多次更新但网关内存代码未重载。因此新版UI可以发送本人目标，旧网关仍按旧规则拒绝。
+
+先完成当前npm test及npm run build，并用临时副本加载本机房间资料预检，确认既有1间房的房号、名称、房主、开关和访问元数据保留。按原任务配置停止HakiSub-Local时，旧Node子进程未随任务退出；重新核对8787监听PID及完整项目脚本路径后，仅结束13388。房间资料备份到Git忽略的secrets/backups/rooms-before-self-reply-runtime-*.json并逐字节SHA256核验，随后重新运行原任务，未重建或修改任务定义。北京时间21:40:14启动新Node进程36428，健康检查200。
+
+对实际8787网关进行本人回应冒烟：临时加入现有公开本机房间，仅在成员列表确认只有验收连接时才向本人发送agree，实际收到senderId与targetId均为本人的reaction，无错误回包；结束后离房，没有创建新房间，资料文件逐字节不变，没有向其他在线成员发送测试回复。另核验HTTP首页与当前dist/index.html一致，网关健康检查200。此次重启会断开原本机连接，并按既有规则清空房间内存Key；用户需刷新重新入房并重填房间Key。
+
+为当前新版页面的room-refactor-browser补充本人卡片右键→选择赞同→实际WebSocket回包→显示“昵称：赞同”的回归，检查无原报错且仍闭麦。最终npm test全套、npm run build、test:room-refactor:browser及git diff --check通过；已目视artifacts/room-refactor/self-reply-current-ui.png。README与ARCHITECTURE补充静态构建不重载网关、停止任务后核对残留子进程、实际运行实例验收的说明。无业务协议或权限放宽，无新增依赖，无Git提交、推送或公网操作，未编辑DEEPSEEK-MEMORY。未调用真实麦克风或豆包API，未验收物理手机和扬声器；隔离浏览器与实际本机协议冒烟均不代替这些验收。当前无本机功能阻塞。
+
+## 2026-10-31 · 两处纯键盘入口、隐藏冗余箭头与输入框精简（本地完成，未部署）
+
+自己的卡片与右下角主控统一使用纯键盘图标选项，不显示“切换打字”文字；打字模式下隐藏小箭头并关闭重复的“继续打字”菜单。输入框移除可见标题及Enter／Shift+Enter／仅发送后同步说明，保留收起、字数计数和发送，空白占位改为更浅的“哈基...”。布局开关关闭时显示“动态自适应（已关闭）”，实际仍使用原固定分布算法。
+
+修改MemberModeControl.vue、TypingComposer.vue、RoomApiSettings.vue，没有新增组件、依赖或服务端通信。键盘菜单复用现有SVG与selectTyping事件，保留无障碍名称、64×56圆角点击区域及视口限位；本人卡片和底部共享组件一致生效。打字模式不渲染箭头，也不再由长按／右键／方向键打开继续打字菜单；主键盘按钮原短按退出打字并闭麦行为不变。实际三视口测试发现滑入打字后无合成click时旧保护会拦截下一次短按，已调整新真实pointerdown先清保护，添加对应回归。
+
+输入窗去掉标题及底部操作说明，aria-label保留窗口名称；占位哈基...仅变浅，不改正文。字数／发送／收起、草稿、IME、Enter发送／Shift+Enter换行、冷却、软键盘与取消清理保持。布局关闭文案调整，未改算法或保存规则。
+
+扩展member-mode-control测试覆盖打字状态无箭头／无菜单及新真实按下复位；member-controls-browser验证480／390／320本人卡片与底部均无箭头、菜单无可见文字、长按／鼠标／触摸／左滑及短按恢复，保存keyboard-option与typing-mode三组截图。room-interactions-browser改为打字状态经原输入字幕入口重开编辑器，验证草稿、中文输入、软键盘、发送、快捷回应和假Web Speech。同步设置测试关闭文案。
+
+npm test、npm run build、模式控件／输入窗／设置专项、test:member-controls:browser、test:room-interactions:browser及git diff --check通过。正常无debug参数的隔离Chrome房间另验证并目视footer-keyboard-option.png、footer-typing-control.png、card-typing-control.png、typing-composer-updated.png和layout-disabled-updated.png（artifacts/member-controls或room-refactor）。真实麦克风／豆包、物理手机及扬声器未在此轮验收。README、ARCHITECTURE更新，未编辑DEEPSEEK-MEMORY；保留此前工作区修改，无提交、推送或部署。
+
+## 2026-10-31 · 首页列表入口移到标题旁（本地完成，未部署）
+
+按标注图将房间列表按钮从顶部导航移到“我的房间”标题右侧，仅保留原列表图标，去掉可见的“房间列表”文字。保留aria-label、展开状态、44px点击区域及原列表弹窗。HomePage.vue新增标题行，home.css统一标题与按钮对齐、移动端留白，并移除小屏隐藏图标的规则。顶部继续显示品牌与账号入口；没有修改网关、通信、音频或房间数据。
+
+npm test全套、npm run build、test:home:browser与git diff --check通过。首页Chrome回归覆盖320／390／767／768／1024／1440px，列表搜索、打开／Escape关闭与焦点恢复、轮播位置、卡片拖动及创建／加入流程；目视artifacts/home/initial-390.png和initial-1024.png确认图标紧随标题，顶部不再显示列表按钮。初轮构建esbuild子进程及测试换号CLI受沙箱限制，允许本地子进程后完整重跑通过；未新增测试或依赖。
+
+README、ARCHITECTURE及本日志已同步，保留工作区已有修改，未编辑DEEPSEEK-MEMORY。未提交、推送或部署；真实麦克风／豆包API及物理手机未在本次UI微调中验收。
+
+## 2026-10-31 · 房间列表弹窗精简与搜索框重做（本地完成，未部署）
+
+按标注将弹窗标题改为“房间列表”，移除“查找已有房间”可见标签和列表行右侧箭头，保留整行入房。搜索框改用SVG搜索图标、单一外层圆角边线及原生search输入，以aria-label保留无障碍名称。原双框来自外层边框与通用input的focus阴影／focus-visible轮廓叠加；现由home-search-field统一绘制边线，focus-within仅加深该边线，并限定在该搜索框内清除输入自身焦点阴影／轮廓。其他表单焦点样式、筛选、自动聚焦、清除搜索、Escape关闭、焦点恢复和列表滚动继续使用原实现。
+
+修改RoomListDialog.vue及home.css，同步既有home-browser中的标题与搜索名称定位，没有新增测试、组件或依赖。npm test全套、npm run build、test:home:browser及git diff --check通过；既有Chrome套件覆盖320／390／767／768／1024／1440px及搜索名称／房号／空结果、列表入房、关闭恢复、卡片和私密创建／加入。已目视artifacts/home/list-390.png与list-1024.png，确认聚焦搜索框仅一条边线、无冗余标签或行尾箭头。
+
+README、ARCHITECTURE及本日志已更新，保留工作区其他修改，未编辑DEEPSEEK-MEMORY。无网关／音频／协议修改，无提交、推送或部署；未进行真实麦克风、豆包API或物理手机验收。本地检查无阻塞。
+
+## 2026-10-31 · 打字框进一步缩减（本地完成，未部署）
+
+按最新标注将TypingComposer合为单个白色圆角框，移除“收起”及textarea自身边框，保留浅色“哈基...”占位。计数固定左下，发送改为右下32×32px圆角方形向上箭头，空内容／冷却／发送中沿用原禁用规则。正文在上方独立滚动，底部操作区域不收缩并始终为白色，1000字内容不会盖住计数或发送按钮。未修改字幕、网关、音频或发送协议。
+
+新增window捕获阶段框外click关闭，保留打字模式与App内存草稿；框外空白停止同一次点击继续传播，避免自己的卡片刚收起又打开输入框，真实按钮／链接仍执行原操作。框内点击、原生编辑、Escape、IME选字保护、Enter发送／Shift+Enter换行、发送保持焦点及visualViewport软键盘定位保留；卸载清理新增监听。
+
+扩展既有typing-composer测试覆盖框内／框外、草稿与外部按钮传播；member-controls-browser在480／390／320px验证真实鼠标和触屏空白收起、下一次点击重开原草稿及框内不关闭；room-interactions-browser改用框外空白关闭并补充1000字滚动、底部白色隔离及方形按钮检查。另用无debug参数的隔离Chrome房间核对约138px紧凑高度、32px按钮、发送字幕回包及320px边界，截图位于artifacts/member-controls/composer-compact-{empty,filled,long,320,390,480}.png，已目视空内容、长文字和390px结果。
+
+npm test全套、npm run build、typing-composer专项、test:member-controls:browser、test:room-interactions:browser及git diff --check通过。初轮浏览器回归在点击设置后直接寻找旧输入框超时，按新的框外关闭行为先从本人卡片重开后完整通过。测试使用本地隔离网关、假ASR及Chrome移动视口，不代表物理手机键盘或真实麦克风／豆包验收。README和ARCHITECTURE已同步，无新依赖；保留已有工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。
+
+## 2026-10-31 · 房间与房主设置统一返回图标（本地完成，未部署）
+
+房间右上角的“退出房间”改为24px SVG返回箭头，透明底、44px点击范围，保留退出房间的无障碍名称并沿用leave回首页。房主详细页移除正文“返回房间设置”按钮与右上角×，仅在右上角提供同样的返回箭头，调用原backToPersonal；Escape也改为返回上级房间设置。主房间设置页仍使用×／Escape关闭。原名称、Key、密码及连接结果草稿清理继续执行，没有新增组件、依赖、通信或数据结构。
+
+修改App.vue、RoomApiSettings.vue及style.css，同步既有room-refactor-browser、home-browser和room-access-browser的返回／关闭路径；二级设置重入用Escape回上级后关闭，继续检查Key掩码与明文清理。npm test全套、npm run build、test:room-refactor:browser、test:home:browser、test:room-access:browser及git diff --check通过。初轮权限浏览器套件最后一处匿名房主仍尝试直接找旧关闭按钮，补齐先返回上级后完整重跑通过。原首页退出图标、匿名／绑定房主、改名／密码、音量与布局回归均保留。
+
+目视artifacts/room-refactor/owner-key-tested.png和room-390.png，确认两处箭头一致、房主标题行右侧仅一个返回按钮且无原文字入口；320／390／1280房间及六视口首页回归通过。截图中的Key测试结果为合成返回，本轮未调用真实麦克风／豆包API或物理手机。README、ARCHITECTURE同步，保留其他工作区改动，未编辑DEEPSEEK-MEMORY；无提交、推送或部署，本地检查无阻塞。
+
+## 2026-10-31 · 空白字幕提示文案（本地完成，未部署）
+
+将MemberCaptionGrid.vue中有成员但卡片全部收起时的中央提示改为用户指定的“没人说话喵ᶻz₍^_   ̫ _ ^₎”，保留原显示条件、居中样式和无成员时“暂无成员”提示。仅替换文字，没有交互、字幕生命周期、网关或音频修改。
+
+npm test全套、npm run build及git diff --check通过。README与ARCHITECTURE同步；未新增测试或依赖，本轮未重跑浏览器视觉验收、真实麦克风／豆包或物理手机验收。保留其他工作区改动，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。
+
+## 2026-10-31 · 睡猫颜文字分行与对齐（本地完成，未部署）
+
+空白提示改为上下两行居中：上方“没人说话喵”，下方睡猫颜文字。MemberCaptionGrid.vue用grid保持10px行距，猫脸改为22px本地等宽字体的(^_ ω _^)，睡眠z／Z独立控制11／16px字号和阶梯位置，去掉原组合附标／下标的字体错位。颜文字设role=img及“睡着的猫”无障碍名称，装饰字符不重复朗读。原显示条件、暂无成员分支、字幕生命周期和收束行为保持，未改网关或音频。
+
+npm test全套、npm run build、test:member-controls:browser和git diff --check通过。既有Chrome回归覆盖480／390／320px全员收束、恢复、鼠标／触屏／键盘控件与布局，未新增测试、组件或依赖。已目视artifacts/member-controls/all-muted-390.png及all-muted-320.png，确认提示与表情分行、猫脸对称、睡眠符号阶梯排列且窄屏无溢出；该截图为带debug参数的隔离合成房间，未验收物理手机字体或真实麦克风／豆包。
+
+README与ARCHITECTURE同步，保留其他工作区修改，未编辑DEEPSEEK-MEMORY；无提交、推送或部署，本地检查无阻塞。
+
+## 2026-10-31 · 弯折返回按钮与睡猫嘴巴微调（本地完成，未部署）
+
+房间与房主详细页的返回图标统一改为26px弯折箭头，实心头部、圆角折线；按钮保持44px点击范围，新增1px浅灰边框、12px圆角和平面浅灰底，悬停／按下加深，无立体阴影。原leave／backToPersonal、无障碍名称、Escape及草稿清理流程保持。
+
+按后续反馈将睡猫从22px缩至18px，z／Z从11／16px缩至9／13px。移除字体omega嘴巴，改以8×5px内联SVG绘制小而浅的双弧线，嘴巴置于猫脸下部；两侧等宽字符对称、间距收紧，保留上文字／下表情及10px行距。原空白显示条件、卡片收束和字幕生命周期保持，无通信或音频修改。
+
+修改App.vue、style.css、RoomApiSettings.vue、MemberCaptionGrid.vue及README／ARCHITECTURE，没有新增组件、测试或依赖。最终npm test全套、npm run build、test:member-controls:browser、test:room-refactor:browser及git diff --check通过。浏览器沿用隔离合成房间，覆盖480／390／320px控件与320／390／1280px房间／设置，已目视artifacts/member-controls/all-muted-390.png和artifacts/room-refactor/owner-key-tested.png，确认小猫嘴巴与两处弯折返回按钮实际效果。用户追加猫脸反馈后重新构建并完整重跑测试。
+
+未调用真实麦克风、豆包API或物理手机；截图中的Key测试结果为合成返回。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，本地检查无阻塞。
+
+## 2026-10-31 · 输入框收窄并增加两侧留白（本地完成，未部署）
+
+按最新反馈将TypingComposer最大宽度从480px降至440px，可见视口两侧预留从12px增加到至少32px，继续水平居中。保留高度、白色底部、计数、发送箭头、框外收起及草稿与软键盘行为；没有修改网关、字幕或音频。仅同步既有typing-composer测试中的宽度预期，无新增测试或依赖。
+
+npm test全套、npm run build、test:member-controls:browser及git diff --check通过。既有Chrome套件覆盖480／390／320px鼠标与触屏交互；另在无debug的隔离房间实测492／390／320px输入框分别宽428／326／256px，两侧均32px、高136px，保存composer-inset-{492,390,320}.png并目视492与320px结果。
+
+README与ARCHITECTURE已同步。保留工作区其他修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署；未调用真实麦克风／豆包API或物理手机，本地检查无阻塞。
+
+## 2026-10-31 · 首页中英文品牌顺序调换（本地完成，未部署）
+
+HomePage.vue左上品牌改为上方大字“哈基字幕”、下方小字“HakiSub”，无障碍名称同步该顺序；保留原b／small字号层级、图标、间距及响应式样式。仅调换两行文字，没有交互、网关、字幕或音频修改。
+
+npm test全套、npm run build及git diff --check通过。README与ARCHITECTURE同步；未新增测试或依赖，本轮未重跑浏览器视觉、真实麦克风／豆包或物理手机验收。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署。
+
+## 2026-10-31 · 23:20定时续作：暂停提示与暗红闭麦配色（本地完成，未部署）
+
+按约定于北京时间23:20开始，将App房内ASR关闭提示替换为“语音转文字功能被关闭了喵！只能打字说话了喵~”。MemberModeControl在闭麦、非打字且非准备状态增加is-muted-microphone，使用暗红#873f45图标、浅红#f5e9ea底和#d9b8bc边框；本人卡片、其他成员卡片和右下角主控一致。收起头像的闭麦徽标使用同一暗红底、白色图标。禁用的他人按钮保留完整色彩及不可操作状态；开麦、准备、打字模式、手势、权限及音频／字幕生命周期保持。
+
+修改App.vue、MemberModeControl.vue、MemberCaptionGrid.vue及style.css，未新增组件、测试、依赖或协议。README与ARCHITECTURE同步。npm test全套、npm run build、test:member-controls:browser、test:room-refactor:browser及git diff --check通过。既有浏览器覆盖480／390／320px控件及320／390／1280px房间设置；另以无debug的隔离内存网关和Chrome关闭ASR、加入另一位合成成员，确认新提示实际显示，本人／他人／底部主控计算色值均rgb(135,63,69)，背景rgb(245,233,234)，禁用他人按钮opacity=1且disabled=true；两位收起徽标同为暗红。目视artifacts/member-controls/muted-red-expanded-390.png和muted-red-collapsed-390.png。
+
+临时Node REPL无法加载本地网关ESM依赖，改用本机Node执行相同的隔离浏览器验收后通过；无需修改产品模块。未调用真实麦克风／豆包API或物理手机，自动回归不替代这些验收。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署；一次性任务完成后删除定时续作。
+
+## 2026-10-31 · 房间顶部排布与直接复制提示（本地完成，未部署）
+
+按参考图调整App.vue与style.css：左侧以48px浅灰房屋图标保留原设置入口，中间为房间名及独立六位房号，右侧为48px灰底分享及浅边框弯折返回按钮；标题在窄屏单行省略，保留完整title。房号行移除“复制房间码／已复制”文字，改用数字及重叠方框图标，点击整行或键盘激活均可复制。分享按钮移入右侧操作区，roomNavigation.shareRoomLink仅复制无查询参数／片段／凭据的房间链接，不再调用系统分享或展示手动分享地址。
+
+两种成功分别显示“复制房间号成功”“复制链接成功”。提示通过Teleport覆盖窗口中央，半透明黑底白字，约2000ms自动清理，不挤动字幕且不拦截点击。连续点击重新计时；剪贴板不可用／拒绝显示短暂失败提示。共用copyOperation防止较早操作覆盖新提示，离房及卸载清理计时器并使未完成回调失效。未修改网关、字幕生命周期、采集、ASR或会话协议，没有新增组件或依赖。
+
+扩展既有room-navigation、demo及room-refactor-browser回归，最终npm test全套、npm run build、test:room-refactor:browser及git diff --check通过。Chrome在320／390／1280px验证顶部排列、按钮尺寸、数字点击／键盘操作、分享直接写入纯净链接且不调用Navigator.share、提示居中颜色／续时／自动消失、失败提示及字幕区域不位移，并保留原两级设置、改名、Key、音量、统一入场与减少动态回归。已目视artifacts/room-refactor/header-{320,390,1280}.png及copy-link-toast.png，房号与分享／返回按钮均无溢出。
+
+首轮构建及测试分别受到沙箱的esbuild／Node子进程EPERM限制，允许本地子进程后完整重跑通过。首轮浏览器在新增复制验收后原本人卡片已正常闭麦收束，补上从头像恢复卡片的步骤后整套通过。浏览器使用隔离内存网关及模拟Clipboard，不读.env、不写系统剪贴板；未验收真实系统剪贴板、物理手机、麦克风或豆包API。README与ARCHITECTURE同步，保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，本地无阻塞。
+
+## 2026-10-31 · 修正ASR禁用与个人闭麦的区别（本地完成，未部署）
+
+纠正上一项把所有个人闭麦统一变红的误解：ASR正常开启时，普通闭麦恢复原灰黑配色和开麦行为；仅房间ASR关闭时，展开卡片、收起头像及底部主控才显示暗红禁用状态。App将房间级microphoneUnavailable传给Grid和MemberModeControl；打字键盘保持原色，短按可正常退出打字。
+
+控件用aria-disabled表达语音不可用并拦截开麦动作，保留指针事件供长按／右键／左滑选择打字；App的toggleMemberMic和asr.start同时防止开启。房间状态关闭ASR时停止当前豆包或浏览器采集、使本人闭麦并同步，浏览器识别不能绕过房间开关；重新启用后仅解除禁用，不自动采集。模拟模式、打字／快捷回应、字幕生命周期、服务端协议和权限保持。
+
+修改App.vue、MemberModeControl.vue、MemberCaptionGrid.vue及style.css。扩展既有member-mode-control测试覆盖普通闭麦不红、禁用点击无开麦事件、禁用状态仍能长按打字／退出、重新启用可手动开麦；demo测试覆盖停止豆包和浏览器识别、禁止重启和恢复不自动开麦。caption-grid测试补齐新props的模拟默认值，消除初轮测试渲染警告。
+
+npm test全套、npm run build、caption-grid专项、test:member-controls:browser、test:room-refactor:browser及git diff --check通过。扩展既有Chrome流程验证正常灰黑→关闭ASR红色且短按不激活→右键进入打字仍可用且键盘不红→重新启用恢复灰黑且仍闭麦，原三视口控件／设置／字幕回归继续通过。目视artifacts/room-refactor/asr-enabled-muted.png、asr-disabled-muted.png及artifacts/member-controls/all-muted-390.png。
+
+README与ARCHITECTURE同步，上一项日志保留为历史记录，以本项修正后的状态规则为准。无新增组件／依赖，无服务端变更；未调用真实麦克风／豆包API、物理手机或物理扬声器。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，本地检查无阻塞。
+
+## 2026-11-01 · 复制提示透明度、停留与渐隐（本地完成，未部署）
+
+按反馈将复制提示黑底从78%不透明度改为50%，白字与窗口居中保持。App的提示计时器从2000ms缩短至1000ms，使用Vue内置Transition增加120ms淡入与240ms渐隐；消息清空后完成渐隐才移除节点。连续复制重新计时，原操作编号、离房／卸载清理和失败反馈机制保留。未修改网关、字幕生命周期或音频，没有新增组件或依赖。
+
+npm test全套、npm run build、test:room-refactor:browser及git diff --check通过。沿用既有Chrome回归，更新透明度与停留预期，实际捕获离场期间opacity在0与1之间，验证渐隐后移除及连续复制续时；原320／390／1280px房间布局、ASR开关、两级设置、音量和字幕入场回归通过。目视artifacts/room-refactor/copy-link-toast.png，确认底色更通透。
+
+浏览器初轮遇到50% alpha被序列化为0.498、缩短时序后卡片布局过渡／闭麦收束与设置异步加载边界；测试分别采用1%透明度容差、等待布局稳定及闭麦收束后展开、等待房主入口加载，整套重跑通过，未为测试修改产品行为。README与ARCHITECTURE同步。使用隔离内存网关与模拟Clipboard，未验收真实系统剪贴板、物理手机、麦克风或豆包API。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，本地无阻塞。
+
+## 2026-11-01 · 复制提示停留缩至0.5秒（本地完成，未部署）
+
+按追加反馈将App的copyMessageTimer从1000ms改为500ms，保留50%透明黑底、120ms淡入及240ms渐隐，连续复制仍重置计时。同步既有浏览器用例的等待时间与README、ARCHITECTURE，无新增测试、组件或依赖。
+
+npm test全套、npm run build、test:room-refactor:browser及git diff --check通过。Chrome隔离房间继续验证复制／连续复制、离场opacity渐隐与节点移除，以及原320／390／1280px房间和设置回归。剪贴板使用模拟实现；未调用真实麦克风／豆包API或验收物理手机及系统剪贴板。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 房间统一灰阶配色与空闲隔层（本地完成，未部署）
+
+按参考图将房间改为与首页一致的深灰外框#41454a、暖浅灰字幕卡片#f1f1ee，复用home.css现有色彩变量。顶部名称／房号、设置／分享／返回按钮和底部主控适配深底；设置面板、打字框及底部操作区、快捷回应与词库、输入菜单、音效与模拟设置改用同一中性灰表面。普通闭麦保持中性灰，开麦主控使用浅底深色形成区分；ASR关闭的暗红禁用状态及原动作拦截保留。房内错误与空白提示适配深浅表面，没有改动采集、ASR、通信或字幕时序。
+
+按追加反馈让原grid-empty覆盖整个字幕网格，以#d6d7d3绘制比卡片深、比外框浅的灰色隔层，边框与8px圆角沿用卡片，睡猫提示居中。全员收起时保留该隔层，恢复成员后正常显示原卡片；未新增假成员、占位组件或布局计算。原底部头像、主控及卡片收束／恢复保持。
+
+修改style.css及MemberCaptionGrid、MemberModeControl、RoomApiSettings、TypingComposer、ReactionSettings、SoundSettings、ApiSettings的CSS；同步既有room-interactions-browser的打字框底色预期。member-controls-browser补充480／390／320px空闲隔层与恢复后单人卡片的x／y／宽高比较，均在1px误差内；room-refactor-browser保存无debug控件的空闲截图。README与ARCHITECTURE同步，未新增测试文件、组件或依赖。
+
+最终npm test全套、npm run build、test:member-controls:browser、test:room-refactor:browser、test:room-interactions:browser及git diff --check通过。浏览器继续覆盖固定／动态布局、鼠标／触摸／键盘、打字长文与发送区隔离、回应词库与音效、两级设置、ASR禁用与恢复、复制提示和减少动态。已目视artifacts/member-controls/all-muted-390.png、artifacts/room-refactor/self-reply-current-ui.png与settings-updated-390.png，确认隔层、浅卡片和深外框层次以及面板对比。验证使用隔离内存网关、模拟Clipboard、假Web Speech与音频调用记录，不代表真实系统剪贴板、麦克风／豆包、物理手机或扬声器验收。
+
+保留其他工作区修改，未编辑DEEPSEEK-MEMORY；无Git提交、推送或生产部署，本地无阻塞。
+
+## 2026-11-01 · 浅色按钮、半透明空闲隔层与返回设计统一（本地完成，未部署）
+
+按标注把房屋设置与返回按钮改为浅色白底、深色线条，与分享按钮协调。空闲隔层从固定#d6d7d3改为rgb(255 255 255 / 50%)覆盖原深灰外框，呈现更深的中灰效果；提示与睡猫使用--home-text深色前景维持可读性。原隔层范围、卡片收束、0.5秒复制提示与淡出行为保持。
+
+按后续两处返回按钮统一的要求，App房间返回与RoomApiSettings房主页返回共用style.css的room-back-button：48px尺寸、15px圆角、浅底、细边框及一致悬停／按下配色。两处SVG统一为26px圆角弯折箭头，移除房主页旧实心箭头和独立按钮外观，仅保留右对齐。清除短屏旧room-actions间距／内边距覆盖规则，避免改变共享按钮外观；原顶部间距、布局与两处leave／backToPersonal、Escape及草稿清理保持。
+
+最终npm test全套、npm run build、test:room-refactor:browser、test:member-controls:browser及git diff --check通过。沿用既有Chrome测试，比较两处返回按钮实际宽高、圆角、底色、前景、边框、图标尺寸／线宽／路径，全部一致；原320／390／1280px房间设置、复制、ASR与字幕回归，以及480／390／320px隔层与单人卡片同范围、收束恢复与鼠标／触屏／键盘操作均通过。已目视artifacts/room-refactor/idle-panel-390.png与owner-key-tested.png，确认浅色按钮、较深灰色隔层及一致返回图标。
+
+README与ARCHITECTURE同步；无新增组件、依赖或服务端修改。使用隔离内存网关、模拟Clipboard与假识别，不代表真实系统剪贴板、麦克风／豆包API或物理手机验收。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 分享按钮灰底加深（本地完成，未部署）
+
+用户撤回按钮同色要求后，仅将分享按钮默认底色从#dedfdb加深为#c5c7c3，悬停为#d3d5d1，按下为#b6b9b3；保留房屋及两处返回按钮的现有浅底与统一设计。深色分享图标、复制链接、0.5秒提示、50%白色空闲隔层及全部布局和行为保持。实际产品修改仅style.css三条颜色声明，README与ARCHITECTURE同步。
+
+npm test全套、npm run build、test:room-refactor:browser及git diff --check通过，已目视artifacts/room-refactor/idle-panel-390.png核对顶部色彩层次。浏览器沿用隔离内存房间与模拟Clipboard，无新增测试、依赖或组件；未验收真实系统剪贴板、物理手机、麦克风或豆包API。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 账号绑定按钮对齐与深色样式（本地完成，未部署）
+
+修复房主详细页“绑定当前登录账号”按钮紧贴密码分隔线、窄小靠左的问题。RoomApiSettings为既有按钮增加dark-button与bind-account-button，设为内容区同宽、文字居中，并在分隔线下方留16px间距；底色与文字复用--home-bg／--home-light-text，与“房间设置”入口一致，悬停沿用现有深色按钮。保留ownerToken显示条件、busy禁用和bindAccount逻辑，没有接口、权限、网关或音频修改。
+
+npm test全套、npm run build、test:room-refactor:browser及git diff --check通过。扩展既有浏览器回归，实际比较绑定按钮与房间设置入口的背景／文字色一致，并验证16px间距、左右边界与内容区对齐及文字居中；原两级设置、返回、Key与密码、ASR、字幕及复制回归通过。已目视artifacts/room-refactor/account-binding-390.png，确认按钮与分隔线分开且深底浅字。README与ARCHITECTURE同步，无新增组件、依赖或测试文件。
+
+验收使用隔离内存网关及模拟Clipboard，没有实际点击绑定账号，也未验收真实麦克风／豆包、物理手机或系统剪贴板。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 首页猫咪Logo替换与灰阶适配（本地完成，未部署）
+
+使用提供的hakisubLOGO.svg新增public/hakisub-logo.svg，保留原全部矢量路径与白色细节，将蓝紫色#140B53／#4A4284分别调整为界面深灰#41454A／中灰#62666B。原Downloads文件未修改。HomePage品牌以img替换原≋字符，home.css将手机／桌面Logo统一放大至56×56px，保留12px圆角、细边框和overflow:hidden裁切，浅色底与当前界面协调。图片作为装饰使用空alt，品牌链接继续提供完整无障碍名称；中英文顺序、字号、入口及其他功能保持。
+
+npm test全套、npm run build、test:home:browser及git diff --check通过。沿用首页六视口320／390／767／768／1024／1440px实际Chrome回归，加载后等待SVG解码，检查页面无横向溢出并保存截图，原轮播、列表、触摸／鼠标、创建／加入及密码流程继续通过。已目视artifacts/home/initial-390.png与initial-320.png，确认灰色猫咪轮廓、白色细节、圆角裁切、放大尺寸及品牌文字／账号入口排布。SVG只含目标灰色与白色填充，静态服务已有SVG MIME支持，无新增运行依赖、组件或服务端逻辑。
+
+README与ARCHITECTURE同步；未验收物理手机、真实麦克风／豆包API。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 空闲隔层再压暗10%与白色提示（本地完成，未部署）
+
+按反馈仅调整MemberCaptionGrid的grid-empty配色：在原50%半透明白色隔层上叠加10%黑色背景层，使灰色再压暗10%；文字颜色改为#fff，“没人说话喵”、睡猫字符、睡眠符号及currentColor嘴巴SVG一起呈现白色。保留边框、圆角、尺寸、位置及收束／恢复逻辑，无新增模块、组件、依赖或测试。
+
+npm test全套、npm run build、test:room-refactor:browser及git diff --check通过。已目视artifacts/room-refactor/idle-panel-390.png，确认隔层变深、提示与颜文字为白色，原房间设置、复制、字幕和三视口回归通过。README与ARCHITECTURE同步；使用隔离内存网关及模拟Clipboard，未验收物理手机、真实麦克风／豆包API或系统剪贴板。保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无提交、推送或部署，无阻塞。
+
+## 2026-11-01 · 统一房间头像、房主选择菜单与同步保存（本地完成，未部署）
+
+按要求移除首页房间卡片左上角旧≋符号，在姓名上方的可用区域居中显示放大的圆形房间头像；房间列表左侧及房内左上角共用RoomAvatarIcon，旧房间默认房屋。用户确认仅房主可更换且全房同步。普通点击仍打开设置，手机／电脑500ms长按或电脑右键打开四个预制头像与“更多”；更多为原生模态头像库，先提供房屋、猫咪、咖啡、书本、星星、音乐、叶子、游戏八款灰阶SVG。移动超过10px取消长按并抑制误点击，支持Shift+F10、菜单方向键、Escape与框外关闭，离房／卸载清理定时器、监听器和请求。
+
+新增accounts/shared/roomAvatars.mjs及类型声明作为预制编号／可信路径目录，新增RoomAvatarIcon.vue、RoomAvatarControl.vue和roomAvatarClient.ts。客户端通过既有设置GET与本人账号房间列表确定房主资格，保存分别复用匿名Bearer和账号Cookie／CSRF／HMAC管理链路；服务端仍二次验证房主，只接受预制编号。网关增加avatar动作，成功原子写入后通过joined／room-status同步头像。roomStore在现有v5资料增加avatarId，旧资料默认home，改名、绑定及其他元数据写入保留头像；头像修改及写失败不停止ASR或清除Key。App与rememberedRooms记住最近收到的头像，清理匿名凭据和首页刷新仍保留；模拟只更新本次会话。首页离房后显示本机最近缓存，重入再取得最新状态。
+
+同步匿名设置／内部管理动作白名单、账号管理正文校验、OwnedRoom与房间客户端类型；私有发布脚本加入共享头像目录文件，现有两套Docker／账号发布脚本的shared目录复制适用。未更改音频采集、字幕生命周期或供应商协议，无新增依赖。README、ARCHITECTURE与package.json入口同步；发布需要网关、账号后端及主前端配套更新。
+
+新增room-avatars.test.mjs并纳入npm test，覆盖预制编号／客户端两种权限与保存链路／请求取消、真实隔离WebSocket广播、普通成员与跨房间拒绝、绑定后旧凭据失效、持久重启、旧资料缺省、其他元数据保存保留头像、失败保留原头像及Key且不停止假ASR。扩展room-settings-view的缓存与绑定清理，适配Demo的共享目录导入；账号room-management补充带CSRF／签名的绑定房主头像操作、非房主拒绝、非法编号及混用字段拒绝。
+
+新增test:room-avatars:browser，以正式构建与Chrome在1280／390／320px验证右键、真实鼠标长按、CDP触屏长按、键盘、四项加更多、模态库、普通点击仍设置、普通成员拒绝、多个客户端即时同步、卡片中央放大、列表一致和刷新保留。首轮发现键盘焦点落在尚未解除禁用的按钮，修复为先结束权限读取状态再聚焦；另修复测试初始化脚本在刷新时重写旧合成缓存的问题，完整重跑通过。首页原六视口与房间原设置／ASR／复制／字幕回归通过。
+
+最终通过npm test全套、npm run build、node accounts/tests/room-management.test.mjs、test:room-avatars:browser、test:home:browser、test:room-refactor:browser及git diff --check。已目视artifacts/room-avatars/home-card-{390,desktop}.png、quick-menu-390.png、avatar-library-320.png及room-list-390.png。使用本地隔离房间、合成身份、模拟Cookie／签名链路和假ASR，未访问真实账号、麦克风／豆包、物理手机或生产跨域Cookie；浏览器模拟不替代这些验收。
+
+保留其他工作区修改，未编辑DEEPSEEK-MEMORY，无Git提交、推送或部署，本地无阻塞。
+
+## 2026-11-01 · 所有房间密码统一无边框 PIN（本地完成，未部署）
+
+先检查主站、账号中心及模拟模式的四位密码入口和保存／验证逻辑。新增 accounts/shared/PinCodeInput.vue，放入已有共享目录以支持主站与账号前端独立构建；CreateRoomDialog、RoomApiSettings、RoomPasswordPrompt、ApiSettings 模拟设置及 OwnedRooms 五处共用，错误重试继续复用 RoomPasswordPrompt。整排居中、四个等宽等距字符，空位为中性灰色实心圆点，输入后显示当前主题数字，无边框、背景块、底线或自制键盘。私密创建按钮增加未满四位禁用；模拟模式原本显示已保存入房码的段落改为状态提示，重开不再回显明文。
+
+一个正常尺寸的原生 text input 覆盖整排点击区，透传原标签／id／autofocus，使用 numeric inputmode、四位长度与数字 pattern。只过滤 ASCII 0–9，保留前导零；普通输入不转移焦点，过滤时按有效数字恢复光标，粘贴先过滤再结合选择范围限制长度，IME 合成结束再处理。不自动提交，继续使用原确认按钮及保存／权限／错误／取消／卸载清理逻辑。移除 RoomApiSettings 单独的过滤函数；无服务端、音频、ASR、字幕、房号或分享码变更，无新增依赖。
+
+扩展现有入房浏览器测试，新增 tests/pin-input-browser-helpers.mjs，复用到账号中心及模拟模式；支持账号中心 --pin-only 定向回归。SSR 测试加载器支持真实子 SFC，设置页与账号管理模板注册实际 PIN 组件，更新模拟模式不回显预期。README 与 ARCHITECTURE 同步。
+
+最终 npm test 全套、npm run build、npm run build:accounts、test:room-access:browser、test:home:browser、test:simulation-settings:browser、账号 workspace-browser --pin-only、owned-rooms-view 及 git diff --check 通过。Chrome 覆盖主站 1280／390／320px、首页六视口、账号中心 375／768／1440px、模拟设置 480／320px；实际检查四点／逐位数字／删除、居中等距与无边框背景、全区域鼠标／触屏聚焦、前导零／四位上限／非数字过滤、退格／全选／中途编辑、合成粘贴及 IME、不满禁用／满四位不自动提交、错误重试／保存清空／重开不回显，以及原权限／免输／重启／改码撤权和移除流程。已目视 artifacts/room-access/pin-partial-390.png、pin-create-desktop.png、password-320.png、settings-desktop.png 及 artifacts/account-workspace/pin-entered-375.png。
+
+初轮沙箱阻止 esbuild 和既有换号 CLI 启动子进程，正常权限重跑构建与 npm test 均通过。附加 npm run test:room-management 的账号服务集成和 OwnedRooms 模板检查通过，但其 room-key-memory.test.mjs:20 的旧资料 fixture 缺少当前 roomStore 已有的 avatarId: home 字段，导致深比较失败；该测试仅导入原有服务端模块，与本次 PIN 改动无关，保留原样并记录，未顺带修改头像逻辑或测试夹具。
+
+浏览器使用隔离本地网关／合成账号接口，粘贴与 IME 事件为合成，不读取或改写系统剪贴板；手机为触屏／视口仿真，尚未验收物理手机系统数字键盘、真实系统输入法、麦克风或豆包 API。保留其他工作区修改，未编辑 DEEPSEEK-MEMORY，无提交、推送或部署。
+
+## 2026-11-01 · 运行实例头像操作报错排查（只读诊断，未重启）
+
+用户报告更换头像出现“无效的房间管理操作”。确认真正simulation分支会跳过权限读取与保存HTTP请求，该错误来自联网房间管理链路。只读核对本机8787监听PID 36428，命令为本项目server/index.mjs --production，启动于北京时间2026-10-31 21:40:14；头像管理相关roomSettings／roomGateway文件修改于2026-11-01 00:57之后，当前dist构建时间01:22。HTTP读取8787首页200且与磁盘最新dist/index.html一致，证明当前是新页面配未重载的旧网关，旧进程不识别avatar动作。
+
+本轮仅检查源码分支、监听PID／进程启动时间、文件时间及HTTP首页，没有调用头像写入、房间加入、真实ASR或麦克风；未重启当前服务或读取／输出密钥。需要重启实际后台Node实例后重新入房，页面刷新不能重新加载网关模块；房间Key仅内存，重启后由房主重填。未修改产品源代码，因此未重复构建和测试。
+
+## 2026-11-01 · 按用户要求重启本机HakiSub网关
+
+用户明确要求重启。再次核对8787监听进程为本项目server/index.mjs --production及HakiSub-Local计划任务后，停止该计划任务，并仅清理仍存活且命令行匹配的旧Node PID 36428；确认8787释放后，通过原计划任务隐藏启动。新监听PID 28108，启动于北京时间2026-11-01 01:30:51，晚于头像管理源文件修改，计划任务状态Running，已加载新网关。
+
+重启后只读检查/api/asr/health与首页均返回200，首页与当前dist/index.html一致，8787由新PID监听。未创建测试房间、未更改现有房间资料、未读取／输出密钥或调用真实ASR；重启使原成员连接及内存房间Key失效，用户需重新入房并由房主重填Key。本轮无产品源代码修改，未重复构建或自动化测试；未操作线上服务。
+
+## 2026-11-01 · 完整版本发布准备
+
+用户授权将当前完整版本推送 GitHub 并同步生产服务器。主站 npm test、账号 test:accounts、test:room-management、主/账号构建，以及 Chrome 首页、房间 UI、头像、模拟设置、PIN、成员控制、账号工作台七组回归全部通过。发布回归修正 room-key-memory 旧断言缺失的默认头像 home，并将账号工作台旧明文回读脚本更新为更换空白输入、仅新输入可显示、保存清空及禁止 reveal 请求。首轮沙箱限制构建与换号 CLI 子进程，正常权限重跑通过。
+
+检查线上仍运行 room-access-20261030T1733Z，账号/网关 healthy，空间充足。准备 room-ui-20261031T1745Z 白名单运行包、提交源码归档及部署脚本；复用现用 Linux 依赖，候选隔离测试与生产房间备份副本迁移演练通过后，停止双服务制作一致性加密备份再切换。README、ARCHITECTURE 与 RELEASE-20261101 记录 v5 兼容性、不可明文回读及回退边界。真实麦克风/豆包与物理手机未验收；未编辑 DEEPSEEK-MEMORY。服务器实际结果于验收后另记。

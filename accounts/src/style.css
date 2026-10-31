@@ -114,7 +114,9 @@ input:focus { border-color: #6a8e61; box-shadow: 0 0 0 3px #dfead8; }
 .count-badge { font-size: 12px; border: 1px solid var(--border); background: #eef2e8; padding: 2px 7px; border-radius: 6px; margin-left: 10px; vertical-align: middle; }
 .room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; }
 .room-card { padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-.room-card-heading { display: flex; align-items: center; gap: 14px; }
+.room-card-heading { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.room-card-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.owned-rooms .section-heading h2 { overflow-wrap: anywhere; min-width: 0; }
 .room-card-heading small { letter-spacing: 1px; font-size: 9px; margin-top: 0; }
 .room-card h3 { margin: 4px 0 0; }
 .room-icon { font-size: 25px; }

@@ -56,6 +56,8 @@ try {
   const created = await room({ type: 'create' }), code = created.identity.code
   assert.equal((await owner.write(`${prefix}/rooms/${code}/bind`, { ownerToken: created.identity.ownerToken })).status, 200)
   assert.equal((await owner.manage(code, '0064')).status, 200)
+  assert.equal('accessCode' in (await owner.request(prefix + '/rooms')).body.rooms[0], false)
+  assert.equal((await visitor.request(prefix + '/rooms')).body.rooms.length, 0)
   assert.equal((await visitor.manage(code, '1234')).status, 403)
   assert.equal((await guest.access(code)).status, 401)
   assert.equal((await visitor.request(`${prefix}/rooms/${code}/access`, 'POST', {})).status, 403, 'CSRF验证保留')
@@ -75,6 +77,7 @@ try {
   sockets.forEach(socket => socket.terminate()); await accounts.app.close(); await gateway.close(); await start()
   assert.ok((await visitor.access(code)).body.accessTicket, '账号和网关重启后原登录会话及资格仍有效')
   assert.ok((await anotherDevice.access(code)).body.accessTicket)
+  assert.equal((await owner.request(prefix + '/rooms')).body.rooms[0].requiresPassword, true, '服务重启保留保护状态，不回传明文')
   assert.equal((await owner.manage(code, '7640')).status, 200)
   assert.equal((await visitor.access(code)).body.accessTicket, undefined)
   assert.equal((await anotherDevice.access(code)).body.accessTicket, undefined, '改码跨设备统一失效')

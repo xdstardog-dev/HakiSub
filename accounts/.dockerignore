@@ -3,6 +3,8 @@
 !package-lock.json
 !server/
 !server/*.mjs
+!shared/
+!shared/*.mjs
 !dist/
 !dist/**
 **/.env*

@@ -7,6 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import { createRoomManagementClient } from './roomManagementClient.mjs'
+import { defaultNickname, isValidAccountName } from '../shared/nameRules.mjs'
 import { openAccountDatabase, allocatePublicUid } from './database.mjs'
 import { createPasswordService, normalizeAnswer } from './passwords.mjs'
 import { createRequestSecurity, tokenHash, problem, normalizeUsername, requireText, requireNickname, requirePassword, requireQuestions, validatePreset } from './requestSecurity.mjs'
@@ -102,7 +103,7 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   const forwardRoom = (request, command) => {
     const user = needUser(request)
     security.consume('room_management', security.subject(user.id), 60, 60000)
-    return manageRoom({ ...command, uid: user.id }, () => {
+    return manageRoom({ ...command, uid: user.id, ...(command.action === 'bind' ? { nickname: user.nickname } : {}) }, () => {
       if (needUser(request).id !== user.id) throw problem(401, '登录状态已改变，请重新登录。')
     })
   }
@@ -118,17 +119,19 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     security.consume('room_access_account', security.subject(user.id), 20, 60000)
     return forwardRoom(request, { code: request.params.code, action: 'access', ...(password === undefined ? {} : { password }) })
   })
-  app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled', 'accessCode'], ['action']) }, async request => {
-    const { action, apiKey, enabled, accessCode } = request.body
-    if (!['save', 'delete', 'test', 'asr', 'reveal', 'access-code'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined) || (action !== 'access-code' && accessCode !== undefined)) throw problem(400, '无效的房间管理操作。')
-    return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}), ...(action === 'access-code' ? { accessCode } : {}) })
+  app.post(projectPath + '/rooms/:code/manage', { schema: bodySchema(['action', 'apiKey', 'enabled', 'accessCode', 'name', 'avatarId'], ['action']) }, async request => {
+    const { action, apiKey, enabled, accessCode, name, avatarId } = request.body
+    if (!['save', 'delete', 'test', 'asr', 'access-code', 'rename', 'avatar'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined) || (action !== 'access-code' && accessCode !== undefined) || (action !== 'rename' && name !== undefined) || (action !== 'avatar' && avatarId !== undefined)) throw problem(400, '无效的房间管理操作。')
+    return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}), ...(action === 'access-code' ? { accessCode } : {}), ...(action === 'rename' ? { name } : {}), ...(action === 'avatar' ? { avatarId } : {}) })
   })
-  app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
+  app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions'], ['username', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
     const ip = security.ipSubject(request)
     security.consume('register', ip, configuration.limits.registrationAttempts, 600000)
     const body = request.body, username = normalizeUsername(body.username)
-    if (!/^[a-z0-9_]{3,32}$/.test(username)) throw problem(400, '登录账号需为 3～32 位英文字母、数字或下划线。')
-    const nickname = requireNickname(body.nickname), password = requirePassword(body), questions = requireQuestions(body.questions), answers = answersFor(questions, body)
+    if (!isValidAccountName(username)) throw problem(400, '账号需为 3～20 位英文字母、数字或下划线。')
+    const suppliedNickname = typeof body.nickname === 'string' ? body.nickname.trim() : body.nickname
+    const nickname = requireNickname(suppliedNickname === undefined || suppliedNickname === '' ? defaultNickname(username) : suppliedNickname)
+    const password = requirePassword(body), questions = requireQuestions(body.questions), answers = answersFor(questions, { ...body, nickname })
     const checkRegistration = () => {
       if (database.prepare('SELECT COUNT(*) AS count FROM registration_events WHERE subject=? AND created_at>? AND quota_exempt=0').get(ip, now() - 86400000).count >= configuration.limits.registrationSuccesses) throw problem(429, '当前网络近期注册较多，请明天重试或联系站点维护者。')
       if (findLoginUser(username)) throw problem(409, '这个登录账号已被使用，请换一个。')
