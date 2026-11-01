@@ -36,6 +36,7 @@ import { receiveCaptionEntrance } from './captionEntrance'
 import { installRoomViewport } from './roomViewport'
 import { createSpeechSound } from './speechSound'
 import { loadActiveRoom, saveActiveRoom, loadReconnectToken, saveReconnectToken } from './roomRecovery'
+import { getGuestDisplayName } from './guestNames'
 
 type Member = RoomMember
 const disposeRoomViewport = installRoomViewport()
@@ -79,9 +80,9 @@ function openRoomEntry(nextMode: 'create' | 'join') {
 }
 function closeRoomEntry() { cancelRoomPassword(); entryOpen.value = false; error.value = '' }
 function prepareEntryIdentity() {
-  const candidate = accountUser.value?.nickname ?? (name.value.trim() || rememberedRooms.value.find(saved => saved.code === code.value)?.name || rememberedRooms.value[0]?.name || '游客')
+  const candidate = accountUser.value?.nickname ?? getGuestDisplayName()
   const displayName = truncateNameToUnits(candidate, NICKNAME_MAXIMUM_UNITS).trim()
-  name.value = isValidDisplayName(displayName, NICKNAME_MAXIMUM_UNITS) ? displayName : '游客'
+  name.value = isValidDisplayName(displayName, NICKNAME_MAXIMUM_UNITS) ? displayName : getGuestDisplayName()
 }
 function createNamedRoom(value: string, password?: string) {
   if (connecting.value || !isValidDisplayName(value.trim(), ROOM_NAME_MAXIMUM_UNITS)) return
@@ -721,6 +722,7 @@ const activeRoom = loadActiveRoom()
 const explicitRoom = roomCodeFromPath(location.pathname)
 if (activeRoom && location.pathname !== '/glasses' && (!explicitRoom || explicitRoom === activeRoom.code)) {
   room.value = activeRoom.code; code.value = activeRoom.code; name.value = activeRoom.name; roomName.value = activeRoom.roomName
+  if (name.value === '游客' || !name.value.trim()) name.value = getGuestDisplayName()
   mode.value = 'join'; joined.value = true; connectionState.value = 'reconnecting'
   void enter()
 } else prepareRoomEntry()

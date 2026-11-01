@@ -30,7 +30,7 @@ async function joinPeer(code, name) {
   return event => peer.send(JSON.stringify(event))
 }
 const own = page => page.locator('.member-tile').filter({ has: page.locator('h2 small') })
-const ownAvatar = page => page.getByRole('button', { name: '展开游客的卡片（我），保持闭麦，长按或右键发送快捷回应', exact: true })
+const ownAvatar = page => page.getByRole('button', { name: /^展开.+的卡片（我），保持闭麦，长按或右键发送快捷回应$/ })
 async function blur(page) { await page.evaluate(() => document.activeElement?.blur()) }
 async function validateLayout(page) {
   const geometry = await page.locator('.member-caption-surface').evaluate(element => {
@@ -109,7 +109,7 @@ try {
     await page.getByRole('button', { name: '👍 赞同', exact: true }).click()
     await page.locator('.contracted-reaction').waitFor()
     assert.equal(await page.locator('.member-tile').count(), 0, '头像回应不自动展开卡片')
-    assert.match(await page.locator('.contracted-reaction').getAttribute('aria-label'), /游客 赞同了 Peer1/)
+    assert.match(await page.locator('.contracted-reaction').getAttribute('aria-label'), /.+ 赞同了 Peer1/)
     const avatarBox = await otherAvatar.boundingBox(), avatarCenter = { x: avatarBox.x + avatarBox.width / 2, y: avatarBox.y + avatarBox.height / 2 }
     if (mobile) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [avatarCenter] })
     else { await page.mouse.move(avatarCenter.x, avatarCenter.y); await page.mouse.down() }

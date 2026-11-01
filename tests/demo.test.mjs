@@ -21,6 +21,7 @@ const interactionsModel = source('../src/roomInteractions.ts').replace(/^export 
 const entranceModel = source('../src/captionEntrance.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const preferencesModel = source('../src/roomPreferences.ts').replace(/^export /gm, '')
 const speechSoundModel = source('../src/speechSound.ts').replace(/^export /gm, '')
+const guestNamesModel = source('../src/guestNames.ts').replace(/^export /gm, '')
 const reactionSoundModel = source('../src/reactionSound.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 let time = 1_800_000_000_000
 const timers = []
@@ -52,7 +53,7 @@ const context = vm.createContext({ installRoomViewport: () => () => {}, loadActi
   return { start: () => { doubaoStopped = false; callbacks.onState('listening', '测试豆包') }, stop: () => { doubaoStopped = true; callbacks.onState('idle', '已停止') } }
 }, window: browser, document: documentStub, clearTimeout, ref, computed, watch, onUnmounted: fn => cleanup = fn, location: pageLocation, URL, crypto: webcrypto, Date: Clock, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length }, clearInterval: id => timers[id - 1].cleared = true, setTimeout, navigator: {}, materialState: { packs: materialPacks, errors: [] } })
 const exported = 'globalThis.demo = {renameSimulationRoom,updateSimulationAccessCode,simulationAccessCode,createNamedRoom,joinRoomByCode,requestedRoomName,entryOpen,accountUser,roomName,roomPasswordOpen,roomPasswordMessage,cancelRoomPassword,typedDraft,typedSending,typingEditorOpen,selectMemberTyping,sendTypedCaption,sendReaction,reactions,room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,copyCode,shareCurrentRoom,copyMessage};'
-vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + entranceModel + preferencesModel + speechSoundModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + entranceModel + preferencesModel + speechSoundModel + guestNamesModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
 vm.runInContext('globalThis.manualCopy = manualCopy', context)
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
@@ -465,12 +466,19 @@ d.accountUser.value = null; d.name.value = ''; d.rememberedRooms.value = []
 d.createNamedRoom('中'.repeat(13)); assert.equal(d.connecting.value, false)
 for (const password of ['123', '12345', 'abcd', 1234]) { d.createNamedRoom('私密测试', password); assert.equal(d.connecting.value, false) }
 d.createNamedRoom('  手动命名房间  ', '0042')
-assert.equal(roomConnections.at(-1)[1], '游客')
+const guestDisplayName = roomConnections.at(-1)[1]
+assert.ok(vm.runInContext('GUEST_NAMES', context).includes(guestDisplayName))
 assert.equal(roomConnections.at(-1)[4].password, '0042', '私密密码进入初次建房请求')
 roomCallbacks.onJoined('555555', 'guest-new', { isOwner: true, aliases: [], ownerToken: 'synthetic-owner' })
 await new Promise(resolve => setImmediate(resolve))
 assert.equal(createdNameCalls.at(-1).value, '手动命名房间')
 assert.equal(d.roomName.value, '手动命名房间')
+d.leave(); d.accountUser.value = { uid: '123456', nickname: '账号昵称' }
+// 历史房间与上次登录昵称不再作为游客身份；换房仍沿用本标签页随机名。
+d.accountUser.value = null; d.name.value = '上次账号昵称'
+d.rememberedRooms.value = [{ code: '555555', name: '游客' }]
+d.joinRoomByCode('555555')
+assert.equal(roomConnections.at(-1)[1], guestDisplayName)
 d.leave(); d.accountUser.value = { uid: '123456', nickname: '账号昵称' }
 let resolveCreatedName
 createdNameResponse = () => new Promise(resolve => { resolveCreatedName = resolve })
