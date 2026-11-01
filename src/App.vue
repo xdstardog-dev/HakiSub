@@ -18,7 +18,8 @@ import { receiveCaption, expireCaptions, type Caption } from './captions'
 import { createRoomClient, type RoomMember } from './roomClient'
 import { loadSoundPreferences, normalizeSoundPreferences, saveSoundPreferences, loadReactionSelection, normalizeReactionSelection, saveReactionSelection, QUICK_REACTIONS, REACTION_COOLDOWN_MS, REACTION_DURATION_MS, TYPED_CAPTION_LIMIT, TYPED_CAPTION_COOLDOWN_MS, type SoundPreferences, type SoundState, type ReactionType, type RoomReaction, type VisibleReaction } from './roomInteractions'
 import { createReactionSound, type SoundSlot } from './reactionSound'
-import { roomCodeFromPath, roomPath, shareRoomLink } from './roomNavigation'
+import { roomCodeFromPath, roomPath, roomShareUrl, copyText } from './roomNavigation'
+import ManualCopyDialog from './components/ManualCopyDialog.vue'
 import AccountAccess from './components/AccountAccess.vue'
 import HomePage from './components/HomePage.vue'
 import RoomAvatarControl from './components/RoomAvatarControl.vue'
@@ -123,7 +124,9 @@ async function finishRoomCreation(roomCode: string, token: string, ownerToken: s
   finally { if (roomCreationController === controller) roomCreationController = undefined }
 }
 const copyMessage = ref('')
+const manualCopy = ref<{ text: string; label: string } | null>(null)
 let copyOperation = 0, copyMessageTimer: ReturnType<typeof setTimeout> | undefined
+watch([room, joined], invalidateCopy, { flush: 'sync' })
 const members = ref<Member[]>([]), captions = ref<Caption[]>([])
 const now = ref(Date.now())
 const typedDraft = ref(''), typedSending = ref(false)
@@ -354,7 +357,7 @@ function pauseRoomConnection() {
   if (me.value) { me.value.mic = false; if (me.value.mode !== 'typing') me.value.mode = 'muted' }
   if (joined.value) connectionState.value = 'reconnecting'
 }
-function handlePageHide() { copyOperation++; clearCopyMessage(); if (roomMode.value === 'online') roomClient?.suspend(); asr.stop() }
+function handlePageHide() { invalidateCopy(); if (roomMode.value === 'online') roomClient?.suspend(); asr.stop() }
 function resumeRoomConnection() { if (document.visibilityState !== 'hidden') roomClient?.resume() }
 function handleVisibilityChange() { if (document.visibilityState === 'hidden') handlePageHide(); else resumeRoomConnection() }
 window.addEventListener('pageshow', resumeRoomConnection)
@@ -645,7 +648,7 @@ function leave(updateLocation = true) {
   reactionSettingsOpen.value = false
   soundSettingsOpen.value = false; soundState.value = reactionSound.getState()
   scenarioRunning.value = false; simulationStarted.value = null; error.value = ''
-  copyOperation++; clearCopyMessage()
+  invalidateCopy()
   if (updateLocation && location.pathname !== '/') {
     window.history.pushState(null, '', '/')
     prepareRoomEntry()
@@ -678,7 +681,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', unlockReactionSound)
   window.removeEventListener('keydown', unlockReactionSound)
   asr.stop(); roomClient?.close(); clearInterval(timer); pending = []
-  copyOperation++; clearCopyMessage()
+  invalidateCopy()
   window.removeEventListener('pagehide', handlePageHide)
   window.removeEventListener('pageshow', resumeRoomConnection)
   window.removeEventListener('online', resumeRoomConnection)
@@ -688,28 +691,31 @@ onUnmounted(() => {
 function clearCopyMessage() {
   clearTimeout(copyMessageTimer); copyMessageTimer = undefined; copyMessage.value = ''
 }
+function invalidateCopy() {
+  copyOperation++; clearCopyMessage(); manualCopy.value = null
+}
 function showCopyMessage(message: string) {
   clearCopyMessage()
   copyMessage.value = message
   copyMessageTimer = setTimeout(clearCopyMessage, 500)
 }
-async function copyCode() {
+async function copyRoomText(text: string, label: string, message: string) {
   if (!joined.value) return
+  const currentRoom = room.value
   const operation = ++copyOperation
-  clearCopyMessage()
-  try {
-    await navigator.clipboard.writeText(room.value)
-    if (operation === copyOperation) showCopyMessage('复制房间号成功')
-  } catch { if (operation === copyOperation) showCopyMessage('复制失败，请重试') }
+  clearCopyMessage(); manualCopy.value = null
+  const isCurrent = () => operation === copyOperation && joined.value && room.value === currentRoom
+  const result = await copyText(text, navigator, document, isCurrent)
+  if (!isCurrent()) return
+  if (result === 'copied') showCopyMessage(message)
+  else manualCopy.value = { text, label }
 }
-async function shareCurrentRoom() {
+function copyCode() {
+  return copyRoomText(room.value, '房间号', '复制房间号成功')
+}
+function shareCurrentRoom() {
   if (!joined.value || roomMode.value !== 'online') return
-  const operation = ++copyOperation
-  clearCopyMessage()
-  const result = await shareRoomLink(room.value, location.origin)
-  // 只展示当前房间最后一次复制的结果，离房或后续点击使旧回调失效。
-  if (operation !== copyOperation) return
-  showCopyMessage(result === 'copied' ? '复制链接成功' : '复制失败，请重试')
+  return copyRoomText(roomShareUrl(room.value, location.origin), '房间链接', '复制链接成功')
 }
 const activeRoom = loadActiveRoom()
 const explicitRoom = roomCodeFromPath(location.pathname)
@@ -754,6 +760,7 @@ if (activeRoom && location.pathname !== '/glasses' && (!explicitRoom || explicit
       <p v-if="connectionState === 'verification'" class="room-grid-note" role="status">需要重新验证 <button @click="showRoomPassword(roomPasswordMessage)">重新验证</button><button @click="leave()">返回首页</button></p>
       <p v-if="connectionState === 'failed'" class="room-grid-note"><button @click="leave()">返回首页</button></p>
       <Teleport to="body"><Transition name="room-copy-toast"><p v-if="copyMessage" class="room-copy-toast" role="status" aria-live="polite" aria-atomic="true">{{ copyMessage }}</p></Transition></Teleport>
+      <ManualCopyDialog v-if="manualCopy" :text="manualCopy.text" :label="manualCopy.label" @close="invalidateCopy" />
       <p v-if="roomMode === 'online' && !roomAsrEnabled" class="room-grid-note" role="status">语音转文字功能被关闭了喵！只能打字说话了喵~</p>
       <RoomApiSettings v-if="settingsOpen && roomMode === 'online'" :key="room + ':' + !!rememberedRooms.find(saved => saved.code === room)?.ownerToken" :token="roomSessionToken" :code="room" :preferences="soundPreferences" :speech-volume="speechVolume" :speech-enabled="speechEnabled" @speech-enabled="updateSpeechEnabled" :adaptive="adaptiveCards" :storage-failed="personalStorageFailed || soundStorageFailed" @sound="updateSoundPreferences" @speech="updateSpeechVolume" @layout="adaptiveCards = $event" :status-version="roomStatusVersion" :owner-token="rememberedRooms.find(saved => saved.code === room)?.ownerToken" @bound="rememberedRooms = forgetRoomOwnership(rememberedRooms, room)" @close="settingsOpen = false" />
       <ApiSettings v-if="settingsOpen && roomMode === 'simulation'" :room-name="roomName" :access-code="simulationAccessCode" @rename="renameSimulationRoom" @access-code="updateSimulationAccessCode" @close="settingsOpen = false" />

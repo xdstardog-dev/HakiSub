@@ -1279,3 +1279,15 @@ QQ SMTP连接/认证/真实发送成功，用户确认收件。15:30:23只切换
 本地npm test、npm run build、npm run test:accounts、npm run build:accounts、375/768/1440px浏览器回归全部通过；覆盖安全首页无输入框、密码与邮箱表单隔离、绑定/更换标题、返回清理、无存档入口/API调用、手机抽屉及邮件链接身份隔离。已目视检查375px安全首页和修改密码页面截图。沿用此前同步GitHub与服务器授权，后续只更新账号前端构建。
 
 安全设置子页面已于北京时间16:05:21上线，功能提交3615b0f，发布xdstar-accounts-20261101T080355Z。只更新账号dist；后端/shared/依赖事先逐项校验一致。最新停写快照、最终加密备份均实际解密核验；用户、会话、存档与原房间所有权保留，18运行文件/3公网资源匹配。首次最终核验引用早期历史快照被拒，改为本次最新备份比较后通过，无生产数据修补。网关/Caddy未重启，未发送真实邮件或修改真实密码；回退只切换兼容v3的上个账号镜像而不恢复数据。完整摘要/回退入口见RELEASE-ACCOUNT-SECURITY-PAGES-20261101.md。
+
+## 2026-11-01 · 房号与分享链接复制兼容修复（本地完成，未部署）
+
+确认 App 两个按钮均绑定点击事件，原实现仅调用 Clipboard API 并吞掉异常，无备用复制或手动入口；既有浏览器套件将剪贴板替换为模拟成功，不能证明真实系统复制可用。只读访问正式 HTTPS 页：HTTP 200、isSecureContext=true、document.hasFocus()=true、writeText 存在，未见 Permissions-Policy 响应头，隔离桌面 Chrome 的原生写入 resolved、clipboard-write 权限 granted。未在生产创建/加入房间，未复现用户设备的失败；权限、内嵌浏览器策略或焦点影响仍属待验证因素，不能宣称找到用户环境的确定根因。
+
+roomNavigation.copyText 统一原生写入、缺失/异常后临时只读 textarea + execCommand('copy') 备用，按真实返回结果反馈，finally 删除临时节点并恢复焦点与选区。App 共用 copyRoomText，手动失败状态交给新增 ManualCopyDialog：只读可选房号/链接、全选、关闭及 Escape，不误报成功。保留按钮、图标、配色、大小、动画及原居中半透明成功提示。六位房号保持字符串和前导零；链接仍只使用 origin 与房号，不含 URL 凭据、查询参数或 fragment。操作编号与同步房号/入房状态监听使后续点击、换房、离房、隐藏和卸载使旧结果失效，旧失败也不会启动备用复制。已提交给浏览器的原生写入无法取消，失效结果不显示反馈。
+
+修改 App.vue、roomNavigation.ts，新增 components/ManualCopyDialog.vue；扩充 room-navigation.test.mjs 与 demo.test.mjs，新增 room-copy-browser.mjs 与 package.json 的 test:room-copy:browser 命令；更新 room-refactor-browser.mjs 的失败手动入口断言及当前设置按钮名称；维护 README 和 ARCHITECTURE。未修改 DEEPSEEK-MEMORY、服务器、房间协议或数据库，无新依赖。
+
+最终 npm test 全套通过，npm run build 通过，git diff --check 通过。首次构建 esbuild 和旧房间重命名测试子进程受沙箱限制，允许启动子进程后重跑通过。新增复制浏览器专项通过（外部已有 Playwright 模块）：真实 Chrome、隔离内存网关、原生 API 未模拟成功，首次写入前未授予权限，写入后授权读取并核对六位房号/完整链接；禁用原生 API 及注入 NotAllowedError 后，真实 execCommand 写入并读回通过；覆盖备用返回 false/抛错/不存在、两种均不可用、手动全选/Escape/关闭、临时 DOM 清理、快速点击、离房与换房后的成功/失败迟到结果以及链接无凭据。首次专项因窄屏轮播鼠标滚动和240ms提示淡出断言时机失败，改为键盘创建房间并等待动画完成后通过，不改产品交互。截图 artifacts/room-copy/manual-copy.png 已目视检查。
+
+原 room-refactor 浏览器套件的复制、500ms居中提示、透明度、键盘、手动失败入口及320/390/1280px顶部布局检查通过；继续完整回归时发现旧设置名称断言，已同步当前名称，随后在第284行发言动画计数等待超时（复制范围之外，未改动动画代码），完整套件未通过，不以专项成功代替。未验证真实物理手机/iOS/Android/内嵌浏览器，也未调用真实麦克风或豆包。无复制修复本地阻塞；上线需要重新构建并部署主前端，本次未部署、提交或推送。

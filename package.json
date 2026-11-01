@@ -14,6 +14,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test:room-interactions": "node tests/room-interactions.test.mjs && node tests/caption-grid.test.mjs && node tests/member-mode-control.test.mjs && node tests/reaction-settings.test.mjs && node tests/sound-settings.test.mjs && node tests/typing-composer.test.mjs && node tests/demo.test.mjs",
     "test:room-refactor:browser": "node tests/room-refactor-browser.mjs",
+    "test:room-copy:browser": "node tests/room-copy-browser.mjs",
     "test:room-interactions:browser": "node tests/room-interactions-browser.mjs",
     "test:room-access": "node tests/room-access.test.mjs && node tests/room-password-prompt.test.mjs && node accounts/tests/room-access.test.mjs",
     "test:room-access:browser": "node tests/room-access-browser.mjs",

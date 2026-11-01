@@ -54,6 +54,7 @@ const context = vm.createContext({ installRoomViewport: () => () => {}, loadActi
 const exported = 'globalThis.demo = {renameSimulationRoom,updateSimulationAccessCode,simulationAccessCode,createNamedRoom,joinRoomByCode,requestedRoomName,entryOpen,accountUser,roomName,roomPasswordOpen,roomPasswordMessage,cancelRoomPassword,typedDraft,typedSending,typingEditorOpen,selectMemberTyping,sendTypedCaption,sendReaction,reactions,room,rememberedRooms,roomMode,connecting,me,name,code,mode,joined,members,captions,inputMode,asrState,asrProvider,micOpenSeconds,micStartedAt,usageTotals,changeAsrProvider,changeInputMode,toggleRealMic,scenario,scenarioRunning,stressProgress,enter,addMember,setMemberCount,toggleMemberMic,recognize,runSimulation,tick,leave,displayDuration,captionOpacity,characterCount,copyCode,shareCurrentRoom,copyMessage};'
 vm.runInContext(ts.transpile(asrModel + sessionModel + simulationTypes + simulationEngine + simulationScenarios + model + rememberedModel + navigationModel + interactionsModel + reactionSoundModel + entranceModel + preferencesModel + speechSoundModel + script + exported, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
 const d = context.demo
+vm.runInContext('globalThis.manualCopy = manualCopy', context)
 assert.equal(d.asrProvider.value, 'doubao', '产品默认识别来源为豆包')
 assert.equal(d.roomMode.value, 'online', '默认进入真实联网房间流程')
 d.roomMode.value = 'simulation'
@@ -408,16 +409,22 @@ context.navigator.share = () => { throw Error('不应打开系统分享') }
 context.navigator.clipboard = { writeText: async value => { copiedValues.push(value) } }
 await d.copyCode()
 assert.equal(copiedValues.at(-1), '114514'); assert.equal(d.copyMessage.value, '复制房间号成功')
+d.room.value = '001234'; await d.copyCode()
+assert.equal(copiedValues.at(-1), '001234', '房号以六位字符串复制，保留前导零')
+d.room.value = '114514'
 await d.shareCurrentRoom()
 assert.equal(copiedValues.at(-1), 'https://hakisub.xdstar.work/114514/'); assert.equal(d.copyMessage.value, '复制链接成功')
 context.navigator.clipboard.writeText = async () => { throw Error('denied') }
-await d.copyCode(); assert.equal(d.copyMessage.value, '复制失败，请重试')
-await d.shareCurrentRoom(); assert.equal(d.copyMessage.value, '复制失败，请重试')
+await d.copyCode(); assert.equal(d.copyMessage.value, '')
+assert.equal(context.manualCopy.value.text, '114514'); assert.equal(context.manualCopy.value.label, '房间号')
+await d.shareCurrentRoom(); assert.equal(d.copyMessage.value, '')
+assert.equal(context.manualCopy.value.text, 'https://hakisub.xdstar.work/114514/'); assert.equal(context.manualCopy.value.label, '房间链接')
 context.navigator.clipboard.writeText = () => new Promise(resolve => { completeShare = resolve })
 const sharingPending = d.shareCurrentRoom()
 assert.equal(d.copyMessage.value, '')
 d.leave(); completeShare(); await sharingPending
 assert.equal(d.copyMessage.value, '', '离房后不显示迟到复制结果')
+assert.equal(context.manualCopy.value, null)
 d.mode.value = 'join'; d.code.value = '114514'; d.enter(); roomCallbacks.onJoined('114514', 'member', { isOwner: false, aliases: ['985529'] })
 const copyingPending = d.copyCode()
 context.navigator.clipboard.writeText = async () => {}
