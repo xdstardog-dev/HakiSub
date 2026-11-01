@@ -1216,3 +1216,17 @@ npm test全套、npm run build、test:room-refactor:browser及git diff --check�
 公网脚本曾因旧注册标签、一次注册后页面等待及绑定后返回主面板的等待顺序中断，修正后完整重跑通过，未修改产品源码以处理测试脚本问题。共新增3个明确合成账号和2间测试房，最终11账号/27房；测试房无Key、ASR关闭、无入房码，连接关闭，剩余4个合成会话定向撤销，原用户与注册限流/审计保持。随机测试凭据仅进程内存。README、ARCHITECTURE及RELEASE-20261101记录版本、摘要、证据和拒绝不兼容旧镜像回退的边界，未编辑DEEPSEEK-MEMORY。
 
 已通过npm test、test:accounts、test:room-management、主/账号构建与七组本地Chrome回归；文档收尾后执行git diff --check。真实麦克风、付费豆包API、物理手机/系统键盘与扬声器听感未验收。网关重启清空原内存Key，房主需重填。完整备份及恢复命令见RELEASE-20261101，证据在ignored artifacts/room-ui-20261031T1745Z/verification/。
+
+## 2026-11-01 · 移动端稳定性与字幕交互（仅本地，未部署）
+
+基于已 fetch 的 GitHub main 6b8abf3c0963536a405782fa54e0ac8cc0a12771，工作区起始干净。实际原因：App.vue 的 pagehide/onClose 直接 leave 并重新 prepareRoomEntry；100dvh 与底栏共同收缩；captionEntrance 显式排除 typing，模拟打字直接 receiveCaption；整个 article 执行 scale。
+
+修改 App.vue、roomClient.ts，分离临时中断/页面挂起/明确退出/需验证/永久错误；新增 roomRecovery.ts 管理最后留房意愿及标签页凭据。重连 1/2/4/8/16/20 秒、单计时器/连接代次保护，断线停止 ASR，保留草稿，不自动重发，恢复默认闭麦。账号验证临时请求失败仍保留房间并重试。roomAccess.mjs/roomGateway.mjs 加入随机短期授权，内存校验房间/版本/30分钟闲置期限，活跃心跳续期、改码立即失效，先移除同凭据旧成员再判断满员，保持八音阶空槽规则。
+
+新增 roomViewport.ts，style.css 与 MemberCaptionGrid.vue 分离稳定底栏高度与可见字幕区；TypingComposer 原有 VisualViewport 定位和 IME 逻辑经检查保留。首次打字和语音统一 receiveCaptionEntrance，独立 tile-background 执行 1→1.015→1，文章/前景无 transform，头像两道涟漪保留；设置主菜单及房主设置入口/标题/aria 同步。未改账号中心配色。
+
+新增 room-recovery.test.mjs、room-viewport.test.mjs；更新 caption-entrance/caption-grid/demo/rooms/room-settings-view 测试及 npm test 串行入口。覆盖短期凭据跨房间/过期/改码、8人满房旧连接替换、成员 ID 更新/闭麦、退避与旧回调/重复恢复/永久错误，存储隔离与清除、两种视口模型、实际 Vue watcher 动画目标。README、ARCHITECTURE 已补充恢复边界；DEEPSEEK-MEMORY 未编辑。
+
+验证：npm test 全套通过；npm run build（vue-tsc + Vite）通过。沙箱内 esbuild/测试子进程曾受 spawn EPERM 限制，已获运行权限后重跑通过。浏览器使用 computer-use 技能，在本机独立内存网关（tests/mobile-recovery-server.mjs；不读 .env、不保存房间、拒绝真实 ASR）回归：公开房刷新/重新访问首页恢复；游客合成 PIN 首次验证后刷新不弹加入或 PIN；强制关闭 TCP 后恢复房间/闭麦/草稿保留且未自动发送；打字发送显示；主动退出再刷新首页。截图 artifacts/mobile-recovery/room-restored.png。账号跨设备授权与改码流程由隔离服务端自动测试覆盖，本轮未登录真实账号跨设备实测。
+
+待真机验收：Android Chrome/iOS Safari 输入法弹出收起（底栏不抬升、输入框在键盘上方、卡片自适应、无多余空白），地址栏伸缩/旋转/可见视口平移，切后台/锁屏/长时间挂起/系统断网后恢复，真实麦克风/豆包 API、涟漪/气泡动态观感及八音阶扬声器听感。桌面浏览器及模型通过不等于这些项目通过。关闭整个浏览器后的持久目标恢复通过存储模型和重新访问首页检查，未实际关闭用户浏览器进程。未部署、未连接生产服务器、未改现有持久房间/账号/API Key。

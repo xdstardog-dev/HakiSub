@@ -76,7 +76,7 @@ onUnmounted(() => { disposed = true; close(); window.removeEventListener('pointe
 </script>
 
 <template>
-  <button ref="button" class="room-avatar" type="button" aria-label="房间设置" title="房间设置；长按或右键更换头像" :aria-expanded="settingsOpen || menuOpen || moreOpen" :aria-busy="busy" @click="activate" @contextmenu="contextMenu" @keydown="openWithKeyboard" @pointerdown="startPress" @pointermove="movePress" @pointerup="finishPress" @pointercancel="cancelPress" @lostpointercapture="cancelPress"><RoomAvatarIcon :avatar-id="avatarId" /></button>
+  <button ref="button" class="room-avatar" type="button" aria-label="设置" title="设置；长按或右键更换头像" :aria-expanded="settingsOpen || menuOpen || moreOpen" :aria-busy="busy" @click="activate" @contextmenu="contextMenu" @keydown="openWithKeyboard" @pointerdown="startPress" @pointermove="movePress" @pointerup="finishPress" @pointercancel="cancelPress" @lostpointercapture="cancelPress"><RoomAvatarIcon :avatar-id="avatarId" /></button>
   <Teleport to="body">
     <div v-if="menuOpen" ref="menu" class="room-avatar-menu" role="menu" aria-label="更换房间头像" :style="{ left: position.left + 'px', top: position.top + 'px' }" @keydown="navigateMenu">
       <button v-for="avatar in QUICK_ROOM_AVATARS" :key="avatar.id" type="button" role="menuitemradio" :aria-label="`使用${avatar.label}头像`" :aria-checked="avatarId === avatar.id" :disabled="busy" :title="avatar.label" @click="select(avatar.id)"><RoomAvatarIcon :avatar-id="avatar.id" /></button>

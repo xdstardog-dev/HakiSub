@@ -42,10 +42,10 @@ const roomConnections = []
 const accountAccessCalls = [], createdNameCalls = [], bindCalls = []
 let createdNameResponse = async name => name
 let accountAccessResponse = async () => ({ requiresPassword: true, message: '需要入房码' })
-const context = vm.createContext({ ...nameRules, ...roomAvatars, AbortController,
+const context = vm.createContext({ installRoomViewport: () => () => {}, loadActiveRoom: () => undefined, saveActiveRoom() {}, loadReconnectToken: () => undefined, saveReconnectToken() {}, ...nameRules, ...roomAvatars, AbortController,
   saveCreatedRoomName: (_token, value, signal) => { createdNameCalls.push({ value, signal }); return createdNameResponse(value) }, createRoomClient: callbacks => {
   roomCallbacks = callbacks
-  return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event); return true }, getToken: () => 'self-room-token', close() { roomClosed = true } }
+  return { connect(...args) { roomConnections.push(args) }, send(event) { roomSent.push(event); return true }, getToken: () => 'self-room-token', close() { roomClosed = true }, suspend() { roomClosed = true; callbacks.onClose() }, resume() {} }
 }, createAccountClient: () => ({ bindRoom: async (...args) => { bindCalls.push(args) }, roomAccess: (...args) => { accountAccessCalls.push(args); return accountAccessResponse(...args) }, cancel() {} }), createDoubaoAsrClient: (callbacks, _environment, roomToken) => {
   doubaoRoomToken = roomToken
   doubaoCallbacks = callbacks
@@ -223,7 +223,7 @@ deniedEngine.onerror({ error: 'not-allowed' }); assert.equal(d.asrState.value, '
 d.toggleRealMic(); const hiddenEngine = FakeRecognition.instances.at(-1)
 hiddenEngine.onstart(); hiddenEngine.onresult(realEvent('还没说完'))
 documentStub.hidden = true
-assert.equal(documentEvents.has('visibilitychange'), false)
+assert.equal(documentEvents.has('visibilitychange'), true)
 assert.equal(hiddenEngine.aborted, undefined, '切换窗口后保持麦克风开启')
 browserEvents.get('pagehide')()
 assert.equal(hiddenEngine.aborted, true); assert.equal(d.captions.value.length, 0)
@@ -350,10 +350,12 @@ assert.equal(d.captions.value.length, captionCount, '回复自己不进入字幕
 advance(2600); assert.equal(d.reactions.value.length, 0)
 d.changeInputMode({ target: { value: 'simulation' } })
 assert.equal(d.inputMode.value, 'microphone', '联网模式不混入模拟成员')
+const preservedCaptions = d.captions.value.length
 roomCallbacks.onClose()
-assert.equal(d.typedDraft.value, ''); assert.equal(d.reactions.value.length, 0)
-assert.equal(d.joined.value, false); assert.equal(doubaoStopped, true); assert.equal(roomClosed, true)
-assert.equal(d.captions.value.length, 0); assert.match(d.asrState.value, /idle/)
+assert.equal(d.typedDraft.value, '切换时保留'); assert.equal(d.reactions.value.length, 0)
+assert.equal(d.joined.value, true); assert.equal(doubaoStopped, true); assert.equal(roomClosed, false)
+assert.equal(d.captions.value.length, preservedCaptions); assert.match(d.asrState.value, /idle/)
+d.leave()
 const migrationOwner = '11111111-1111-1111-1111-111111111111'
 d.rememberedRooms.value = [{ code: '985529', name: 'Owner', ownerToken: migrationOwner }]
 d.mode.value = 'join'; d.code.value = '114514'; d.name.value = 'Owner'; d.enter()
@@ -425,13 +427,13 @@ browserEvents.get('pagehide')()
 assert.equal(d.copyMessage.value, '', '页面离开清理提示及计时器')
 assert.equal(pageLocation.pathname, '/114514/', '刷新和关闭页面保留房间地址')
 d.leave(); d.mode.value = 'join'; d.code.value = '123456'; d.name.value = '凭证测试'
-await d.enter(); roomCallbacks.onPasswordRequired('123456', '需要四位入房码')
+await d.enter(); await roomCallbacks.onPasswordRequired('123456', '需要四位入房码')
 assert.equal(d.roomPasswordOpen.value, true); assert.equal(d.connecting.value, false)
 await d.enter('0042'); assert.equal(roomConnections.at(-1)[4].password, '0042')
 roomCallbacks.onJoined('123456', 'guest', { aliases: [], isOwner: false })
 assert.equal(d.roomPasswordOpen.value, false); assert.equal(d.joined.value, true)
 roomCallbacks.onAccessRevoked('123456', '入房码已更换')
-assert.equal(d.joined.value, false); assert.equal(d.roomPasswordOpen.value, true); assert.equal(d.captions.value.length, 0)
+assert.equal(d.joined.value, true); assert.equal(d.roomPasswordOpen.value, true); assert.equal(d.captions.value.length, 0)
 d.cancelRoomPassword(); assert.equal(d.roomPasswordOpen.value, false)
 d.accountUser.value = { uid: '123456', nickname: '合成账号' }
 await d.enter(); assert.equal(d.roomPasswordOpen.value, true)

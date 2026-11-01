@@ -94,7 +94,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; new
   <component :is="props.roomName === undefined ? 'section' : 'dialog'" ref="localDialog" class="api-settings" aria-labelledby="api-settings-title" @cancel.prevent="emit('close')">
     <div class="settings-heading"><h1 id="api-settings-title">设置</h1><button @click="emit('close')">返回房间</button></div>
     <div v-if="props.roomName !== undefined" class="settings-card simulation-room-settings">
-      <h2>房间设置</h2><p>房间名称：{{ props.roomName }}</p>
+      <h2>房主设置</h2><p>房间名称：{{ props.roomName }}</p>
       <form @submit.prevent="saveRoomName"><label for="simulation-room-name">房间名称</label><input id="simulation-room-name" v-model="newRoomName" :placeholder="props.roomName" maxlength="24" required />
         <p class="settings-note">最多12个汉字或24个英文／数字，混合折算 {{ countNameUnits(newRoomName.trim()) }}/24。</p>
         <button type="submit" :disabled="!isValidDisplayName(newRoomName.trim(), ROOM_NAME_MAXIMUM_UNITS)">保存房间名称</button>

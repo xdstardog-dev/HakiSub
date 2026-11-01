@@ -151,10 +151,10 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
 </script>
 
 <template>
-  <dialog ref="settingsDialog" class="room-api-settings" :aria-label="page === 'personal' ? '房间设置' : '房主设置'" @pointerdown="cancelNameEditingOutside" @cancel.prevent="page === 'owner' ? backToPersonal() : emit('close')">
+  <dialog ref="settingsDialog" class="room-api-settings" :aria-label="page === 'personal' ? '设置' : '房主设置'" @pointerdown="cancelNameEditingOutside" @cancel.prevent="page === 'owner' ? backToPersonal() : emit('close')">
     <div class="settings-heading">
-      <h2 v-if="page === 'owner'">房主设置</h2>
-      <button v-if="page === 'owner'" type="button" class="settings-back room-back-button" aria-label="返回房间设置" title="返回房间设置" @click="backToPersonal"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 7h7a6 6 0 0 1 0 12h-4m-3-17-5 5 5 5"/></svg></button>
+      <h2>{{ page === 'owner' ? '房主设置' : '设置' }}</h2>
+      <button v-if="page === 'owner'" type="button" class="settings-back room-back-button" aria-label="返回设置" title="返回设置" @click="backToPersonal"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 7h7a6 6 0 0 1 0 12h-4m-3-17-5 5 5 5"/></svg></button>
       <button v-else type="button" class="settings-close" aria-label="关闭设置" title="关闭设置" @click="emit('close')"><span aria-hidden="true">×</span></button>
     </div>
     <template v-if="page === 'personal'">
@@ -182,7 +182,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
       </section>
       <section v-if="configuration && !configuration.readOnly" class="settings-section owner-management" aria-label="房主管理">
         <label class="switch-row asr-switch"><input role="switch" type="checkbox" aria-label="ASR 语音识别" :checked="configuration.asrEnabled !== false" :disabled="busy || configuration.busy" @change="changeAsrSwitch" /><span>ASR 语音识别</span><span class="switch-state">{{ configuration.asrEnabled === false ? '关' : '开' }}</span></label>
-        <button class="owner-entry" :disabled="busy" @click="openOwnerSettings">房间设置 <span aria-hidden="true">›</span></button>
+        <button class="owner-entry" :disabled="busy" @click="openOwnerSettings">房主设置 <span aria-hidden="true">›</span></button>
       </section>
       <p v-else-if="configuration?.asrEnabled === false" role="status">ASR 已暂停，仍可打字和快捷回应。</p>
       <p v-if="!configuration" role="status">{{ busy ? '正在读取房间状态…' : '房间状态暂不可用' }}</p>

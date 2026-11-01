@@ -4,8 +4,9 @@ import { hasRoomPassword, verifyRoomPassword } from './roomPassword.mjs'
 const issue = (statusCode, message, reason) => Object.assign(Error(message), { statusCode, reason })
 
 export function createRoomAccess({ saveRoom, now = Date.now }) {
-  const tickets = new Map(), failures = new Map()
+  const tickets = new Map(), failures = new Map(), resumptions = new Map()
   function prune() {
+    for (const [token, grant] of resumptions) if (grant.expiresAt <= now()) resumptions.delete(token)
     for (const [token, ticket] of tickets) if (ticket.expiresAt <= now()) tickets.delete(token)
     for (const [key, failure] of failures) if (failure.expiresAt <= now()) failures.delete(key)
   }
@@ -54,5 +55,19 @@ export function createRoomAccess({ saveRoom, now = Date.now }) {
     tickets.delete(token)
     return ticket.uid
   }
-  return { verifyCode, authorizeAccount, consumeTicket, clear: () => { tickets.clear(); failures.clear() } }
+  function resume(room, token) {
+    prune()
+    const grant = resumptions.get(token)
+    return grant?.room === room && grant.version === (room.accessVersion ?? '') ? grant : undefined
+  }
+  function issueResume(room, member, token) {
+    prune()
+    if (!resumptions.has(token) && resumptions.size >= 10000) return undefined
+    const reconnectToken = resumptions.has(token) ? token : randomUUID()
+    // 仅网关内存保存，30分钟闲置过期；版本随改码变化，立即失效。
+    resumptions.set(reconnectToken, { room, version: room.accessVersion ?? '', memberId: member.id,
+      accountUid: member.accountUid, owner: member.owner, expiresAt: now() + 30 * 60 * 1000 })
+    return reconnectToken
+  }
+  return { verifyCode, authorizeAccount, consumeTicket, resume, issueResume, clear: () => { tickets.clear(); failures.clear(); resumptions.clear() } }
 }

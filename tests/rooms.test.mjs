@@ -170,7 +170,7 @@ emit({ type: 'reaction', id: 'r', senderId: 'bob', targetId: 'alice', reaction: 
 emit({ type: 'discard', memberId: 'alice', utteranceId: 'one' }); assert.deepEqual(discarded, ['alice', 'one'])
 client.close(); assert.equal(client.getToken(), ''); assert.equal(fake.onmessage, null); assert.equal(closed, 0)
 client.connect('join', 'Bob', '123456'); fake.onclose(); assert.equal(closed, 1)
-client.connect('create', 'Alice', ''); fake.onmessage({ data: '{bad' }); assert.match(error, /无法解析/); assert.equal(closed, 2)
+client.connect('create', 'Alice', ''); fake.onmessage({ data: '{bad' }); assert.match(error, /建房连接中断/); assert.equal(closed, 2)
 const access = { password: '0042' }
 client.connect('join', 'Alice', '123456', undefined, access); fake.onopen()
 assert.equal(fake.sent[0].password, '0042'); assert.deepEqual(Object.keys(access), [])

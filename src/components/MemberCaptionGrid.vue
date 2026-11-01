@@ -35,7 +35,9 @@ watch(() => props.entrances, async (current, previous = {}) => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) continue
     const card = gridElement.value?.querySelector<HTMLElement>(`[data-member-id="${CSS.escape(id)}"]`)
     if (!card?.animate) continue
-    const animations = [card.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.015)', offset: .35 }, { transform: 'scale(1)' }], { duration: 650, easing: 'ease-out' })]
+    const background = card.querySelector<HTMLElement>('.tile-background')
+    if (!background?.animate) continue
+    const animations = [background.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.015)', offset: .35 }, { transform: 'scale(1)' }], { duration: 650, easing: 'ease-out' })]
     for (const [index, ring] of Array.from(card.querySelectorAll<HTMLElement>('.speech-ring')).entries()) {
       animations.push(ring.animate([{ transform: 'scale(.8)', opacity: .55 }, { transform: 'scale(1.65)', opacity: 0 }], { duration: 650, delay: index * 90, easing: 'ease-out', fill: 'backwards' }))
     }
@@ -269,6 +271,7 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
       @keydown="handleCardKeydown($event, member.id)"
       tabindex="0" aria-description="右键或长按发送快捷回应"
       :data-member-id="member.id" :aria-label="`${member.name}的字幕区域`">
+      <span class="tile-background" aria-hidden="true"></span>
       <div class="tile-heading">
         <span class="speech-avatar" aria-hidden="true">{{ Array.from(member.name).slice(0, 1).join('') }}<span class="speech-ring"></span><span class="speech-ring"></span></span>
         <div class="tile-identity">
@@ -321,7 +324,7 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
 </template>
 
 <style scoped>
-.member-caption-surface { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.member-caption-surface { height: 100%; padding-bottom: 72px; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .member-caption-grid {
   --caption-size: 16px;
   position: relative;
@@ -350,16 +353,18 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   padding: 8px;
-  border: 1px solid var(--home-border);
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: var(--room-card-bg);
+  isolation: isolate;
   color: var(--home-text);
 }
+.tile-background { position: absolute; inset: -1px; z-index: -1; pointer-events: none; border: 1px solid var(--home-border); border-radius: inherit; background: var(--room-card-bg); }
+:global(.room-keyboard-open) .member-caption-surface { padding-bottom: 0; }
 .is-compact .member-tile { padding: 4px; }
 .is-compact :deep(.tile-mic) { width: 32px; height: 32px; min-height: 32px; }
-.member-tile.is-speaking { border-color: #aeb2b6; box-shadow: inset 0 0 0 1px var(--home-bg); }
+.member-tile.is-speaking .tile-background { border-color: #aeb2b6; box-shadow: inset 0 0 0 1px var(--home-bg); }
 .tile-heading { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .speech-avatar { position: relative; display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: #dedfdb; font-size: 12px; }
 .speech-ring { position: absolute; inset: 0; border: 1px solid #777; border-radius: 50%; opacity: 0; pointer-events: none; }
@@ -399,7 +404,7 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
 .grid-empty-snooze { display: inline-flex; align-items: flex-start; gap: 1px; align-self: flex-start; margin-top: -3px; font-weight: 600; line-height: 1; }
 .grid-empty-snooze > span:first-child { font-size: 9px; }
 .grid-empty-snooze > span:last-child { margin-top: 4px; font-size: 13px; }
-.member-bottom-dock { flex-shrink: 0; display: flex; align-items: flex-end; gap: 12px; min-height: 64px; padding-bottom: 6px; }
+.member-bottom-dock { position: absolute; left: 12px; right: 12px; bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0; display: flex; align-items: flex-end; gap: 12px; min-height: 64px; padding-bottom: 6px; }
 .contracted-members { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px; }
 .contracted-member { position: relative; flex: 0 0 44px; min-width: 0; text-align: center; user-select: none; -webkit-touch-callout: none; touch-action: pan-x; }
 .member-avatar { position: relative; display: block; width: 44px; height: 44px; margin: 0 auto; padding: 0; border: 1px solid var(--home-border); border-radius: 50%; background: var(--room-card-bg); color: var(--home-text); font-size: 13px; }

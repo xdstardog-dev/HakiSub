@@ -36,7 +36,7 @@ assert.match(await owner.html(), /发言提示音/); assert.match(await owner.ht
 assert.match(await owner.html(), /动态自适应/); assert.doesNotMatch(await owner.html(), /type="radio"/)
 owner.state.emit('layout', false); assert.match(await owner.html(), /动态自适应（已关闭）/)
 owner.state.emit('layout', true)
-assert.match(await owner.html(), /class="owner-entry"[\s\S]*?房间设置/)
+assert.match(await owner.html(), /class="owner-entry"[\s\S]*?房主设置/)
 owner.props.speechVolume = 54; owner.props.preferences = { enabled: true, volume: 33 }; await Vue.nextTick()
 owner.state.toggleSpeechSound(); assert.equal(owner.props.speechEnabled, false); assert.equal(owner.props.speechVolume, 54)
 assert.equal(owner.props.preferences.enabled, true, '发言静音不改回应音效')

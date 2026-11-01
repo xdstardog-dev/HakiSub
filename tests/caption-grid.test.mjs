@@ -166,5 +166,23 @@ props.now = 209999; await nextTick(); assert.equal(view.contractedTiles.value.le
 props.now = 210000; await nextTick(); assert.equal(view.contractedTiles.value.length, 1)
 view.handleFocusIn({ target: { matches: () => false } }, 'snapshot'); assert.equal(view.focusedMemberId.value, null)
 view.handleFocusIn({ target: { matches: () => true } }, 'snapshot'); assert.equal(view.focusedMemberId.value, 'snapshot', '仅键盘焦点获得收束保护')
-scope.stop()
+/* scope 在动画断言后清理 */
 console.log('通过：闭麦无字连续5秒、新字清零/渐隐结束重新计时、头像展开不启麦、开麦/打字/迟到字幕恢复、稳定顺序、焦点/错误保护与成员清理；原字幕强调、打字入口及快捷回应回归。')
+
+// 实际 Vue watch 的动画目标：背景和两道涟漪，绝不缩放 article 或前景。
+const animationTargets = []
+context.CSS = { escape: value => value }
+context.window.matchMedia = () => ({ matches: false })
+const animate = target => frames => {
+  animationTargets.push({ target, frames })
+  return { finished: Promise.resolve(), cancel() {} }
+}
+const background = { animate: animate('background') }
+const rings = [0, 1].map(i => ({ animate: animate('ring' + i) }))
+view.gridElement.value = { querySelector: () => ({ animate: animate('article'), querySelector: () => background, querySelectorAll: () => rings }) }
+props.entrances = { a: 1 }; await nextTick(); await new Promise(resolve => setImmediate(resolve))
+assert.deepEqual(animationTargets.map(a => a.target), ['background', 'ring0', 'ring1'])
+assert.equal(animationTargets[0].frames[1].transform, 'scale(1.015)')
+props.entrances = { a: 1 }; await nextTick(); await nextTick(); assert.equal(animationTargets.length, 3)
+
+scope.stop()

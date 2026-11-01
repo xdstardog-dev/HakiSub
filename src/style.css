@@ -61,16 +61,19 @@ input::placeholder { color: #7c897b; }
 footer { padding: 18px 0; display: flex; flex-direction: column; gap: 5px; color: #687862; font-size: 11px; line-height: 1.7; }
 .footer-dot { color: #56815e; margin: 0 6px; }
 .error { color: #ad3f2d; font-size: 13px; line-height: 1.7; }
+body:has(.app-shell.in-room) { overflow: hidden; }
 /* The room stays fixed; caption overflow is clipped inside each tile. */
 .app-shell.in-room {
+  position: relative;
+  overflow: hidden;
   height: 100vh;
-  height: 100dvh;
+  height: var(--room-screen-height, 100dvh);
   min-height: 0;
   padding: env(safe-area-inset-top, 0px) 12px env(safe-area-inset-bottom, 0px);
   background: var(--home-bg);
   color: var(--home-light-text);
 }
-.room-layout { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.room-layout { height: calc(100% - var(--room-keyboard-inset, 0px)); min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .app-shell.in-room { max-width: 480px; margin: 0 auto; }
 .room-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; flex-shrink: 0; padding-top: 12px; }
 .room-heading { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }

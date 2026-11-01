@@ -32,9 +32,12 @@ import { createAccountClient, type AccountIdentity } from './accountClient'
 import { isValidDisplayName, truncateNameToUnits, NICKNAME_MAXIMUM_UNITS, ROOM_NAME_MAXIMUM_UNITS } from '../accounts/shared/nameRules.mjs'
 import { loadRoomPreferences, saveRoomPreferences } from './roomPreferences'
 import { receiveCaptionEntrance } from './captionEntrance'
+import { installRoomViewport } from './roomViewport'
 import { createSpeechSound } from './speechSound'
+import { loadActiveRoom, saveActiveRoom, loadReconnectToken, saveReconnectToken } from './roomRecovery'
 
 type Member = RoomMember
+const disposeRoomViewport = installRoomViewport()
 const glasses = ref(location.pathname === '/glasses')
 const settingsOpen = ref(false)
 // 调试入口仅由显式 URL 参数打开，不进入普通成员设置。
@@ -59,8 +62,10 @@ function updateSimulationAccessCode(value: string) {
   if (!joined.value || roomMode.value !== 'simulation' || (value !== '' && !/^\d{4}$/.test(value))) return
   simulationAccessCode.value = value
 }
+const connectionState = ref<'connected' | 'reconnecting' | 'verification' | 'failed'>('connected')
 const connecting = ref(false), selfId = ref('')
 const roomPasswordOpen = ref(false), roomPasswordMessage = ref('')
+let entryRetryTimer: ReturnType<typeof setTimeout> | undefined
 let roomEntryOperation = 0, roomAccessClient: ReturnType<typeof createAccountClient> | undefined
 let roomClient: ReturnType<typeof createRoomClient> | undefined
 const joined = ref(false), mode = ref<'create' | 'join'>('create'), name = ref(''), code = ref(''), room = ref(''), error = ref('')
@@ -89,6 +94,7 @@ function joinRoomByCode(value: string) {
   prepareEntryIdentity(); void enter()
 }
 function showRoomPassword(message: string) {
+  if (joined.value) connectionState.value = 'verification'
   entryOpen.value = false; roomPasswordOpen.value = true
   roomPasswordMessage.value = ['此房间需要四位入房码。', '请输入四位入房码。'].includes(message) ? '' : message
 }
@@ -185,7 +191,7 @@ function sendTypedCaption() {
     pendingTyped = { id: `typed-${me.value.id}-${id}`, text }; typedSending.value = true
     typedSendTimer = setTimeout(() => { finishTypedSend(); error.value = '未收到发送确认，请检查连接；草稿已保留。' }, 10000)
   } else {
-    receiveCaption(captions.value, me.value.id, `typed-${id}`, text.trim(), 'final', Date.now())
+    receiveRoomCaption({ memberId: me.value.id, utteranceId: `typed-${id}`, text: text.trim(), state: 'final', source: 'typing' })
     typedDraft.value = ''
   }
   nextTypedAt.value = Date.now() + TYPED_CAPTION_COOLDOWN_MS; error.value = ''
@@ -343,7 +349,17 @@ function toggleRealMic() {
   if (asrActive.value) asr.stop()
   else if (joined.value && inputMode.value === 'microphone') asr.start()
 }
-function handlePageHide() { if (roomMode.value === 'online') leave(false); else asr.stop() }
+function pauseRoomConnection() {
+  asr.stop(); finishTypedSend(); roomSessionToken.value = ''
+  if (me.value) { me.value.mic = false; if (me.value.mode !== 'typing') me.value.mode = 'muted' }
+  if (joined.value) connectionState.value = 'reconnecting'
+}
+function handlePageHide() { copyOperation++; clearCopyMessage(); if (roomMode.value === 'online') roomClient?.suspend(); asr.stop() }
+function resumeRoomConnection() { if (document.visibilityState !== 'hidden') roomClient?.resume() }
+function handleVisibilityChange() { if (document.visibilityState === 'hidden') handlePageHide(); else resumeRoomConnection() }
+window.addEventListener('pageshow', resumeRoomConnection)
+window.addEventListener('online', resumeRoomConnection)
+document.addEventListener('visibilitychange', handleVisibilityChange)
 window.addEventListener('pagehide', handlePageHide)
 function prepareRoomEntry() {
   glasses.value = location.pathname === '/glasses'
@@ -373,6 +389,7 @@ function setMemberCount(event: Event) {
   error.value = ''
 }
 function toggleMemberMic(id: string) {
+  if (roomMode.value === 'online' && connectionState.value !== 'connected') return
   const member = members.value.find(member => member.id === id)
   if (!member) return
   if (id === me.value?.id) {
@@ -409,11 +426,14 @@ function selectMemberTyping(id: string) {
   typingEditorOpen.value = true
 }
 function cancelRoomPassword() {
+  clearTimeout(entryRetryTimer)
   roomCreationController?.abort(); roomBindingClient?.cancel()
   roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
   roomClient?.close(); connecting.value = false; roomPasswordOpen.value = false; roomPasswordMessage.value = ''
+  if (joined.value) connectionState.value = 'verification'
 }
 async function enter(password?: string | Event, creationPassword?: string) {
+  clearTimeout(entryRetryTimer)
   error.value = ''
   if (!name.value.trim()) { error.value = '请先填写你的显示名称。'; return }
   if (!isValidDisplayName(name.value.trim(), NICKNAME_MAXIMUM_UNITS)) { error.value = '显示名称最多8个汉字或16个英文／数字，不能包含换行或控制字符。'; return }
@@ -424,11 +444,13 @@ async function enter(password?: string | Event, creationPassword?: string) {
     connecting.value = true
     roomClient?.close()
     const operation = ++roomEntryOperation
-    const creationName = mode.value === 'create' ? requestedRoomName.value : ''
+    const wasCreating = mode.value === 'create'
+    const creationName = wasCreating ? requestedRoomName.value : ''
     const creationAccount = accountUser.value
     const submittedPassword = mode.value === 'create' ? creationPassword : typeof password === 'string' ? password : undefined
     let accessTicket: string | undefined
-    if (mode.value === 'join' && accountUser.value) {
+    const reconnectToken = typeof password === 'string' ? undefined : loadReconnectToken(code.value)
+    if (mode.value === 'join' && accountUser.value && !reconnectToken) {
       const entryAccountUid = accountUser.value.uid
       const client = createAccountClient()
       roomAccessClient?.cancel(); roomAccessClient = client
@@ -447,10 +469,19 @@ async function enter(password?: string | Event, creationPassword?: string) {
         const message = issue instanceof Error ? issue.message : '入房验证暂时不可用，请重试。'
         if (roomPasswordOpen.value) roomPasswordMessage.value = message
         else error.value = message
+        if (joined.value) {
+          const status = (issue as Error & { status?: number }).status
+          if (status === 404) { connectionState.value = 'failed'; saveActiveRoom() }
+          else if (status === 401 || status === 403) { connectionState.value = 'verification'; showRoomPassword(message) }
+          else {
+            connectionState.value = 'reconnecting'
+            entryRetryTimer = setTimeout(() => { if (operation === roomEntryOperation) void enter() }, 4000)
+          }
+        }
         return
       } finally { client.cancel(); if (roomAccessClient === client) roomAccessClient = undefined }
     }
-    let ownerRecoveryAttempted = false
+    let ownerRecoveryAttempted = false, accountRecoveryAttempted = false
     roomClient = createRoomClient({
       onJoined(roomCode, memberId, ownership) {
         const aliases = ownership?.aliases ?? []
@@ -461,15 +492,19 @@ async function enter(password?: string | Event, creationPassword?: string) {
           roomClient?.connect('join', name.value.trim(), roomCode, previousOwner.ownerToken)
           return
         }
+        saveReconnectToken(roomCode, ownership?.reconnectToken)
+        saveActiveRoom({ code: roomCode, name: name.value.trim(), roomName: ownership?.name ?? `房间 ${roomCode}` })
+        connectionState.value = 'connected'; error.value = ''; asr.stop()
         roomAvatarId.value = normalizeRoomAvatar(ownership?.avatarId)
-        room.value = roomCode; roomName.value = ownership?.name ?? `房间 ${roomCode}`; selfId.value = memberId
+        room.value = roomCode; code.value = roomCode; roomName.value = ownership?.name ?? `房间 ${roomCode}`; selfId.value = memberId
         roomPasswordOpen.value = false; roomPasswordMessage.value = ''
         roomSessionToken.value = roomClient?.getToken() ?? ''
         rememberedRooms.value = rememberRoom(rememberedRooms.value, { code: roomCode, name: name.value.trim(), roomName: roomName.value, avatarId: ownership?.avatarId, ownerToken: ownership?.ownerToken }, aliases)
         settingsOpen.value = false
         inputMode.value = 'microphone'; captions.value = []; joined.value = true; connecting.value = false
         entryOpen.value = false
-        if (mode.value === 'create' && ownership?.ownerToken) void finishRoomCreation(roomCode, roomSessionToken.value, ownership.ownerToken, creationName, operation, creationAccount)
+        if (wasCreating && ownership?.ownerToken) void finishRoomCreation(roomCode, roomSessionToken.value, ownership.ownerToken, creationName, operation, creationAccount)
+        mode.value = 'join'
         const path = roomPath(roomCode)
         if (location.pathname !== path || location.search || location.hash) {
           if (roomCodeFromPath(location.pathname)) window.history.replaceState(null, '', path)
@@ -499,12 +534,25 @@ async function enter(password?: string | Event, creationPassword?: string) {
         finishTypedSend()
         if (!joined.value) { connecting.value = false; roomClient?.close() }
       },
-      onPasswordRequired(roomCode, message) {
+      async onPasswordRequired(roomCode, message) {
         if (operation !== roomEntryOperation) return
-        code.value = roomCode; connecting.value = false; showRoomPassword(message)
+        saveReconnectToken(roomCode); code.value = roomCode; connecting.value = false
+        if (joined.value) connectionState.value = 'verification'
+        if (joined.value && !accountRecoveryAttempted && typeof password !== 'string') {
+          accountRecoveryAttempted = true
+          const client = createAccountClient(); roomAccessClient = client
+          try {
+            const identity = await client.identity()
+            if (operation !== roomEntryOperation) return
+            accountUser.value = identity.user
+            if (identity.user) { void enter(); return }
+          } catch { /* 仍保留界面，允许重新验证。 */ }
+          finally { client.cancel(); if (roomAccessClient === client) roomAccessClient = undefined }
+        }
+        if (operation === roomEntryOperation) showRoomPassword(message)
       },
       onAccessRevoked(roomCode, message) {
-        leave(false); mode.value = 'join'; code.value = roomCode
+        pauseRoomConnection(); saveReconnectToken(roomCode); connectionState.value = 'verification'; connecting.value = false; mode.value = 'join'; code.value = roomCode
         showRoomPassword(message)
       },
       onRoomStatus(status) {
@@ -527,10 +575,11 @@ async function enter(password?: string | Event, creationPassword?: string) {
           asrMessage.value = !status.asrEnabled ? '豆包 ASR 已被房主暂停' : '请房主配置本房间 API Key'
         } else if (asrProvider.value === 'doubao' && !asrActive.value) asrMessage.value = '豆包 ASR 可用，请手动开启麦克风'
       },
-      onClose() { leave(false); prepareRoomEntry(); error.value = '房间连接已断开，请重新加入；麦克风已停止。' },
+      onClose() { if (operation === roomEntryOperation) pauseRoomConnection() },
+      onFatal(message) { pauseRoomConnection(); connectionState.value = 'failed'; connecting.value = false; error.value = message; saveActiveRoom(); saveReconnectToken(code.value) },
     })
     roomClient.connect(mode.value, name.value.trim(), code.value, rememberedRooms.value.find(value => value.code === code.value)?.ownerToken,
-      accessTicket ? { accessTicket } : submittedPassword === undefined ? undefined : { password: submittedPassword })
+      reconnectToken ? { reconnectToken } : accessTicket ? { accessTicket } : submittedPassword === undefined ? undefined : { password: submittedPassword })
     return
   }
   room.value = mode.value === 'create' ? String(Math.floor(100000 + Math.random() * 900000)) : code.value
@@ -578,6 +627,8 @@ function runSimulation() {
   tick()
 }
 function leave(updateLocation = true) {
+  clearTimeout(entryRetryTimer)
+  saveActiveRoom(); saveReconnectToken(room.value); connectionState.value = 'connected'
   roomCreationController?.abort(); roomBindingClient?.cancel()
   roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
   roomPasswordOpen.value = false; roomPasswordMessage.value = ''
@@ -620,6 +671,7 @@ function unlockReactionSound() { if (joined.value) void unlockSound() }
 window.addEventListener('pointerdown', unlockReactionSound)
 window.addEventListener('keydown', unlockReactionSound)
 onUnmounted(() => {
+  disposeRoomViewport(); clearTimeout(entryRetryTimer)
   roomCreationController?.abort(); roomBindingClient?.cancel()
   roomEntryOperation++; roomAccessClient?.cancel(); roomAccessClient = undefined
   finishTypedSend(); reactionSound.close()
@@ -628,6 +680,9 @@ onUnmounted(() => {
   asr.stop(); roomClient?.close(); clearInterval(timer); pending = []
   copyOperation++; clearCopyMessage()
   window.removeEventListener('pagehide', handlePageHide)
+  window.removeEventListener('pageshow', resumeRoomConnection)
+  window.removeEventListener('online', resumeRoomConnection)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('popstate', handleHistoryNavigation)
 })
 function clearCopyMessage() {
@@ -656,7 +711,13 @@ async function shareCurrentRoom() {
   if (operation !== copyOperation) return
   showCopyMessage(result === 'copied' ? '复制链接成功' : '复制失败，请重试')
 }
-prepareRoomEntry()
+const activeRoom = loadActiveRoom()
+const explicitRoom = roomCodeFromPath(location.pathname)
+if (activeRoom && location.pathname !== '/glasses' && (!explicitRoom || explicitRoom === activeRoom.code)) {
+  room.value = activeRoom.code; code.value = activeRoom.code; name.value = activeRoom.name; roomName.value = activeRoom.roomName
+  mode.value = 'join'; joined.value = true; connectionState.value = 'reconnecting'
+  void enter()
+} else prepareRoomEntry()
 </script>
 
 <template>
@@ -668,7 +729,7 @@ prepareRoomEntry()
     <div class="concept-notes"><span>高对比字幕</span><span>清晰说话人标记</span><span>两行核心信息</span></div>
   </div>
   <div v-else class="app-shell" :class="{ 'in-room': joined, 'home-shell': !joined }">
-    <RoomPasswordPrompt v-if="roomPasswordOpen && !joined" :busy="connecting" :message="roomPasswordMessage" @submit="enter" @cancel="cancelRoomPassword" />
+    <RoomPasswordPrompt v-if="roomPasswordOpen" :busy="connecting" :message="roomPasswordMessage" @submit="enter" @cancel="cancelRoomPassword" />
     <HomePage v-if="!joined" :rooms="rememberedRooms" :busy="connecting" @identity="updateAccountIdentity" @enter="reenterRoom" @create="openRoomEntry('create')" @join="openRoomEntry('join')">
       <p v-if="connecting" class="home-status" role="status">正在连接房间…</p>
       <p v-if="error && !entryOpen" class="home-status" role="alert">{{ error }}</p>
@@ -689,6 +750,9 @@ prepareRoomEntry()
           <button class="room-exit room-back-button" type="button" aria-label="退出房间" title="返回首页" @click="leave()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 7h7a6 6 0 0 1 0 12h-4m-3-17-5 5 5 5"/></svg></button>
         </div>
       </header>
+      <p v-if="connectionState === 'reconnecting'" class="room-grid-note" role="status">正在重连…</p>
+      <p v-if="connectionState === 'verification'" class="room-grid-note" role="status">需要重新验证 <button @click="showRoomPassword(roomPasswordMessage)">重新验证</button><button @click="leave()">返回首页</button></p>
+      <p v-if="connectionState === 'failed'" class="room-grid-note"><button @click="leave()">返回首页</button></p>
       <Teleport to="body"><Transition name="room-copy-toast"><p v-if="copyMessage" class="room-copy-toast" role="status" aria-live="polite" aria-atomic="true">{{ copyMessage }}</p></Transition></Teleport>
       <p v-if="roomMode === 'online' && !roomAsrEnabled" class="room-grid-note" role="status">语音转文字功能被关闭了喵！只能打字说话了喵~</p>
       <RoomApiSettings v-if="settingsOpen && roomMode === 'online'" :key="room + ':' + !!rememberedRooms.find(saved => saved.code === room)?.ownerToken" :token="roomSessionToken" :code="room" :preferences="soundPreferences" :speech-volume="speechVolume" :speech-enabled="speechEnabled" @speech-enabled="updateSpeechEnabled" :adaptive="adaptiveCards" :storage-failed="personalStorageFailed || soundStorageFailed" @sound="updateSoundPreferences" @speech="updateSpeechVolume" @layout="adaptiveCards = $event" :status-version="roomStatusVersion" :owner-token="rememberedRooms.find(saved => saved.code === room)?.ownerToken" @bound="rememberedRooms = forgetRoomOwnership(rememberedRooms, room)" @close="settingsOpen = false" />

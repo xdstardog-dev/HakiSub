@@ -29,7 +29,11 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
   sockets.on('connection', (socket, address) => {
     let member, room, messages = 0, windowStart = Date.now(), messageQueue = Promise.resolve()
     socket.alive = true
-    socket.on('pong', () => { socket.alive = true })
+    socket.on('pong', () => {
+      socket.alive = true
+      // 活跃连接续期，避免长时间交流后刷新时凭据已过期；撤权成员不能续期。
+      if (member && sessions.get(member.token) === member && member.reconnectToken) roomAccess.issueResume(room, member, member.reconnectToken)
+    })
     const timeout = setTimeout(() => socket.close(1008, 'join timeout'), 10000)
     const fail = (message, reason) => send(socket, { type: 'error', message, ...(reason ? { reason, code: room?.code } : {}) })
     socket.on('error', () => {})
@@ -57,22 +61,32 @@ export function createRoomGateway({ maxRooms = 100, heartbeatMs = 15000, roomSto
             if (socket.readyState !== WebSocket.OPEN) return
           } else {
             room = typeof event.code === 'string' && /^\d{6}$/.test(event.code) ? rooms.get(aliases.get(event.code) ?? event.code) : undefined
-            if (!room || room.persisting) { fail('房间不存在或尚未创建完成。'); return }
+            if (!room || room.persisting) { fail('房间不存在或尚未创建完成。', room?.persisting ? 'temporary' : 'room-not-found'); return }
           }
-          if (room.members.size >= 8) { fail('房间已满，最多允许 8 人。'); return }
-          const owner = !room.ownerUid && (!!ownerToken || verifyOwnerToken(room, event.ownerToken))
-          if (room.settingsBusy) { fail('房间设置正在更新，请稍后重试。'); return }
-          const accountUid = roomAccess.consumeTicket(room, event.accessTicket)
-          if (!owner && !accountUid) {
+
+          const resumption = roomAccess.resume(room, event.reconnectToken)
+          const owner = !room.ownerUid && (!!resumption?.owner || !!ownerToken || verifyOwnerToken(room, event.ownerToken))
+          if (room.settingsBusy) { fail('房间设置正在更新，请稍后重试。', 'temporary'); return }
+          const accountUid = roomAccess.consumeTicket(room, event.accessTicket) ?? resumption?.accountUid
+          if (!owner && !accountUid && !resumption) {
             try { roomAccess.verifyCode(room, event.password, `network:${address}`) }
             catch (error) { fail(error.message, error.reason); return }
           }
+          // 先释放同凭据的半开连接，再检查人数，避免本人重复占用席位。
+          const previous = room.members.get(resumption?.memberId)
+          if (previous) {
+            sessions.delete(previous.token); previous.asr?.terminate(); room.members.delete(previous.id)
+            previous.socket.close(4001, 'connection replaced')
+          }
+          if (room.members.size >= 8) { fail('房间已满，最多允许 8 人。', 'room-full'); return }
           // 槽位归属连接身份；离房只释放自己的槽位，不重编号其他成员。
           const toneSlot = Array.from({ length: 8 }, (_, index) => index).find(slot => ![...room.members.values()].some(member => member.toneSlot === slot))
           member = { id: randomUUID(), token: randomUUID(), name: event.name.trim(), mic: false, mode: 'muted', toneSlot, socket, room, owner, accountUid, asr: undefined, lastTypedAt: 0, lastReactionAt: 0 }
           room.members.set(member.id, member); sessions.set(member.token, member)
           clearTimeout(timeout)
-          send(socket, { type: 'joined', code: room.code, name: room.name, avatarId: normalizeRoomAvatar(room.avatarId), aliases: room.aliases ?? [], memberId: member.id, token: member.token, isOwner: owner, ...(ownerToken ? { ownerToken } : {}) })
+          const reconnectToken = roomAccess.issueResume(room, member, resumption ? event.reconnectToken : undefined)
+          member.reconnectToken = reconnectToken
+          send(socket, { type: 'joined', reconnectToken, code: room.code, name: room.name, avatarId: normalizeRoomAvatar(room.avatarId), aliases: room.aliases ?? [], memberId: member.id, token: member.token, isOwner: owner, ...(ownerToken ? { ownerToken } : {}) })
           send(socket, { type: 'room-status', ...publicStatus(room) })
           publishMembers(room)
           return

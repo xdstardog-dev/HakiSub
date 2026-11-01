@@ -8,5 +8,5 @@ export function receiveCaptionEntrance(queue: Caption[], event: CaptionEvent, no
   const existing = queue.find(caption => caption.memberId === event.memberId && caption.id === event.utteranceId)
   const occupied = queue.some(caption => caption.memberId === event.memberId && caption.text.trim() && captionOpacity(caption, now) > 0)
   receiveCaption(queue, event.memberId, event.utteranceId, event.text, event.state, now)
-  return !occupied && !existing && event.source !== 'typing' && !event.utteranceId.startsWith('typed-')
+  return !occupied && !existing
 }
