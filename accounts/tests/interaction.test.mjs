@@ -82,10 +82,19 @@ state.navigate('profile'); assert.match(await workflow.html(), /唯一身份编�
 state.nickname.value = '尚未保存的昵称'; await state.refreshIdentity(); assert.equal(state.nickname.value, '尚未保存的昵称')
 rejectIdentity = true; await state.refreshIdentity(); assert.equal(state.user.value.uid, fixtureUser.uid, '临时网络失败不清除会话')
 rejectIdentity = false; state.navigate('security')
+assert.doesNotMatch(await workflow.html(), /id="current-password"|id="new-email"|房间存档/)
+state.navigate('password'); assert.equal(state.navigationView.value, 'security')
+assert.match(await workflow.html(), /id="current-password"/); assert.doesNotMatch(await workflow.html(), /id="new-email"/)
+state.currentPassword.value = 'unsaved-current'; state.password.value = 'unsaved-new'; state.visibleSecrets.value['new-password'] = true
+state.navigate('security'); assert.equal(state.currentPassword.value, ''); assert.equal(state.password.value, ''); assert.equal(Object.keys(state.visibleSecrets.value).length, 0)
+state.navigate('email'); assert.match(await workflow.html(), /绑定邮箱/)
+assert.equal(state.navigationView.value, 'security'); assert.doesNotMatch(await workflow.html(), /id="current-password"/)
 state.email.value = 'new@example.test'; state.emailPassword.value = 'email-password'; await state.changeEmail(); assert.equal(calls.at(-1).body.currentPassword, 'email-password'); assert.equal(state.emailPassword.value, '')
 assert.match(await workflow.html(), /new-email/); assert.doesNotMatch(await workflow.html(), /替换全部密保/)
-state.navigate('presets'); await new Promise(resolve => setImmediate(resolve)); assert.match(await workflow.html(), /还没有房间存档/)
-await state.logout(); assert.equal(state.user.value, null); assert.equal(state.view.value, 'login'); assert.equal(state.presets.value.length, 0)
+state.navigate('security'); assert.equal(state.email.value, '')
+state.user.value = { ...fixtureUser, email: 'bound@example.test' }; state.navigate('email'); assert.match(await workflow.html(), /更换邮箱/)
+const callCount = calls.length; state.navigate('presets'); assert.equal(state.view.value, 'email'); assert.equal(calls.length, callCount, '移除存档页后不加载存档API')
+await state.logout(); assert.equal(state.user.value, null); assert.equal(state.view.value, 'login')
 state.navigate('recovery'); await state.startRecovery(); state.questions.value[0].answer = 'synthetic answer'; state.password.value = 'fixture-password'; state.confirmPassword.value = 'fixture-password'
 await state.resetPassword(); assert.equal(state.view.value, 'login'); assert.equal(state.password.value, '')
 // 退出后迟到的身份响应不能把旧账号重新挂回页面。

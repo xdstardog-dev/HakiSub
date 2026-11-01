@@ -5,25 +5,26 @@ import { countNameUnits, defaultNickname, isValidDisplayName, NICKNAME_MAXIMUM_U
 import QuestionFields from './QuestionFields.vue'
 import OwnedRooms from './OwnedRooms.vue'
 import AccountNavigation from './AccountNavigation.vue'
-const user = ref(null), projects = ref([]), view = ref('login'), busy = ref(false), checking = ref(true), error = ref(''), message = ref('')
+const user = ref(null), view = ref('login'), busy = ref(false), checking = ref(true), error = ref(''), message = ref('')
 const username = ref(''), nickname = ref(''), password = ref(''), confirmPassword = ref(''), currentPassword = ref(''), recoveryStarted = ref(false)
 const email = ref(''), emailPassword = ref(''), linkToken = ref(''), linkPurpose = ref(''), legacyRecovery = ref(false)
 const linkAccount = ref('')
-const questions = ref(emptyQuestions()), presets = ref([]), editingNames = ref({}), projectOrigin = ref('https://hakisub.xdstar.work'), registrationStep = ref(1)
-const titles = { login: '欢迎回来', register: '创建你的 XDstar 账号', recovery: '找回密码', center: '总览', rooms: '我的房间', presets: '房间存档', verify: '验证邮箱', reset: '设置新密码', profile: '个人资料', security: '安全设置' }
-const descriptions = { center: '从这里继续你的小空间。', rooms: '管理绑定当前账号的 HakiSub 房间。', presets: '保存偏好，在下次交流时继续使用。', profile: '管理你的公开昵称与账号信息。', security: '保护账号，保持恢复方式可用。' }
+const questions = ref(emptyQuestions()), projectOrigin = ref('https://hakisub.xdstar.work'), registrationStep = ref(1)
+const titles = { login: '欢迎回来', register: '创建你的 XDstar 账号', recovery: '找回密码', center: '总览', rooms: '我的房间', password: '修改密码', email: '更换邮箱', verify: '验证邮箱', reset: '设置新密码', profile: '个人资料', security: '安全设置' }
+const descriptions = { center: '从这里继续你的小空间。', rooms: '管理绑定当前账号的 HakiSub 房间。', password: '验证当前密码后，设置新的登录密码。', email: '验证当前密码及新邮箱，更新账号的恢复方式。', profile: '管理你的公开昵称与账号信息。', security: '保护账号，保持恢复方式可用。' }
 const visibleSecrets = ref({}), navigationDialog = ref(null), pageHeading = ref(null), drawerOpen = ref(false)
-const title = computed(() => titles[view.value])
+const securityChild = computed(() => ['password', 'email'].includes(view.value))
+const navigationView = computed(() => securityChild.value ? 'security' : view.value)
+const title = computed(() => view.value === 'email' && !user.value?.email ? '绑定邮箱' : titles[view.value])
 const registrationNickname = computed(() => nickname.value.trim() || defaultNickname(username.value))
 let identityGeneration = 0, disposed = false, mobileQuery, returnFocus, scrollLock
 function emptyQuestions() { return ['你为自己记住的第一段私密短语是什么？', '你为自己记住的第二段私密短语是什么？', '你为自己记住的第三段私密短语是什么？'].map(question => ({ question, answer: '' })) }
-function clearSecrets() { visibleSecrets.value = {}; password.value = ''; confirmPassword.value = ''; currentPassword.value = ''; emailPassword.value = ''; questions.value = emptyQuestions(); recoveryStarted.value = false }
-function clearIdentity() { identityGeneration++; clearSecrets(); user.value = null; projects.value = []; presets.value = []; editingNames.value = {}; nickname.value = ''; view.value = 'login'; registrationStep.value = 1; closeDrawer() }
+function clearSecrets() { visibleSecrets.value = {}; password.value = ''; confirmPassword.value = ''; currentPassword.value = ''; emailPassword.value = ''; email.value = ''; questions.value = emptyQuestions(); recoveryStarted.value = false }
+function clearIdentity() { identityGeneration++; clearSecrets(); user.value = null; nickname.value = ''; view.value = 'login'; registrationStep.value = 1; closeDrawer() }
 function navigate(next) {
-  if (busy.value) return
+  if (busy.value || !Object.hasOwn(titles, next)) return
   if (view.value !== next) { clearSecrets(); registrationStep.value = 1 }
   error.value = ''; message.value = ''; view.value = next; closeDrawer()
-  if (next === 'presets') void loadPresets()
   nextTick(() => pageHeading.value?.focus())
 }
 function previousRegistrationStep() { registrationStep.value = 1; error.value = ''; visibleSecrets.value = {}; nextTick(() => pageHeading.value?.focus()) }
@@ -41,8 +42,8 @@ async function refreshIdentity() {
   try {
     const data = await accountRequest('/api/account/me')
     if (disposed || current !== identityGeneration) return
-    if (user.value?.uid !== data.user.uid) { clearSecrets(); presets.value = []; editingNames.value = {}; nickname.value = data.user.nickname }
-    user.value = data.user; projects.value = data.projects
+    if (user.value?.uid !== data.user.uid) { clearSecrets(); nickname.value = data.user.nickname }
+    user.value = data.user
     if (!linkToken.value && ['login', 'register', 'recovery'].includes(view.value)) view.value = 'center'
   } catch (issue) {
     if (disposed || current !== identityGeneration) return
@@ -62,7 +63,7 @@ async function authenticate(register = false) {
     }
     identityGeneration++
     user.value = (await accountRequest(`/api/account/${register ? 'register' : 'login'}`, 'POST', body)).user
-    clearSecrets(); registrationStep.value = 1; nickname.value = user.value.nickname; projects.value = []; presets.value = []; view.value = 'center'
+    clearSecrets(); registrationStep.value = 1; nickname.value = user.value.nickname; view.value = 'center'
     await refreshIdentity()
     if (user.value) message.value = register ? '注册成功，已自动登录。' : '登录成功。'
   })
@@ -80,14 +81,6 @@ async function resetFromEmail() { await execute(async () => { const result = awa
 async function startRecovery() { await execute(async () => { const data = await accountRequest('/api/account/recovery/start', 'POST', { username: username.value }); questions.value = data.questions.map(question => ({ question, answer: '' })); recoveryStarted.value = true }) }
 function restartRecovery() { clearSecrets(); error.value = ''; message.value = '' }
 async function resetPassword() { await execute(async () => { const result = await accountRequest('/api/account/recovery/reset', 'POST', { answers: questions.value.map(item => item.answer), password: password.value, confirmPassword: confirmPassword.value }); clearIdentity(); message.value = result.message }) }
-async function loadPresets() {
-  await execute(async () => {
-    presets.value = (await accountRequest('/api/projects/hakisub/presets')).presets
-    editingNames.value = Object.fromEntries(presets.value.map(preset => [preset.id, preset.name]))
-  })
-}
-async function renamePreset(preset) { await execute(async () => { const updated = (await accountRequest(`/api/projects/hakisub/presets/${preset.id}`, 'PATCH', { name: editingNames.value[preset.id] })).preset; presets.value = presets.value.map(item => item.id === preset.id ? updated : item); message.value = '存档名称已更新。' }) }
-async function deletePreset(preset) { if (!confirm(`删除存档“${preset.name}”？这不会销毁实时房间。`)) return; await execute(async () => { await accountRequest(`/api/projects/hakisub/presets/${preset.id}`, 'DELETE', {}); presets.value = presets.value.filter(item => item.id !== preset.id); message.value = '存档已删除。' }) }
 function openDrawer() {
   if (!navigationDialog.value || drawerOpen.value) return
   returnFocus = document.activeElement
@@ -134,7 +127,7 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
     <template v-if="user">
       <aside class="desktop-sidebar">
         <a class="brand" href="/" aria-label="XDstar 首页"><span class="brand-mark" aria-hidden="true">✳</span> XDstar<span>.</span></a>
-        <AccountNavigation :view="view" :user="user" :busy="busy" @navigate="navigate" @logout="logout" />
+        <AccountNavigation :view="navigationView" :user="user" :busy="busy" @navigate="navigate" @logout="logout" />
       </aside>
       <header class="mobile-header">
         <button class="icon-button" aria-label="打开导航菜单" aria-controls="mobile-navigation" :aria-expanded="drawerOpen" @click="openDrawer">☰</button>
@@ -143,14 +136,15 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
       </header>
       <dialog id="mobile-navigation" ref="navigationDialog" class="navigation-drawer" aria-label="工作台导航菜单" aria-modal="true" @cancel.prevent="closeDrawer" @close="finishDrawerClose" @click="event => { if (event.target === navigationDialog) closeDrawer() }">
         <div class="drawer-heading"><a class="brand" href="/">✳ XDstar<span>.</span></a><button class="icon-button" aria-label="关闭导航菜单" autofocus @click="closeDrawer">×</button></div>
-        <AccountNavigation :view="view" :user="user" :busy="busy" @navigate="navigate" @logout="logout" />
+        <AccountNavigation :view="navigationView" :user="user" :busy="busy" @navigate="navigate" @logout="logout" />
       </dialog>
     </template>
     <header v-else class="authentication-header"><a class="brand" href="/">✳ XDstar<span>.</span></a><a :href="projectOrigin" target="_blank" rel="noopener noreferrer">打开 HakiSub ↗</a></header>
     <div class="content-column">
       <main id="main-content" :class="user ? 'workspace-content' : 'authentication-content'" :aria-busy="busy || checking">
         <section :class="user ? 'workspace-page' : 'authentication-card'" aria-labelledby="page-title">
-          <div class="page-heading"><p class="eyebrow">{{ user ? '你的工作空间 / ' + (['rooms', 'presets'].includes(view) ? 'HakiSub' : ['profile', 'security'].includes(view) ? '账号' : '工作台') : 'XDSTAR ACCOUNT' }}</p><h1 id="page-title" ref="pageHeading" tabindex="-1">{{ title }}</h1><p v-if="user" class="muted page-description">{{ descriptions[view] }}</p><p v-else-if="view === 'login'" class="muted">登录，继续你的小空间。</p></div>
+          <button v-if="user && securityChild" type="button" class="text-button security-back" :disabled="busy" @click="navigate('security')">← 返回安全设置</button>
+          <div class="page-heading"><p class="eyebrow">{{ user ? '你的工作空间 / ' + (view === 'rooms' ? 'HakiSub' : ['profile', 'security', 'password', 'email'].includes(view) ? '账号' : '工作台') : 'XDSTAR ACCOUNT' }}</p><h1 id="page-title" ref="pageHeading" tabindex="-1">{{ title }}</h1><p v-if="user" class="muted page-description">{{ descriptions[view] }}</p><p v-else-if="view === 'login'" class="muted">登录，继续你的小空间。</p></div>
           <p v-if="checking" role="status">正在读取登录状态…</p><p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="message" class="success" role="status">{{ message }}</p>
           <ol v-if="view === 'register'" class="registration-progress" aria-label="注册进度"><li :aria-current="registrationStep === 1 ? 'step' : undefined"><span>1</span> 创建账号</li><li :aria-current="registrationStep === 2 ? 'step' : undefined"><span>2</span> 验证邮箱</li></ol>
           <form v-if="!checking && (view === 'login' || (view === 'register' && registrationStep === 1))" @submit.prevent="view === 'register' ? authenticate(true) : authenticate()"><fieldset :disabled="busy">
@@ -175,7 +169,7 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
           <template v-if="user && view === 'center'">
             <div class="welcome-banner"><div><span class="eyebrow">WELCOME HOME</span><h2>你好，{{ user.nickname }} <span aria-hidden="true">✳</span></h2><p>准备好开始一场新的交流了吗？</p></div><span class="welcome-symbol" aria-hidden="true">✳</span></div>
             <div class="section-heading"><h2>你的项目</h2><span class="muted">工具与新想法，从这里出发</span></div>
-            <div class="project-grid"><article class="project-card"><span class="project-icon" aria-hidden="true">H</span><div><h3>HakiSub</h3><p>面对面交流的实时字幕，让每一句话都被看见。</p><small>{{ projects.some(item => item.key === 'hakisub') ? '已关联个人存档' : '支持游客参与' }}</small></div><a class="secondary" :href="projectOrigin" target="_blank" rel="noopener noreferrer">打开项目 ↗</a></article></div>
+            <div class="project-grid"><article class="project-card"><span class="project-icon" aria-hidden="true">H</span><div><h3>HakiSub</h3><p>面对面交流的实时字幕，让每一句话都被看见。</p><small>支持游客参与</small></div><a class="secondary" :href="projectOrigin" target="_blank" rel="noopener noreferrer">打开项目 ↗</a></article></div>
           </template>
           <OwnedRooms v-if="user && ['center', 'rooms'].includes(view)" :key="user.uid" :uid="user.uid" :project-origin="projectOrigin" :overview="view === 'center'" @open-rooms="navigate('rooms')" @session-expired="expireSession" />
           <template v-if="user && view === 'profile'">
@@ -184,10 +178,12 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
           <form class="settings-card" @submit.prevent="changeNickname"><fieldset :disabled="busy"><h3>用户昵称</h3><label for="new-nickname">新的用户昵称</label><input id="new-nickname" v-model="nickname" maxlength="16" autocomplete="nickname" :aria-invalid="countNameUnits(nickname.trim()) > NICKNAME_MAXIMUM_UNITS" required><small>最多8个汉字或16个英文／数字，混合折算 {{ countNameUnits(nickname.trim()) }}/16。</small><button class="secondary" :disabled="!isValidDisplayName(nickname.trim(), NICKNAME_MAXIMUM_UNITS)">保存昵称</button></fieldset></form>
 
           </template>
-          <template v-if="user && view === 'security'"><form class="settings-card" @submit.prevent="changePassword"><fieldset :disabled="busy"><h3>修改密码</h3><label for="current-password">当前密码</label><div class="secret-field"><input id="current-password" v-model="currentPassword" :type="visibleSecrets['current-password'] ? 'text' : 'password'" autocomplete="current-password" maxlength="128" required><button type="button" :aria-controls="'current-password'" :aria-pressed="!!visibleSecrets['current-password']" @click="visibleSecrets['current-password'] = !visibleSecrets['current-password']">{{ visibleSecrets['current-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password">新密码</label><div class="secret-field"><input id="new-password" v-model="password" :type="visibleSecrets['new-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password'" :aria-pressed="!!visibleSecrets['new-password']" @click="visibleSecrets['new-password'] = !visibleSecrets['new-password']">{{ visibleSecrets['new-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password-confirm">确认新密码</label><div class="secret-field"><input id="new-password-confirm" v-model="confirmPassword" :type="visibleSecrets['new-password-confirm'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password-confirm'" :aria-pressed="!!visibleSecrets['new-password-confirm']" @click="visibleSecrets['new-password-confirm'] = !visibleSecrets['new-password-confirm']">{{ visibleSecrets['new-password-confirm'] ? '隐藏' : '显示' }}</button></div><button class="secondary">更新密码</button></fieldset></form>
-          <form class="settings-card" @submit.prevent="changeEmail"><fieldset :disabled="busy"><h3>{{ user.email ? '更换邮箱' : '绑定邮箱' }}</h3><p>{{ user.email || '尚未绑定邮箱；原密保找回暂时保留。' }}</p><p>新邮箱验证完成后启用，密保找回随即停用，所有旧会话退出。</p><label for="new-email">新邮箱</label><input id="new-email" v-model="email" type="email" autocomplete="email" maxlength="254" required><label for="email-password">验证当前密码</label><input id="email-password" v-model="emailPassword" type="password" autocomplete="current-password" maxlength="128" required><button class="secondary">发送验证邮件</button></fieldset></form>
-        </template>
-          <template v-if="user && view === 'presets'"><p class="muted">存档仅保存识别来源和布局偏好。加载后仍需选择房间并手动开麦，不包含 API Key 或房主权限。</p><div v-if="!presets.length && !busy && !error" class="empty-state"><span aria-hidden="true">▤</span><h2>还没有房间存档</h2><p>在 HakiSub 的“个人房间存档”中保存当前配置，下次就能从这里继续。</p></div><article v-for="preset in presets" :key="preset.id" class="settings-card preset"><form @submit.prevent="renamePreset(preset)"><label :for="`preset-${preset.id}`">存档名称</label><input :id="`preset-${preset.id}`" v-model="editingNames[preset.id]" maxlength="60" required :disabled="busy"><small>更新于 {{ date(preset.updatedAt) }}</small><div class="button-row"><button class="secondary" :disabled="busy">保存名称</button><a :href="`${projectOrigin}/?preset=${encodeURIComponent(preset.id)}`" target="_blank" rel="noopener noreferrer">在 HakiSub 加载 ↗</a><button type="button" class="danger" @click="deletePreset(preset)" :disabled="busy">删除</button></div></form></article><button class="text-button" @click="loadPresets" :disabled="busy">刷新存档</button></template>
+          <section v-if="user && view === 'security'" class="settings-card security-overview" aria-label="账号安全选项">
+            <button type="button" class="security-setting-link" :disabled="busy" @click="navigate('password')"><span><strong>修改密码</strong><small>验证当前密码后设置新密码</small></span><span aria-hidden="true">→</span></button>
+            <button type="button" class="security-setting-link" :disabled="busy" @click="navigate('email')"><span><strong>{{ user.email ? '更换邮箱' : '绑定邮箱' }}</strong><small>{{ user.email || '尚未绑定邮箱' }}</small></span><span aria-hidden="true">→</span></button>
+          </section>
+          <form v-if="user && view === 'password'" class="settings-card" @submit.prevent="changePassword"><fieldset :disabled="busy"><label for="current-password">当前密码</label><div class="secret-field"><input id="current-password" v-model="currentPassword" :type="visibleSecrets['current-password'] ? 'text' : 'password'" autocomplete="current-password" maxlength="128" required><button type="button" :aria-controls="'current-password'" :aria-pressed="!!visibleSecrets['current-password']" @click="visibleSecrets['current-password'] = !visibleSecrets['current-password']">{{ visibleSecrets['current-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password">新密码</label><div class="secret-field"><input id="new-password" v-model="password" :type="visibleSecrets['new-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password'" :aria-pressed="!!visibleSecrets['new-password']" @click="visibleSecrets['new-password'] = !visibleSecrets['new-password']">{{ visibleSecrets['new-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password-confirm">确认新密码</label><div class="secret-field"><input id="new-password-confirm" v-model="confirmPassword" :type="visibleSecrets['new-password-confirm'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password-confirm'" :aria-pressed="!!visibleSecrets['new-password-confirm']" @click="visibleSecrets['new-password-confirm'] = !visibleSecrets['new-password-confirm']">{{ visibleSecrets['new-password-confirm'] ? '隐藏' : '显示' }}</button></div><button class="secondary">更新密码</button></fieldset></form>
+          <form v-if="user && view === 'email'" class="settings-card" @submit.prevent="changeEmail"><fieldset :disabled="busy"><p>{{ user.email || '尚未绑定邮箱；原密保找回暂时保留。' }}</p><p>新邮箱验证完成后启用，密保找回随即停用，所有旧会话退出。</p><label for="new-email">新邮箱</label><input id="new-email" v-model="email" type="email" autocomplete="email" maxlength="254" required><label for="email-password">验证当前密码</label><input id="email-password" v-model="emailPassword" type="password" autocomplete="current-password" maxlength="128" required><button class="secondary">发送验证邮件</button></fieldset></form>
         </section>
       </main>
       <footer><span>XDstar ✳ 小工具与新想法</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">鄂ICP备2026059859号-1</a></footer>

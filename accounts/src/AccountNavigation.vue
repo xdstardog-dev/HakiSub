@@ -3,7 +3,7 @@ defineProps({ view: String, user: Object, busy: Boolean })
 defineEmits(['navigate', 'logout'])
 const groups = [
   { title: '工作台', items: [{ id: 'center', label: '总览', icon: '◫' }] },
-  { title: 'HakiSub', items: [{ id: 'rooms', label: '我的房间', icon: '▦' }, { id: 'presets', label: '房间存档', icon: '▤' }] },
+  { title: 'HakiSub', items: [{ id: 'rooms', label: '我的房间', icon: '▦' }] },
   { title: '账号', items: [{ id: 'profile', label: '个人资料', icon: '◉' }, { id: 'security', label: '安全设置', icon: '◇' }] },
 ]
 </script>
