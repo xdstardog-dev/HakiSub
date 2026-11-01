@@ -1307,3 +1307,9 @@ roomNavigation.copyText 统一原生写入、缺失/异常后临时只读 textar
 新增 guest-names.test.mjs 并纳入 npm test，逐项核对44个名字、所有随机区间、长度规则、刷新保留、独立存储、无效缓存替换和禁用存储回退；demo.test.mjs 覆盖创建/加入随机名、历史游客与旧账号昵称隔离、换房稳定及账号昵称优先。调整 member-controls-browser.mjs 两处写死“游客”的断言以兼容随机名，该浏览器套件本次未运行。README 与 ARCHITECTURE 已维护，DEEPSEEK-MEMORY 未编辑。
 
 最终 npm test 全套通过，npm run build 通过，git diff --check 通过。首次受沙箱子进程限制，Vite/esbuild spawn EPERM、旧房间重命名子进程无退出码；允许启动子进程后两项重跑通过。未验证真实麦克风、豆包 API、物理手机或生产页面；未部署、提交或推送。
+
+## 2026-11-01 · 游客随机昵称已同步GitHub并部署
+
+按用户明确授权提交并推送 fb96f0aba5aaa92510c2e3737d47f2e2bbe422f2 至 main，部署前重新 npm run build 通过。复用上一发布流程，绑定当前镜像和本次源码，上传纯前端资源包、源码与助手；离线候选静态检查及后端/依赖聚合指纹一致。本地真实Chrome专项通过后，于北京时间19:17:31部署 guest-names-20261101T1115Z。停网关后制作一致加密备份并实际解密逐字节核验，只重建hakisub；账号与Caddy未重启、环境/卷/端口/配置保留，房间文件逐字节一致，网关重启按原规则清空内存Key。
+
+19:17:45公网34项资源哈希及首页/六位入口/健康200、私有路径404检查通过，服务器38项资源一致。19:17:49正式HTTPS前端真实Chrome专项通过：固定随机区间的两位游客名字不同并广播一致，刷新与退出重入保持名字，无脚本错误；房间/API始终路由至隔离本地网关，账号身份使用合成游客响应，没有创建生产房间或账号。测试证据保存在 artifacts/guest-names-20261101T1115Z/verification/。本地全套 npm test 已于实现阶段通过，未变更功能后重跑构建及新增浏览器专项；物理手机、真实麦克风/豆包未验收。发布摘要、归档哈希和仅回退代码命令见 RELEASE-GUEST-NAMES-20261101.md；DEEPSEEK-MEMORY未编辑。
