@@ -294,6 +294,7 @@ try {
     await page.getByLabel('确认新密码', { exact: true }).fill('fixture-password')
     await page.getByRole('button', { name: '重置密码', exact: true }).click()
     await page.getByRole('heading', { name: '欢迎回来', exact: true }).waitFor()
+    await login(page)
     const token = 'a'.repeat(43)
     await page.goto(origin + '/account/#register=' + token)
     await page.getByRole('heading', { name: '验证邮箱', exact: true }).waitFor()
