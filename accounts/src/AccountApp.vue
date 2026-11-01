@@ -8,6 +8,7 @@ import AccountNavigation from './AccountNavigation.vue'
 const user = ref(null), projects = ref([]), view = ref('login'), busy = ref(false), checking = ref(true), error = ref(''), message = ref('')
 const username = ref(''), nickname = ref(''), password = ref(''), confirmPassword = ref(''), currentPassword = ref(''), recoveryStarted = ref(false)
 const email = ref(''), emailPassword = ref(''), linkToken = ref(''), linkPurpose = ref(''), legacyRecovery = ref(false)
+const linkAccount = ref('')
 const questions = ref(emptyQuestions()), presets = ref([]), editingNames = ref({}), projectOrigin = ref('https://hakisub.xdstar.work'), registrationStep = ref(1)
 const titles = { login: '欢迎回来', register: '创建你的 XDstar 账号', recovery: '找回密码', center: '总览', rooms: '我的房间', presets: '房间存档', verify: '验证邮箱', reset: '设置新密码', profile: '个人资料', security: '安全设置' }
 const descriptions = { center: '从这里继续你的小空间。', rooms: '管理绑定当前账号的 HakiSub 房间。', presets: '保存偏好，在下次交流时继续使用。', profile: '管理你的公开昵称与账号信息。', security: '保护账号，保持恢复方式可用。' }
@@ -35,6 +36,7 @@ async function execute(operation) {
   finally { visibleSecrets.value = {}; busy.value = false }
 }
 async function refreshIdentity() {
+  if (linkToken.value) { checking.value = false; return }
   const current = ++identityGeneration
   try {
     const data = await accountRequest('/api/account/me')
@@ -105,10 +107,17 @@ function closeDrawer() { if (navigationDialog.value?.open) navigationDialog.valu
 function onViewportChange(event) { if (!event.matches) closeDrawer() }
 function expireSession() { clearIdentity(); error.value = '登录已过期，请重新登录。' }
 const date = value => new Date(value).toLocaleString('zh-CN')
-const onFocus = () => { if (!busy.value) void refreshIdentity() }
+const onFocus = () => { if (!busy.value && !linkToken.value) void refreshIdentity() }
+async function inspectEmailLink() {
+  const token = linkToken.value
+  try {
+    const result = await accountRequest('/api/account/email/link-details', 'POST', { token, purpose: linkPurpose.value })
+    if (linkToken.value === token) linkAccount.value = result.username
+  } catch (issue) { if (linkToken.value === token) error.value = issue.message }
+}
 function readEmailLink() {
   const match = window.location.hash.match(/^#(register|bind|reset)=([A-Za-z0-9_-]{43})$/)
-  if (match) { clearSecrets(); error.value = ''; message.value = ''; linkPurpose.value = match[1]; linkToken.value = match[2]; view.value = match[1] === 'reset' ? 'reset' : 'verify'; window.history.replaceState(null, '', window.location.pathname) }
+  if (match) { clearIdentity(); linkAccount.value = ''; error.value = ''; message.value = ''; linkPurpose.value = match[1]; linkToken.value = match[2]; view.value = match[1] === 'reset' ? 'reset' : 'verify'; window.history.replaceState(null, '', window.location.pathname); void inspectEmailLink() }
 }
 onMounted(async () => {
   readEmailLink(); window.addEventListener('hashchange', readEmailLink)
@@ -153,8 +162,8 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
         </fieldset></form>
 
           <div v-if="!checking && view === 'register' && registrationStep === 2"><h2>请检查邮箱</h2><p>打开邮件中的链接并确认，才会创建账号。链接30分钟内有效。</p><button class="secondary" :disabled="busy" @click="previousRegistrationStep">重新填写</button></div>
-          <form v-if="!checking && view === 'verify'" @submit.prevent="confirmEmail"><p>确认使用此邮箱完成注册或更换绑定邮箱。请仅确认你本人发起的操作。</p><button class="primary" :disabled="busy">确认验证邮箱</button></form>
-          <form v-if="!checking && view === 'reset'" @submit.prevent="resetFromEmail"><fieldset :disabled="busy"><label for="email-reset-password">新密码</label><input id="email-reset-password" v-model="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><label for="email-reset-confirm">确认新密码</label><input id="email-reset-confirm" v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button class="primary">重置密码</button></fieldset></form>
+          <form v-if="!checking && view === 'verify'" @submit.prevent="confirmEmail"><p v-if="linkAccount">操作账号：<strong>{{ linkAccount }}</strong></p><p>请仅确认你本人发起的操作。邮件链接针对上述账号，与当前浏览器登录的其他账号无关。</p><button class="primary" :disabled="busy || !linkAccount">确认验证邮箱</button></form>
+          <form v-if="!checking && view === 'reset'" @submit.prevent="resetFromEmail"><p v-if="linkAccount">正在为账号 <strong>{{ linkAccount }}</strong> 设置新密码。</p><p>此链接只修改上述账号，不会修改浏览器原先登录的其他账号。</p><fieldset :disabled="busy || !linkAccount"><label for="email-reset-password">新密码</label><input id="email-reset-password" v-model="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><label for="email-reset-confirm">确认新密码</label><input id="email-reset-confirm" v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button class="primary">重置密码</button></fieldset></form>
           <div v-if="!checking && view === 'login'" class="authentication-links"><button class="text-button" :disabled="busy" @click="navigate('register')">注册账号</button><button class="text-button" :disabled="busy" @click="navigate('recovery')">忘记密码？</button></div>
           <p v-if="!checking && view === 'register'" class="authentication-return"><button class="text-button" :disabled="busy" @click="navigate('login')">已有账号？返回登录</button></p>
           <template v-if="!checking && view === 'recovery'"><p class="muted">输入用户名、六位 UID 或已验证邮箱，申请重置链接。</p><form @submit.prevent="requestEmailReset"><fieldset :disabled="busy"><label for="email-recovery-identifier">账号、UID 或邮箱</label><input id="email-recovery-identifier" v-model="username" autocomplete="username" maxlength="254" required><button class="primary">发送重置邮件</button></fieldset></form><button class="text-button" :disabled="busy" @click="legacyRecovery = !legacyRecovery">未绑定邮箱的旧账号：使用原三道密保</button>

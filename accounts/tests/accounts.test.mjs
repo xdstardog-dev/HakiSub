@@ -38,6 +38,7 @@ test('模拟邮件完整注册、三种登录、一次性重置、换绑、限�
     assert.equal((await a.write('/api/account/login', { username: 'alice', password: registration('').password })).status, 401)
     const token = mailToken(server, 'register')
     assert.equal(server.database.prepare('SELECT * FROM email_tokens WHERE token_hash=?').get(token), undefined)
+    assert.equal((await guest.write('/api/account/email/link-details', { token, purpose: 'register' })).body.username, 'alice')
     assert.deepEqual((await Promise.all([confirm(a, token), confirm(guest, token)])).map(r => r.status).sort(), [200, 400])
     assert.equal((await a.request('/api/account/me')).status, 401)
     const user = server.database.prepare('SELECT * FROM users').get()

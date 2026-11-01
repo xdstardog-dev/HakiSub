@@ -56,6 +56,7 @@ async function openPage(width) {
     if (path.endsWith('/login')) { state.loggedIn = true; return send({ user: state.user }) }
     if (path.endsWith('/logout')) { state.loggedIn = false; return send({ message: '已退出' }) }
     if (path.endsWith('/nickname')) { state.user.nickname = body.nickname; return send({ user: state.user }) }
+    if (path.endsWith('/email/link-details')) return send({ username: 'email_check_20261101' })
     if (path.includes('/email/')) return send({ message: '操作成功' })
     if (path.endsWith('/recovery/start')) return send({ questions: ['合成问题一', '合成问题二', '合成问题三'] })
     if (path.endsWith('/recovery/reset') || path.endsWith('/password') || path.endsWith('/security-questions')) return send({ message: '操作成功' })
@@ -296,6 +297,8 @@ try {
     const token = 'a'.repeat(43)
     await page.goto(origin + '/account/#register=' + token)
     await page.getByRole('heading', { name: '验证邮箱', exact: true }).waitFor()
+    await page.getByText('email_check_20261101', { exact: true }).waitFor()
+    assert.equal(await page.locator('.desktop-sidebar').count(), 0)
     assert.equal(await page.evaluate(() => location.hash), '')
     assert.equal(state.calls.filter(call => call.path.endsWith('/email/confirm')).length, 0, '打开链接不自动消费')
     await page.getByRole('button', { name: '确认验证邮箱', exact: true }).click()

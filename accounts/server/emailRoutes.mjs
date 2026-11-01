@@ -36,7 +36,7 @@ export function registerEmailRoutes({ app, database, configuration, passwords, s
     try {
       // 固定来源与 URL fragment 避免 Host 注入和代理访问日志记录令牌；GET 不消费。
       await mailer.sendMail({ to: email, subject: purpose === 'reset' ? 'XDstar 重置密码' : 'XDstar 验证邮箱',
-        text: `${purpose === 'register' ? '申请注册的用户名：' + payload.username + '。\n' : ''}请打开链接并确认操作（30分钟内有效，仅可使用一次）：\n${configuration.origin}/account/#${purpose}=${token}\n仅确认本人发起的操作；如果你没有填写注册密码，请勿确认此链接。` })
+        text: `操作账号：${payload?.username ?? user.username}。\n请打开链接并确认操作（30分钟内有效，仅可使用一次）：\n${configuration.origin}/account/#${purpose}=${token}\n仅确认本人发起的操作；如果你没有填写注册密码，请勿确认此链接。` })
     } catch {
       database.prepare('DELETE FROM email_tokens WHERE token_hash=?').run(hash)
       throw Error('Email delivery failed')
@@ -48,6 +48,15 @@ export function registerEmailRoutes({ app, database, configuration, passwords, s
     if (!row || row.expires_at <= now()) throw invalid()
     return row
   }
+  app.post('/api/account/email/link-details', { schema: bodySchema(['token', 'purpose']) }, async request => {
+    security.consume('email_link_details', security.ipSubject(request), 20, 900000)
+    if (!['register', 'bind', 'reset'].includes(request.body.purpose)) throw invalid()
+    const row = readToken(request.body.token, request.body.purpose)
+    const user = row.user_id ? database.prepare('SELECT * FROM users WHERE id=?').get(row.user_id) : null
+    if (row.user_id && (!user || user.auth_version !== row.auth_version)) throw invalid()
+    // 只有持有有效邮件令牌才显示目标账号，不消费令牌，不采用浏览器当前身份。
+    return { username: user?.username ?? JSON.parse(row.payload).username }
+  })
   app.post('/api/account/register', { schema: bodySchema(['username', 'nickname', 'email', 'password', 'confirmPassword'], ['username', 'email', 'password', 'confirmPassword']) }, async request => {
     const ip = security.ipSubject(request)
     security.consume('register', ip, configuration.limits.registrationAttempts, 600000)

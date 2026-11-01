@@ -20,7 +20,7 @@
 | `XDSTAR_SMTP_FROM` | 单个发件邮箱地址，需要 SMTP 服务器授权 |
 | `XDSTAR_ACCOUNT_ORIGIN` | 现有账号站点的完整 HTTPS Origin，用于生成固定来源链接 |
 
-继续保留现有 `XDSTAR_ACCOUNT_SECRET`、数据库路径、Cookie 与代理配置。不能更换会话密钥来配合迁移；否则旧 Cookie 将无法验证。未配置 SMTP 时原账号登录、密保恢复正常，邮件操作返回通用提示，后台记录无敏感内容的 `email_delivery_failed` 事件；新注册无法完成。`admin warnings` 可查看发送失败事件，不输出 SMTP 错误、收件地址或令牌。
+本次邮箱迁移保留现有 `XDSTAR_ACCOUNT_SECRET`、数据库路径、Cookie 与代理配置。当前会话令牌不使用该密钥签名；密钥轮换会影响 CSRF Cookie/令牌和限流 subject，应按[轮换方案](ACCOUNT-KEY-ROTATION-PLAN.md)分用途处理，不能与数据库升级混做。未配置 SMTP 时原账号登录、密保恢复正常，邮件操作返回通用提示，后台记录无敏感内容的 `email_delivery_failed` 事件；新注册无法完成。`admin warnings` 可查看发送失败事件，不输出 SMTP 错误、收件地址或令牌。
 
 只增加 Nodemailer，不使用商业邮件服务、Redis、CAPTCHA 或新认证框架。TLS 使用系统证书验证，不提供跳过证书验证选项。实际收件还需管理员确认发件域 SPF/DKIM/DMARC 及 SMTP 提供方限制。
 
