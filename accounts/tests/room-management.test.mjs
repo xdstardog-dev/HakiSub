@@ -1,3 +1,4 @@
+import { createMailTestServer, registerMailFixture } from './emailFixtures.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createCipheriv, createHash, createHmac, randomUUID } from 'node:crypto'
@@ -34,6 +35,10 @@ function accountClient(server, ip) {
     return { status: response.statusCode, body: response.json(), headers: response.headers }
   }
   const write = async (url, payload) => {
+    if (url === '/api/account/register') return registerMailFixture(server, writeRaw, payload)
+    return writeRaw(url, payload)
+  }
+  const writeRaw = async (url, payload) => {
     const csrf = await request(url.startsWith(prefix) ? prefix + '/csrf' : '/api/account/csrf')
     return request(url, 'POST', payload, { 'x-csrf-token': csrf.body.token })
   }
@@ -103,7 +108,7 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
       databasePath: join(directory, 'accounts.sqlite'), trustedProxies: [], limits: { registrationAttempts: 5, registrationSuccesses: 3, dailyWarning: 100 },
       hashing: { memoryCost: 19456, timeCost: 2, parallelism: 1 }, hashConcurrency: 1, hashQueue: 8, sessionMaximumMs: 86400000, sessionIdleMs: 86400000,
       roomGatewayUrl: base, roomManagementSecret: secret }
-    accounts = await createAccountServer(config)
+    accounts = await createMailTestServer(config)
     const a = accountClient(accounts, '203.0.113.1'), b = accountClient(accounts, '203.0.113.2'), guest = accountClient(accounts, '203.0.113.3')
     const userA = await a.write('/api/account/register', registration('fixture_alice'))
     const userB = await b.write('/api/account/register', { ...registration('fixture_bob'), nickname: '一二三四五六七八' })
@@ -232,7 +237,7 @@ test('UID绑定、跨设备管理、房间隔离、停用清理、防重放、�
     clients.forEach(socket => socket.terminate()); await gateway.close()
     await accounts.app.close(); accounts = undefined
     await startGateway()
-    accounts = await createAccountServer({ ...config, roomGatewayUrl: base })
+    accounts = await createMailTestServer({ ...config, roomGatewayUrl: base })
     const restoredDevice = accountClient(accounts, '203.0.113.5')
     restoredDevice.cookies.set('__Host-xdstar_session', anotherDevice.cookies.get('__Host-xdstar_session'))
     record = (await restoredDevice.request(prefix + '/rooms')).body.rooms[0]

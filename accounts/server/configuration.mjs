@@ -32,6 +32,11 @@ export async function readAccountConfiguration(environment = process.env, develo
     origin: origin(values.XDSTAR_ACCOUNT_ORIGIN ?? (development ? 'http://127.0.0.1:8790' : 'https://xdstar.work'), development),
     projectOrigin: origin(values.XDSTAR_HAKISUB_ORIGIN ?? (development ? 'http://127.0.0.1:5173' : 'https://hakisub.xdstar.work'), development),
     databasePath: values.XDSTAR_ACCOUNT_DATABASE ?? fileURLToPath(new URL('../../secrets/accounts.sqlite', import.meta.url)),
+    smtp: values.XDSTAR_SMTP_HOST ? {
+      host: values.XDSTAR_SMTP_HOST, port: number('XDSTAR_SMTP_PORT', 587, 65535),
+      secure: values.XDSTAR_SMTP_SECURE === 'true', user: values.XDSTAR_SMTP_USER,
+      password: values.XDSTAR_SMTP_PASSWORD, from: values.XDSTAR_SMTP_FROM,
+    } : undefined,
     trustedProxies,
     limits: { registrationAttempts: number('XDSTAR_REGISTER_ATTEMPTS', 5), registrationSuccesses: number('XDSTAR_REGISTER_SUCCESSES', 3), dailyWarning: number('XDSTAR_REGISTER_DAILY_WARNING', 100) },
     hashing: { memoryCost: number('XDSTAR_ARGON_MEMORY_KIB', 19456, 262144), timeCost: number('XDSTAR_ARGON_ITERATIONS', 2, 10), parallelism: 1 },

@@ -34,38 +34,6 @@ try {
   database.close()
 } finally { rmSync(directory, { recursive: true, force: true }) }
 
-const configuration = {
-  development: true, databasePath: ':memory:', secret: 'synthetic-interaction-test-secret-with-at-least-43-chars', origin: 'http://localhost:8790', projectOrigin: 'http://localhost:5179',
-  trustedProxies: [], limits: { registrationAttempts: 30, registrationSuccesses: 20, dailyWarning: 100 },
-  hashing: { memoryCost: 19456, timeCost: 2, parallelism: 1 }, hashConcurrency: 1, hashQueue: 8, sessionMaximumMs: 86400000, sessionIdleMs: 86400000,
-}
-const server = await createAccountServer(configuration)
-const cookies = new Map()
-async function request(url, method = 'GET', payload) {
-  let token
-  if (method !== 'GET') token = (await request('/api/account/csrf')).body.token
-  const response = await server.app.inject({ url, method, headers: { origin: configuration.origin, cookie: [...cookies.values()].join('; '), ...(payload ? { 'content-type': 'application/json', 'x-csrf-token': token } : {}) }, ...(payload ? { payload } : {}) })
-  for (const cookie of [response.headers['set-cookie'] ?? []].flat()) { const entry = cookie.split(';')[0]; cookies.set(entry.split('=')[0], entry) }
-  return { status: response.statusCode, body: response.json() }
-}
-try {
-  const registration = { username: 'eight_digits', nickname: '合成用户', password: '12345678', confirmPassword: '12345678', questions: [1, 2, 3].map(number => ({ question: '合成密保问题' + number, answer: 'synthetic answer ' + number })) }
-  assert.equal((await request('/api/account/register', 'POST', { ...registration, password: '1234567', confirmPassword: '1234567' })).status, 400)
-  const registered = await request('/api/account/register', 'POST', registration)
-  assert.equal(registered.status, 201); assert.match(registered.body.user.uid, /^\d{6}$/)
-  const uid = registered.body.user.uid
-  await request('/api/account/logout', 'POST', {})
-  assert.equal((await request('/api/account/login', 'POST', { username: uid, password: '12345678' })).status, 200)
-  assert.equal((await request('/api/account/register', 'POST', { ...registration, username: uid })).status, 409)
-  assert.equal((await request('/api/account/password', 'POST', { currentPassword: '12345678', password: '87654321', confirmPassword: '87654321' })).status, 200)
-  await request('/api/account/logout', 'POST', {})
-  assert.equal((await request('/api/account/login', 'POST', { username: 'eight_digits', password: '87654321' })).status, 200)
-  await request('/api/account/logout', 'POST', {})
-  assert.equal((await request('/api/account/recovery/start', 'POST', { username: uid })).status, 200)
-  assert.equal((await request('/api/account/recovery/reset', 'POST', { answers: registration.questions.map(entry => entry.answer), password: '24681357', confirmPassword: '24681357' })).status, 200)
-  assert.equal((await request('/api/account/login', 'POST', { username: uid, password: '24681357' })).status, 200)
-} finally { await server.app.close() }
-
 function component(path, globals = {}) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8'), { descriptor } = parse(source)
   const bindings = Object.keys(compileScript(descriptor, { id: 'interaction-test' }).bindings)
@@ -77,7 +45,7 @@ function component(path, globals = {}) {
 }
 const account = component('../src/AccountApp.vue', { accountRequest() {}, QuestionFields: {}, OwnedRooms: {}, AccountNavigation: {} })
 account.state.checking.value = false
-assert.match(await account.html(), /账号或 UID/)
+assert.match(await account.html(), /账号、UID 或邮箱/)
 account.state.navigate('register')
 assert.match(await account.html(), /minlength="8"/)
 assert.match(await account.html(), /id="password"[^>]*type="password"/)
@@ -101,33 +69,23 @@ const state = workflow.state
 state.checking.value = false; state.navigate('register')
 assert.match(await workflow.html(), /id="username"[^>]*maxlength="20"/)
 assert.match(await workflow.html(), /id="nickname"[^>]*maxlength="16"/)
-state.username.value = 'a'.repeat(21); state.password.value = state.confirmPassword.value = 'fixture-password'
-state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /3～20/)
-state.username.value = 'abcdefghijklmnopqrst'; state.nickname.value = ''
-state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 2); assert.equal(state.registrationNickname.value, 'abcdefgh')
-state.previousRegistrationStep(); state.nickname.value = '中'.repeat(9)
-state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /8个汉字/)
-state.username.value = 'fixture_user'; state.nickname.value = '合成昵称'; state.password.value = 'fixture-password'; state.confirmPassword.value = 'different-password'
-state.nextRegistrationStep(); assert.equal(state.registrationStep.value, 1); assert.match(state.error.value, /不一致/)
-state.confirmPassword.value = state.password.value; state.nextRegistrationStep()
-assert.equal(state.registrationStep.value, 2); assert.equal(calls.length, 0)
-state.questions.value[0].answer = 'synthetic answer'
-assert.doesNotMatch(await workflow.html(), /id="username"/)
-state.previousRegistrationStep(); assert.equal(state.password.value, 'fixture-password'); assert.equal(state.questions.value[0].answer, 'synthetic answer')
-state.nextRegistrationStep(); await state.authenticate(true)
-assert.match(state.error.value, /合成注册失败/); assert.equal(state.registrationStep.value, 2); assert.equal(state.password.value, 'fixture-password'); assert.equal(state.questions.value[0].answer, 'synthetic answer')
+state.username.value = 'fixture_user'; state.nickname.value = '合成昵称'; state.password.value = state.confirmPassword.value = 'fixture-password'; state.email.value = 'fixture@example.test'
+await state.authenticate(true)
+assert.match(state.error.value, /合成注册失败/); assert.equal(state.registrationStep.value, 1); assert.equal(state.password.value, 'fixture-password')
 rejectRegistration = false; await state.authenticate(true)
-assert.equal(state.view.value, 'center'); assert.equal(state.password.value, ''); assert.equal(state.questions.value[0].answer, '')
+assert.equal(state.registrationStep.value, 2); assert.equal(state.user.value, null); assert.equal(state.password.value, '')
+assert.doesNotMatch(await workflow.html(), /设置三道密保/)
+state.navigate('login'); state.username.value = 'fixture_user'; state.password.value = 'fixture-password'; await state.authenticate()
 assert.equal(calls.filter(call => call.url.endsWith('/register')).length, 2)
 assert.doesNotMatch(await workflow.html(), /id="current-password"|id="new-nickname"|id="security-password"/)
 state.navigate('profile'); assert.match(await workflow.html(), /唯一身份编号/); assert.doesNotMatch(await workflow.html(), /id="current-password"/)
 state.nickname.value = '尚未保存的昵称'; await state.refreshIdentity(); assert.equal(state.nickname.value, '尚未保存的昵称')
 rejectIdentity = true; await state.refreshIdentity(); assert.equal(state.user.value.uid, fixtureUser.uid, '临时网络失败不清除会话')
-rejectIdentity = false; state.navigate('security'); state.securityPassword.value = 'questions-only-password'
-assert.equal(state.currentPassword.value, '', '密码与密保表单不共享验证输入')
-await state.changeQuestions(); assert.equal(calls.at(-1).body.currentPassword, 'questions-only-password')
+rejectIdentity = false; state.navigate('security')
+state.email.value = 'new@example.test'; state.emailPassword.value = 'email-password'; await state.changeEmail(); assert.equal(calls.at(-1).body.currentPassword, 'email-password'); assert.equal(state.emailPassword.value, '')
+assert.match(await workflow.html(), /new-email/); assert.doesNotMatch(await workflow.html(), /替换全部密保/)
 state.navigate('presets'); await new Promise(resolve => setImmediate(resolve)); assert.match(await workflow.html(), /还没有房间存档/)
-await state.logout(); assert.equal(state.user.value, null); assert.equal(state.view.value, 'login'); assert.equal(state.securityPassword.value, ''); assert.equal(state.presets.value.length, 0)
+await state.logout(); assert.equal(state.user.value, null); assert.equal(state.view.value, 'login'); assert.equal(state.presets.value.length, 0)
 state.navigate('recovery'); await state.startRecovery(); state.questions.value[0].answer = 'synthetic answer'; state.password.value = 'fixture-password'; state.confirmPassword.value = 'fixture-password'
 await state.resetPassword(); assert.equal(state.view.value, 'login'); assert.equal(state.password.value, '')
 // 退出后迟到的身份响应不能把旧账号重新挂回页面。

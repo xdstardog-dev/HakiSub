@@ -394,3 +394,7 @@ Windows `scripts/install-local.ps1` 安装当前用户登录触发的 `HakiSub-L
 键盘布局由 roomViewport.ts 记录聚焦前高度，底栏独立锚定该高度；可见视口仅影响字幕区与原有 TypingComposer。speech/typing 共用首次可见字幕判定，渐隐仍占位；动画仅作用于 tile-background 和头像涟漪。菜单为“设置”及“房主设置”，账号中心配色未变。
 
 模块边界：roomClient.ts 管理单连接、代次隔离与单重试计时器；roomRecovery.ts 分开保存 localStorage 留房意愿与 sessionStorage 标签页凭据；App.vue 协调暂停音频、验证、身份和界面。服务端 roomAccess.mjs 校验凭据房间/权限版本/过期时间，roomGateway.mjs 替换旧成员并发布新成员列表，保持原八音阶空槽分配。恢复不重放字幕历史，不新增存储 schema，不改既有房间或账号资料。
+
+## 2026-11-01 邮箱验证迁移（本地，未部署）
+
+独立账号服务复用 Fastify/SQLite/Argon2id/Cookie/CSRF/请求限流。emailRoutes.mjs 处理待验证注册、绑定/换绑和密码重置，emailService.mjs 封装 Nodemailer SMTP 与邮箱格式策略。数据库 v3 只新增 email_tokens 和已验证邮箱唯一索引，不改旧用户字段或主键，不清理旧会话；邮箱为空仍按原用户名/UID登录和密保恢复。新注册只在邮箱确认事务中创建用户；自愿绑定成功后停用该账号密保恢复，撤销旧会话和恢复链接。后台有界邮件发送避免 SMTP 时延泄露账号，令牌摘要、30分钟期限及事务消费防重放；SQLite限额跨进程重启保留。房间所有权、ASR、字幕与实时协议未修改。备份命令改为只读打开原库，不在备份前迁移；详见[邮箱迁移说明](ACCOUNT-EMAIL-MIGRATION.md)。前文三问注册为历史阶段。

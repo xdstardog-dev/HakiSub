@@ -1236,3 +1236,14 @@ npm test全套、npm run build、test:room-refactor:browser及git diff --check�
 用户追加授权上传 GitHub 和服务器。功能提交 148cc129c479f7e4783ab51e53af005774fd6523 已推 main；mobile-recovery-20261101T0550Z 于北京时间13:54:02上线、13:54:50最终备份核验完成。仅替换网关及前端，账号镜像与容器、Caddy、原27房/11账号、卷和业务环境均保留。候选隔离入房/重连/满员替换/改码、账号/CSRF、旧密码及Key测试和房间副本兼容演练通过；生产60项文件与公网34项静态资源哈希匹配，双业务健康，私有路径404。
 
 候选打包路径预检和首次账号健康等待均拦住不完整发布，前者修包重验，后者自动回退不回滚数据；修正双业务健康等待并另存一致性备份后重试成功。发布前/两次切换前/发布后加密备份实际解密核验，未下载数据库和凭据。额外读取验收房间码/名称的请求被自动审批拒绝，未执行，采用公网只读与隔离验证替代。完整版本、摘要、回退入口见 RELEASE-MOBILE-20261101.md。真实手机键盘/后台锁屏和真实音频仍待验，DEEPSEEK-MEMORY未修改。
+## 2026-11-01 · XDstar 账号邮箱验证迁移（本地完成，未部署）
+
+账号服务新增 Nodemailer 10.3.1 与可配置 SMTP，复用 Fastify、SQLite、Argon2id、Cookie、CSRF 和滚动请求限流。新增 emailService.mjs / emailRoutes.mjs：新注册先发验证邮件、确认后才创建用户；用户名、六位 UID 或已验证邮箱使用原密码登录；统一标识申请一次性重置链接；安全设置验证当前密码后申请绑定/换绑新邮箱，确认后通知旧邮箱并停用密保找回。重置后撤销会话及旧恢复链接，不自动登录。无 CAPTCHA、Redis 或完整认证框架。
+
+SQLite v3 仅新增邮件令牌表与已验证邮箱唯一索引，旧用户记录、主键、UID、密码哈希、会话、密保和存档/项目关联不重写。邮箱为空的旧账号继续直接密码登录和三问找回，无强制注册、密码更新或邮箱验证。自愿绑定成功才启用邮箱登录/恢复和关闭密保恢复，绑定成功作为敏感变更撤销会话。备份 CLI 改为直接只读打开旧库，避免先迁移后备份。真实旧版 v2 建库代码固定在测试 fixture，在临时磁盘建库/备份/升级并逐项比较原用户、密码、UID、会话与关联，原Cookie和存档仍可使用；房间所有权另由真实网关集成回归确认，未修改房间代码或文件。
+
+邮件令牌32随机字节、SHA-256摘要入库、30分钟有效、用途及认证版本绑定，在事务复检后一次性消费。链接使用fragment，页面加载/同页面hash导航均读入后移除地址令牌；GET不消费，用户显式POST确认。后台有界邮件队列避免SMTP耗时泄露账号，SMTP强制TLS且有超时，不输出凭据/地址/令牌；发送失败清理对应令牌并记录通用审计事件。公开请求提示一致，按IP/邮箱/账号及找回输入标识复用SQLite限流，跨别名私有限额静默抑制防关联。后台队列不持久化/不自动重试，异常退出未发送邮件需稍后重申请，SMTP/实际收件待手动配置与实测。
+
+最终通过：npm test全套；npm run test:accounts（模拟邮件完整注册/三标识登录/换绑/重置、链接过期/用途/重放/并发消费、旧密保迁移、SMTP失败与配置、限流/注册配额/重复信息、密码轮换撤销邮件、SQLite升级/备份/重启、Cookie/CSRF和存档）；npm run test:room-management；npm run build；npm run build:accounts；npm run test:accounts:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs（375/768/1440px合成API，含检查邮箱不自动登录、绑定表单、原密保恢复、邮件链接显式确认/fragment移除和新密码页）；git diff --check。初次esbuild/CLI子进程被沙箱拦截，获准后重跑通过。新增浏览器链接测试发现同页面fragment导航不触发挂载，补hashchange监听后最终回归通过。浏览器截图在ignored artifacts/account-workspace/，375px登录页已目视检查。
+
+更新根README、accounts/README、ARCHITECTURE、SMTP环境示例及ACCOUNT-EMAIL-MIGRATION（手动SMTP参数、加密备份、隔离演练、事务升级、回退风险）。未操作生产服务器/数据库，未部署、提交或推送；未编辑DEEPSEEK-MEMORY。真实SMTP送达/垃圾箱、生产跨域Cookie、物理手机/麦克风及豆包API未验收，模拟成功不替代真实验收。无本地代码阻塞。

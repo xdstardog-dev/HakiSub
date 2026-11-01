@@ -1,3 +1,5 @@
+import { createEmailService, canonicalEmailIdentifier } from './emailService.mjs'
+import { registerEmailRoutes } from './emailRoutes.mjs'
 import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
@@ -7,12 +9,11 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import { createRoomManagementClient } from './roomManagementClient.mjs'
-import { defaultNickname, isValidAccountName } from '../shared/nameRules.mjs'
-import { openAccountDatabase, allocatePublicUid } from './database.mjs'
+import { openAccountDatabase } from './database.mjs'
 import { createPasswordService, normalizeAnswer } from './passwords.mjs'
 import { createRequestSecurity, tokenHash, problem, normalizeUsername, requireText, requireNickname, requirePassword, requireQuestions, validatePreset } from './requestSecurity.mjs'
 
-export async function createAccountServer(configuration, { now = Date.now, passwordService, websiteDirectory } = {}) {
+export async function createAccountServer(configuration, { now = Date.now, passwordService, websiteDirectory, mailer } = {}) {
   const database = openAccountDatabase(configuration.databasePath)
   const passwords = passwordService ?? await createPasswordService(configuration.hashing, configuration.hashConcurrency, configuration.hashQueue)
   const security = createRequestSecurity(database, configuration, now)
@@ -54,8 +55,8 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   })
   const bodySchema = (keys, required = keys) => ({ body: { type: 'object', additionalProperties: false, required, properties: Object.fromEntries(keys.map(key => [key, {}])) } })
   const account = path => '/api/account/' + path
-  const publicUser = user => ({ uid: user.public_uid, username: user.username, nickname: user.nickname, createdAt: user.created_at })
-  const findLoginUser = identifier => database.prepare('SELECT * FROM users WHERE username=? OR public_uid=?').get(identifier, identifier)
+  const publicUser = user => ({ uid: user.public_uid, username: user.username, nickname: user.nickname, createdAt: user.created_at, email: user.email_verified_at != null ? user.email : null })
+  const findLoginUser = identifier => database.prepare('SELECT * FROM users WHERE username=? OR public_uid=? OR (email=? COLLATE NOCASE AND email_verified_at IS NOT NULL)').get(identifier, identifier, canonicalEmailIdentifier(identifier))
   const lookupSession = request => {
     const token = request.cookies[sessionName]
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return undefined
@@ -124,39 +125,8 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     if (!['save', 'delete', 'test', 'asr', 'access-code', 'rename', 'avatar'].includes(action) || (action !== 'save' && apiKey !== undefined) || (action !== 'asr' && enabled !== undefined) || (action !== 'access-code' && accessCode !== undefined) || (action !== 'rename' && name !== undefined) || (action !== 'avatar' && avatarId !== undefined)) throw problem(400, '无效的房间管理操作。')
     return forwardRoom(request, { code: request.params.code, action, ...(action === 'save' ? { apiKey } : {}), ...(action === 'asr' ? { enabled } : {}), ...(action === 'access-code' ? { accessCode } : {}), ...(action === 'rename' ? { name } : {}), ...(action === 'avatar' ? { avatarId } : {}) })
   })
-  app.post(account('register'), { schema: bodySchema(['username', 'nickname', 'password', 'confirmPassword', 'questions'], ['username', 'password', 'confirmPassword', 'questions']) }, async (request, reply) => {
-    const ip = security.ipSubject(request)
-    security.consume('register', ip, configuration.limits.registrationAttempts, 600000)
-    const body = request.body, username = normalizeUsername(body.username)
-    if (!isValidAccountName(username)) throw problem(400, '账号需为 3～20 位英文字母、数字或下划线。')
-    const suppliedNickname = typeof body.nickname === 'string' ? body.nickname.trim() : body.nickname
-    const nickname = requireNickname(suppliedNickname === undefined || suppliedNickname === '' ? defaultNickname(username) : suppliedNickname)
-    const password = requirePassword(body), questions = requireQuestions(body.questions), answers = answersFor(questions, { ...body, nickname })
-    const checkRegistration = () => {
-      if (database.prepare('SELECT COUNT(*) AS count FROM registration_events WHERE subject=? AND created_at>? AND quota_exempt=0').get(ip, now() - 86400000).count >= configuration.limits.registrationSuccesses) throw problem(429, '当前网络近期注册较多，请明天重试或联系站点维护者。')
-      if (findLoginUser(username)) throw problem(409, '这个登录账号已被使用，请换一个。')
-    }
-    checkRegistration()
-    const hashes = await passwords.run(async () => {
-      const result = [await passwords.hash(password)]
-      for (const answer of answers) result.push(await passwords.hash(answer))
-      return result
-    })
-    const user = { id: randomUUID(), username, nickname, auth_version: 1, created_at: now() }
-    database.transaction(() => {
-      checkRegistration()
-      user.public_uid = allocatePublicUid(database)
-      database.prepare('INSERT INTO users (id,username,nickname,password_hash,created_at,updated_at,public_uid) VALUES (?,?,?,?,?,?,?)').run(user.id, username, nickname, hashes[0], now(), now(), user.public_uid)
-      saveQuestions(user.id, questions, hashes.slice(1))
-      database.prepare('INSERT INTO registration_events (user_id,subject,created_at) VALUES (?,?,?)').run(user.id, ip, now())
-      const dayStart = Math.floor((now() + 28800000) / 86400000) * 86400000 - 28800000
-      const count = database.prepare('SELECT COUNT(*) AS count FROM registration_events WHERE created_at>=?').get(dayStart).count
-      if (count === configuration.limits.dailyWarning + 1) database.prepare('INSERT INTO security_events (kind,detail,created_at) VALUES (?,?,?)').run('registration_growth', JSON.stringify({ count, dayStart }), now())
-      issueSession(user, request, reply)
-    }).immediate()
-    reply.code(201)
-    return { user: publicUser(user) }
-  })
+  const emailService = mailer ?? createEmailService(configuration)
+  const emailRoutes = registerEmailRoutes({ app, database, configuration, passwords, security, now, mailer: emailService, needUser, checkSnapshot, findLoginUser, bodySchema })
   app.post(account('login'), { schema: bodySchema(['username', 'password']) }, async (request, reply) => {
     const username = normalizeUsername(request.body.username), ip = security.ipSubject(request)
     security.consume('login_ip', ip, 30, 900000)
@@ -195,13 +165,16 @@ export async function createAccountServer(configuration, { now = Date.now, passw
       database.prepare('UPDATE users SET password_hash=?, auth_version=auth_version+1, updated_at=? WHERE id=?').run(hash, now(), user.id)
       database.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id)
       database.prepare('DELETE FROM recovery_challenges WHERE user_id=?').run(user.id)
+      database.prepare('DELETE FROM email_tokens WHERE user_id=?').run(user.id)
       issueSession({ ...user, auth_version: user.auth_version + 1 }, request, reply)
     }).immediate()
     return { message: '密码已更新，其他登录会话已退出。' }
   })
   app.get(account('security-questions'), async request => ({ questions: database.prepare('SELECT question FROM security_questions WHERE user_id=? ORDER BY slot').all(needUser(request).id).map(row => row.question) }))
   app.post(account('security-questions'), { schema: bodySchema(['currentPassword', 'questions']) }, async (request, reply) => {
-    const user = needUser(request), questions = requireQuestions(request.body.questions), answers = answersFor(questions, { ...request.body, username: user.username, nickname: user.nickname })
+    const user = needUser(request)
+    if (user.email_verified_at != null) throw problem(400, '已验证邮箱的账号不再使用密保。')
+    const questions = requireQuestions(request.body.questions), answers = answersFor(questions, { ...request.body, username: user.username, nickname: user.nickname })
     requireText(request.body.currentPassword, 1, 128, '当前密码')
     security.consume('sensitive', security.subject(user.id), 5, 900000)
     const hashes = await passwords.run(async () => {
@@ -225,12 +198,12 @@ export async function createAccountServer(configuration, { now = Date.now, passw
   const decoyQuestions = ['你为自己记住的第一段私密短语是什么？', '你为自己记住的第二段私密短语是什么？', '你为自己记住的第三段私密短语是什么？', '你珍藏而不公开的一段记忆代号是什么？', '你给想象中的地方起的秘密名字是什么？']
   app.post(account('recovery/start'), { schema: bodySchema(['username']) }, async (request, reply) => {
     const username = normalizeUsername(request.body.username)
-    requireText(username, 1, 32, '登录账号')
+    requireText(username, 1, 254, '登录账号')
     const user = findLoginUser(username)
     const subject = security.subject(user ? 'user:' + user.id : 'username:' + username)
     security.consume('recovery_start_ip', security.ipSubject(request), 10, 900000)
     security.consume('recovery_start_account', subject, 5, 1800000)
-    const actual = user ? database.prepare('SELECT question FROM security_questions WHERE user_id=? ORDER BY slot').all(user.id).map(row => row.question) : []
+    const actual = user && user.email_verified_at == null ? database.prepare('SELECT question FROM security_questions WHERE user_id=? ORDER BY slot').all(user.id).map(row => row.question) : []
     const index = parseInt(subject.slice(0, 4), 16) % decoyQuestions.length
     const questions = actual.length === 3 ? actual : Array.from({ length: 3 }, (_, offset) => decoyQuestions[(index + offset) % decoyQuestions.length])
     const token = randomBytes(32).toString('base64url')
@@ -261,13 +234,13 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     const hash = await passwords.run(async () => {
       const verified = []
       for (let index = 0; index < 3; index++) verified.push(await passwords.verify(records[index]?.answer_hash ?? passwords.dummyHash, normalizeAnswer(answers[index])))
-      if (!user || records.length !== 3 || verified.some(value => !value) || user.auth_version !== challenge.auth_version) throw invalid()
+      if (!user || user.email_verified_at != null || records.length !== 3 || verified.some(value => !value) || user.auth_version !== challenge.auth_version) throw invalid()
       return passwords.hash(password)
     })
     database.transaction(() => {
       const live = database.prepare('SELECT * FROM recovery_challenges WHERE token_hash=?').get(key)
-      const current = database.prepare('SELECT auth_version FROM users WHERE id=?').get(user.id)
-      if (!live || live.expires_at <= now() || current.auth_version !== challenge.auth_version) throw invalid()
+      const current = database.prepare('SELECT auth_version,email_verified_at FROM users WHERE id=?').get(user.id)
+      if (!live || live.expires_at <= now() || current.auth_version !== challenge.auth_version || current.email_verified_at != null) throw invalid()
       database.prepare('UPDATE users SET password_hash=?,auth_version=auth_version+1,updated_at=? WHERE id=?').run(hash, now(), user.id)
       database.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id)
       database.prepare('DELETE FROM recovery_challenges WHERE user_id=?').run(user.id)
@@ -313,9 +286,10 @@ export async function createAccountServer(configuration, { now = Date.now, passw
     database.prepare('DELETE FROM rate_limit_events WHERE created_at<?').run(now() - 86400000)
     database.prepare('DELETE FROM registration_events WHERE created_at<?').run(now() - 8 * 86400000)
     database.prepare('DELETE FROM recovery_challenges WHERE expires_at<=?').run(now())
+    database.prepare('DELETE FROM email_tokens WHERE expires_at<=?').run(now())
     database.prepare('DELETE FROM sessions WHERE expires_at<=? OR last_seen_at<?').run(now(), now() - configuration.sessionIdleMs)
   })()
   const timer = setInterval(cleanup, 600000); timer.unref()
-  app.addHook('onClose', async () => { clearInterval(timer); database.close() })
-  return { app, database, security, sessionName, cleanup }
+  app.addHook('onClose', async () => { clearInterval(timer); await emailRoutes.flush(); emailService.close?.(); database.close() })
+  return { app, database, security, sessionName, cleanup, flushMail: emailRoutes.flush }
 }

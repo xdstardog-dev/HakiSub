@@ -22,7 +22,7 @@ export function openAccountDatabase(path) {
   database.pragma('journal_mode = WAL')
   database.pragma('busy_timeout = 3000')
   const version = database.pragma('user_version', { simple: true })
-  if (version > 2) { database.close(); throw Error('账号数据库版本高于当前程序，请使用匹配版本。') }
+  if (version > 3) { database.close(); throw Error('账号数据库版本高于当前程序，请使用匹配版本。') }
   if (version === 0) database.transaction(() => {
     database.exec(`
       CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, nickname TEXT NOT NULL,
@@ -60,6 +60,16 @@ export function openAccountDatabase(path) {
     for (const user of database.prepare('SELECT id FROM users WHERE public_uid IS NULL ORDER BY created_at,id').all()) update.run(allocatePublicUid(database), user.id)
     database.prepare('INSERT OR IGNORE INTO schema_migrations VALUES (2,?)').run(Date.now())
     database.pragma('user_version = 2')
+  }).immediate()
+  if (version < 3) database.transaction(() => {
+    // 仅已验证邮箱参与唯一性；历史预留字段不授予登录或恢复权限。
+    database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_by_verified_email ON users(email COLLATE NOCASE) WHERE email_verified_at IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS email_tokens (token_hash TEXT PRIMARY KEY, purpose TEXT NOT NULL,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE, auth_version INTEGER, email TEXT NOT NULL,
+        payload TEXT, subject TEXT NOT NULL, expires_at INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS email_tokens_by_user ON email_tokens(user_id);`)
+    database.prepare('INSERT OR IGNORE INTO schema_migrations VALUES (3,?)').run(Date.now())
+    database.pragma('user_version = 3')
   }).immediate()
   return database
 }

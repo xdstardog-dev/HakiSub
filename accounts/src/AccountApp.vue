@@ -1,21 +1,22 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { accountRequest } from './accountApi'
-import { countNameUnits, defaultNickname, isValidAccountName, isValidDisplayName, NICKNAME_MAXIMUM_UNITS } from '../shared/nameRules.mjs'
+import { countNameUnits, defaultNickname, isValidDisplayName, NICKNAME_MAXIMUM_UNITS } from '../shared/nameRules.mjs'
 import QuestionFields from './QuestionFields.vue'
 import OwnedRooms from './OwnedRooms.vue'
 import AccountNavigation from './AccountNavigation.vue'
 const user = ref(null), projects = ref([]), view = ref('login'), busy = ref(false), checking = ref(true), error = ref(''), message = ref('')
-const username = ref(''), nickname = ref(''), password = ref(''), confirmPassword = ref(''), currentPassword = ref(''), securityPassword = ref(''), recoveryStarted = ref(false)
+const username = ref(''), nickname = ref(''), password = ref(''), confirmPassword = ref(''), currentPassword = ref(''), recoveryStarted = ref(false)
+const email = ref(''), emailPassword = ref(''), linkToken = ref(''), linkPurpose = ref(''), legacyRecovery = ref(false)
 const questions = ref(emptyQuestions()), presets = ref([]), editingNames = ref({}), projectOrigin = ref('https://hakisub.xdstar.work'), registrationStep = ref(1)
-const titles = { login: '欢迎回来', register: '创建你的 XDstar 账号', recovery: '找回密码', center: '总览', rooms: '我的房间', presets: '房间存档', profile: '个人资料', security: '安全设置' }
+const titles = { login: '欢迎回来', register: '创建你的 XDstar 账号', recovery: '找回密码', center: '总览', rooms: '我的房间', presets: '房间存档', verify: '验证邮箱', reset: '设置新密码', profile: '个人资料', security: '安全设置' }
 const descriptions = { center: '从这里继续你的小空间。', rooms: '管理绑定当前账号的 HakiSub 房间。', presets: '保存偏好，在下次交流时继续使用。', profile: '管理你的公开昵称与账号信息。', security: '保护账号，保持恢复方式可用。' }
 const visibleSecrets = ref({}), navigationDialog = ref(null), pageHeading = ref(null), drawerOpen = ref(false)
 const title = computed(() => titles[view.value])
 const registrationNickname = computed(() => nickname.value.trim() || defaultNickname(username.value))
 let identityGeneration = 0, disposed = false, mobileQuery, returnFocus, scrollLock
 function emptyQuestions() { return ['你为自己记住的第一段私密短语是什么？', '你为自己记住的第二段私密短语是什么？', '你为自己记住的第三段私密短语是什么？'].map(question => ({ question, answer: '' })) }
-function clearSecrets() { visibleSecrets.value = {}; password.value = ''; confirmPassword.value = ''; currentPassword.value = ''; securityPassword.value = ''; questions.value = emptyQuestions(); recoveryStarted.value = false }
+function clearSecrets() { visibleSecrets.value = {}; password.value = ''; confirmPassword.value = ''; currentPassword.value = ''; emailPassword.value = ''; questions.value = emptyQuestions(); recoveryStarted.value = false }
 function clearIdentity() { identityGeneration++; clearSecrets(); user.value = null; projects.value = []; presets.value = []; editingNames.value = {}; nickname.value = ''; view.value = 'login'; registrationStep.value = 1; closeDrawer() }
 function navigate(next) {
   if (busy.value) return
@@ -23,13 +24,6 @@ function navigate(next) {
   error.value = ''; message.value = ''; view.value = next; closeDrawer()
   if (next === 'presets') void loadPresets()
   nextTick(() => pageHeading.value?.focus())
-}
-function nextRegistrationStep() {
-  error.value = ''; visibleSecrets.value = {}
-  if (!isValidAccountName(username.value.trim()) || password.value.length < 8 || password.value.length > 128) { error.value = '请检查账号和密码的填写要求，账号需为3～20位英文字母、数字或下划线。'; return }
-  if (!isValidDisplayName(registrationNickname.value, NICKNAME_MAXIMUM_UNITS)) { error.value = '昵称最多8个汉字或16个英文／数字，不能包含换行或控制字符。'; return }
-  if (password.value !== confirmPassword.value) { error.value = '两次输入的密码不一致。'; return }
-  registrationStep.value = 2; nextTick(() => pageHeading.value?.focus())
 }
 function previousRegistrationStep() { registrationStep.value = 1; error.value = ''; visibleSecrets.value = {}; nextTick(() => pageHeading.value?.focus()) }
 async function execute(operation) {
@@ -47,16 +41,23 @@ async function refreshIdentity() {
     if (disposed || current !== identityGeneration) return
     if (user.value?.uid !== data.user.uid) { clearSecrets(); presets.value = []; editingNames.value = {}; nickname.value = data.user.nickname }
     user.value = data.user; projects.value = data.projects
-    if (['login', 'register', 'recovery'].includes(view.value)) view.value = 'center'
+    if (!linkToken.value && ['login', 'register', 'recovery'].includes(view.value)) view.value = 'center'
   } catch (issue) {
     if (disposed || current !== identityGeneration) return
-    if (issue.status === 401) { if (user.value) clearIdentity() }
+    if (issue.status === 401) {
+      if (user.value) { const target = linkToken.value ? view.value : 'login'; clearIdentity(); view.value = target }
+    }
     else error.value = issue.message
   } finally { if (!disposed && current === identityGeneration) checking.value = false }
 }
 async function authenticate(register = false) {
   await execute(async () => {
-    const body = register ? { username: username.value, nickname: registrationNickname.value, password: password.value, confirmPassword: confirmPassword.value, questions: questions.value } : { username: username.value, password: password.value }
+    const body = register ? { username: username.value, nickname: registrationNickname.value, password: password.value, confirmPassword: confirmPassword.value, email: email.value } : { username: username.value, password: password.value }
+    if (register) {
+      const result = await accountRequest('/api/account/register', 'POST', body)
+      clearSecrets(); registrationStep.value = 2; message.value = result.message
+      return
+    }
     identityGeneration++
     user.value = (await accountRequest(`/api/account/${register ? 'register' : 'login'}`, 'POST', body)).user
     clearSecrets(); registrationStep.value = 1; nickname.value = user.value.nickname; projects.value = []; presets.value = []; view.value = 'center'
@@ -70,7 +71,10 @@ async function changeNickname() {
   await execute(async () => { user.value = (await accountRequest('/api/account/nickname', 'PATCH', { nickname: nickname.value })).user; message.value = '用户昵称已更新，下次进入 HakiSub 时使用新昵称。' })
 }
 async function changePassword() { await execute(async () => { message.value = (await accountRequest('/api/account/password', 'POST', { currentPassword: currentPassword.value, password: password.value, confirmPassword: confirmPassword.value })).message; currentPassword.value = ''; password.value = ''; confirmPassword.value = '' }) }
-async function changeQuestions() { await execute(async () => { message.value = (await accountRequest('/api/account/security-questions', 'POST', { currentPassword: securityPassword.value, questions: questions.value })).message; securityPassword.value = ''; questions.value = emptyQuestions() }) }
+async function changeEmail() { await execute(async () => { message.value = (await accountRequest('/api/account/email/request', 'POST', { email: email.value, currentPassword: emailPassword.value })).message; emailPassword.value = '' }) }
+async function confirmEmail() { await execute(async () => { const result = await accountRequest('/api/account/email/confirm', 'POST', { token: linkToken.value, purpose: linkPurpose.value }); linkToken.value = ''; clearIdentity(); message.value = result.message }) }
+async function requestEmailReset() { await execute(async () => { message.value = (await accountRequest('/api/account/email/reset-request', 'POST', { username: username.value })).message }) }
+async function resetFromEmail() { await execute(async () => { const result = await accountRequest('/api/account/email/reset', 'POST', { token: linkToken.value, password: password.value, confirmPassword: confirmPassword.value }); linkToken.value = ''; clearIdentity(); message.value = result.message }) }
 async function startRecovery() { await execute(async () => { const data = await accountRequest('/api/account/recovery/start', 'POST', { username: username.value }); questions.value = data.questions.map(question => ({ question, answer: '' })); recoveryStarted.value = true }) }
 function restartRecovery() { clearSecrets(); error.value = ''; message.value = '' }
 async function resetPassword() { await execute(async () => { const result = await accountRequest('/api/account/recovery/reset', 'POST', { answers: questions.value.map(item => item.answer), password: password.value, confirmPassword: confirmPassword.value }); clearIdentity(); message.value = result.message }) }
@@ -102,13 +106,18 @@ function onViewportChange(event) { if (!event.matches) closeDrawer() }
 function expireSession() { clearIdentity(); error.value = '登录已过期，请重新登录。' }
 const date = value => new Date(value).toLocaleString('zh-CN')
 const onFocus = () => { if (!busy.value) void refreshIdentity() }
+function readEmailLink() {
+  const match = window.location.hash.match(/^#(register|bind|reset)=([A-Za-z0-9_-]{43})$/)
+  if (match) { clearSecrets(); error.value = ''; message.value = ''; linkPurpose.value = match[1]; linkToken.value = match[2]; view.value = match[1] === 'reset' ? 'reset' : 'verify'; window.history.replaceState(null, '', window.location.pathname) }
+}
 onMounted(async () => {
+  readEmailLink(); window.addEventListener('hashchange', readEmailLink)
   mobileQuery = window.matchMedia('(max-width: 900px)'); mobileQuery.addEventListener('change', onViewportChange)
   window.addEventListener('focus', onFocus)
   await refreshIdentity()
   try { const configuration = await accountRequest('/api/account/client-configuration'); if (!disposed) projectOrigin.value = configuration.projectOrigin } catch {}
 })
-onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearSecrets(); window.removeEventListener('focus', onFocus); mobileQuery?.removeEventListener('change', onViewportChange) })
+onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearSecrets(); window.removeEventListener('focus', onFocus); window.removeEventListener('hashchange', readEmailLink); mobileQuery?.removeEventListener('change', onViewportChange) })
 </script>
 <template>
   <div class="account-shell" :class="user ? 'workspace-shell' : 'authentication-shell'">
@@ -134,21 +143,23 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
         <section :class="user ? 'workspace-page' : 'authentication-card'" aria-labelledby="page-title">
           <div class="page-heading"><p class="eyebrow">{{ user ? '你的工作空间 / ' + (['rooms', 'presets'].includes(view) ? 'HakiSub' : ['profile', 'security'].includes(view) ? '账号' : '工作台') : 'XDSTAR ACCOUNT' }}</p><h1 id="page-title" ref="pageHeading" tabindex="-1">{{ title }}</h1><p v-if="user" class="muted page-description">{{ descriptions[view] }}</p><p v-else-if="view === 'login'" class="muted">登录，继续你的小空间。</p></div>
           <p v-if="checking" role="status">正在读取登录状态…</p><p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="message" class="success" role="status">{{ message }}</p>
-          <ol v-if="view === 'register'" class="registration-progress" aria-label="注册进度"><li :aria-current="registrationStep === 1 ? 'step' : undefined"><span>1</span> 创建账号</li><li :aria-current="registrationStep === 2 ? 'step' : undefined"><span>2</span> 设置密保</li></ol>
-          <form v-if="!checking && (view === 'login' || (view === 'register' && registrationStep === 1))" @submit.prevent="view === 'register' ? nextRegistrationStep() : authenticate()"><fieldset :disabled="busy">
-          <label for="username">{{ view === 'register' ? '账号' : '账号或 UID' }}</label><input id="username" v-model="username" autocomplete="username" minlength="3" :maxlength="view === 'register' ? 20 : 32" :pattern="view === 'register' ? '[A-Za-z0-9_]{3,20}' : undefined" required><small>{{ view === 'register' ? '3～20 位英文字母、数字或下划线，注册后暂不可修改。' : '输入登录账号或六位数字 UID。' }}</small>
-          <template v-if="view === 'register'"><label for="nickname">用户昵称</label><input id="nickname" v-model="nickname" :placeholder="defaultNickname(username) || '默认取账号前8个字符'" autocomplete="nickname" maxlength="16" :aria-invalid="countNameUnits(registrationNickname) > NICKNAME_MAXIMUM_UNITS"><small>留空默认取账号前8个字符。最多8个汉字或16个英文／数字，混合折算 {{ countNameUnits(registrationNickname) }}/16，可以重名。</small></template>
+          <ol v-if="view === 'register'" class="registration-progress" aria-label="注册进度"><li :aria-current="registrationStep === 1 ? 'step' : undefined"><span>1</span> 创建账号</li><li :aria-current="registrationStep === 2 ? 'step' : undefined"><span>2</span> 验证邮箱</li></ol>
+          <form v-if="!checking && (view === 'login' || (view === 'register' && registrationStep === 1))" @submit.prevent="view === 'register' ? authenticate(true) : authenticate()"><fieldset :disabled="busy">
+          <label for="username">{{ view === 'register' ? '账号' : '账号、UID 或邮箱' }}</label><input id="username" v-model="username" autocomplete="username" minlength="3" :maxlength="view === 'register' ? 20 : 254" :pattern="view === 'register' ? '[A-Za-z0-9_]{3,20}' : undefined" required><small>{{ view === 'register' ? '3～20 位英文字母、数字或下划线，注册后暂不可修改。' : '输入用户名、六位 UID 或已验证邮箱。' }}</small>
+          <template v-if="view === 'register'"><label for="registration-email">邮箱</label><input id="registration-email" v-model="email" type="email" autocomplete="email" maxlength="254" required><label for="nickname">用户昵称</label><input id="nickname" v-model="nickname" :placeholder="defaultNickname(username) || '默认取账号前8个字符'" autocomplete="nickname" maxlength="16" :aria-invalid="countNameUnits(registrationNickname) > NICKNAME_MAXIMUM_UNITS"><small>留空默认取账号前8个字符。最多8个汉字或16个英文／数字，混合折算 {{ countNameUnits(registrationNickname) }}/16，可以重名。</small></template>
           <label for="password">{{ view === 'register' ? '设置密码' : '密码' }}</label><div class="secret-field"><input id="password" v-model="password" :type="visibleSecrets['password'] ? 'text' : 'password'" :autocomplete="view === 'register' ? 'new-password' : 'current-password'" :minlength="view === 'register' ? 8 : 1" maxlength="128" required><button type="button" :aria-controls="'password'" :aria-pressed="!!visibleSecrets['password']" @click="visibleSecrets['password'] = !visibleSecrets['password']">{{ visibleSecrets['password'] ? '隐藏' : '显示' }}</button></div>
           <template v-if="view === 'register'"><small>8～128 个字符，建议使用密码管理器生成独立密码。</small><label for="confirm-password">确认密码</label><div class="secret-field"><input id="confirm-password" v-model="confirmPassword" :type="visibleSecrets['confirm-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'confirm-password'" :aria-pressed="!!visibleSecrets['confirm-password']" @click="visibleSecrets['confirm-password'] = !visibleSecrets['confirm-password']">{{ visibleSecrets['confirm-password'] ? '隐藏' : '显示' }}</button></div></template>
-          <button class="primary" type="submit">{{ busy ? '请稍候…' : view === 'register' ? '下一步 →' : '登录 →' }}</button>
+          <button class="primary" type="submit">{{ busy ? '请稍候…' : view === 'register' ? '发送验证邮件 →' : '登录 →' }}</button>
         </fieldset></form>
 
-          <form v-if="!checking && view === 'register' && registrationStep === 2" @submit.prevent="authenticate(true)"><fieldset :disabled="busy"><h2>设置三道密保</h2><QuestionFields :questions="questions" /><div class="button-row registration-actions"><button type="button" class="secondary" @click="previousRegistrationStep">返回上一步</button><button class="primary" type="submit">{{ busy ? '正在注册…' : '完成注册' }}</button></div></fieldset></form>
+          <div v-if="!checking && view === 'register' && registrationStep === 2"><h2>请检查邮箱</h2><p>打开邮件中的链接并确认，才会创建账号。链接30分钟内有效。</p><button class="secondary" :disabled="busy" @click="previousRegistrationStep">重新填写</button></div>
+          <form v-if="!checking && view === 'verify'" @submit.prevent="confirmEmail"><p>确认使用此邮箱完成注册或更换绑定邮箱。请仅确认你本人发起的操作。</p><button class="primary" :disabled="busy">确认验证邮箱</button></form>
+          <form v-if="!checking && view === 'reset'" @submit.prevent="resetFromEmail"><fieldset :disabled="busy"><label for="email-reset-password">新密码</label><input id="email-reset-password" v-model="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><label for="email-reset-confirm">确认新密码</label><input id="email-reset-confirm" v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button class="primary">重置密码</button></fieldset></form>
           <div v-if="!checking && view === 'login'" class="authentication-links"><button class="text-button" :disabled="busy" @click="navigate('register')">注册账号</button><button class="text-button" :disabled="busy" @click="navigate('recovery')">忘记密码？</button></div>
           <p v-if="!checking && view === 'register'" class="authentication-return"><button class="text-button" :disabled="busy" @click="navigate('login')">已有账号？返回登录</button></p>
-          <template v-if="!checking && view === 'recovery'"><p class="muted">回答注册时设置的全部三道问题，可重置密码。问题与答案请勿向他人透露。</p>
-          <form v-if="!recoveryStarted" @submit.prevent="startRecovery"><fieldset :disabled="busy"><label for="recovery-username">账号或 UID</label><input id="recovery-username" v-model="username" autocomplete="username" maxlength="32" required><button class="primary">继续 →</button></fieldset></form>
-          <form v-else @submit.prevent="resetPassword"><fieldset :disabled="busy"><QuestionFields :questions="questions" recovery /><label for="reset-password">新密码</label><div class="secret-field"><input id="reset-password" v-model="password" :type="visibleSecrets['reset-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'reset-password'" :aria-pressed="!!visibleSecrets['reset-password']" @click="visibleSecrets['reset-password'] = !visibleSecrets['reset-password']">{{ visibleSecrets['reset-password'] ? '隐藏' : '显示' }}</button></div><label for="reset-confirm">确认新密码</label><div class="secret-field"><input id="reset-confirm" v-model="confirmPassword" :type="visibleSecrets['reset-confirm'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'reset-confirm'" :aria-pressed="!!visibleSecrets['reset-confirm']" @click="visibleSecrets['reset-confirm'] = !visibleSecrets['reset-confirm']">{{ visibleSecrets['reset-confirm'] ? '隐藏' : '显示' }}</button></div><button class="primary">重置密码</button><button type="button" class="text-button" @click="restartRecovery()">重新输入账号</button></fieldset></form>
+          <template v-if="!checking && view === 'recovery'"><p class="muted">输入用户名、六位 UID 或已验证邮箱，申请重置链接。</p><form @submit.prevent="requestEmailReset"><fieldset :disabled="busy"><label for="email-recovery-identifier">账号、UID 或邮箱</label><input id="email-recovery-identifier" v-model="username" autocomplete="username" maxlength="254" required><button class="primary">发送重置邮件</button></fieldset></form><button class="text-button" :disabled="busy" @click="legacyRecovery = !legacyRecovery">未绑定邮箱的旧账号：使用原三道密保</button>
+          <form v-if="legacyRecovery && !recoveryStarted" @submit.prevent="startRecovery"><fieldset :disabled="busy"><label for="recovery-username">账号或 UID</label><input id="recovery-username" v-model="username" autocomplete="username" maxlength="32" required><button class="primary">继续 →</button></fieldset></form>
+          <form v-if="legacyRecovery && recoveryStarted" @submit.prevent="resetPassword"><fieldset :disabled="busy"><QuestionFields :questions="questions" recovery /><label for="reset-password">新密码</label><div class="secret-field"><input id="reset-password" v-model="password" :type="visibleSecrets['reset-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'reset-password'" :aria-pressed="!!visibleSecrets['reset-password']" @click="visibleSecrets['reset-password'] = !visibleSecrets['reset-password']">{{ visibleSecrets['reset-password'] ? '隐藏' : '显示' }}</button></div><label for="reset-confirm">确认新密码</label><div class="secret-field"><input id="reset-confirm" v-model="confirmPassword" :type="visibleSecrets['reset-confirm'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'reset-confirm'" :aria-pressed="!!visibleSecrets['reset-confirm']" @click="visibleSecrets['reset-confirm'] = !visibleSecrets['reset-confirm']">{{ visibleSecrets['reset-confirm'] ? '隐藏' : '显示' }}</button></div><button class="primary">重置密码</button><button type="button" class="text-button" @click="restartRecovery()">重新输入账号</button></fieldset></form>
         </template>
 
           <p v-if="!checking && view === 'recovery'" class="authentication-return"><button class="text-button" :disabled="busy" @click="navigate('login')">← 返回登录</button></p>
@@ -165,7 +176,7 @@ onUnmounted(() => { disposed = true; identityGeneration++; closeDrawer(); clearS
 
           </template>
           <template v-if="user && view === 'security'"><form class="settings-card" @submit.prevent="changePassword"><fieldset :disabled="busy"><h3>修改密码</h3><label for="current-password">当前密码</label><div class="secret-field"><input id="current-password" v-model="currentPassword" :type="visibleSecrets['current-password'] ? 'text' : 'password'" autocomplete="current-password" maxlength="128" required><button type="button" :aria-controls="'current-password'" :aria-pressed="!!visibleSecrets['current-password']" @click="visibleSecrets['current-password'] = !visibleSecrets['current-password']">{{ visibleSecrets['current-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password">新密码</label><div class="secret-field"><input id="new-password" v-model="password" :type="visibleSecrets['new-password'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password'" :aria-pressed="!!visibleSecrets['new-password']" @click="visibleSecrets['new-password'] = !visibleSecrets['new-password']">{{ visibleSecrets['new-password'] ? '隐藏' : '显示' }}</button></div><label for="new-password-confirm">确认新密码</label><div class="secret-field"><input id="new-password-confirm" v-model="confirmPassword" :type="visibleSecrets['new-password-confirm'] ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" :aria-controls="'new-password-confirm'" :aria-pressed="!!visibleSecrets['new-password-confirm']" @click="visibleSecrets['new-password-confirm'] = !visibleSecrets['new-password-confirm']">{{ visibleSecrets['new-password-confirm'] ? '隐藏' : '显示' }}</button></div><button class="secondary">更新密码</button></fieldset></form>
-          <form class="settings-card" @submit.prevent="changeQuestions"><fieldset :disabled="busy"><h3>修改三道密保</h3><label for="security-password">验证当前密码</label><div class="secret-field"><input id="security-password" v-model="securityPassword" :type="visibleSecrets['security-password'] ? 'text' : 'password'" autocomplete="current-password" maxlength="128" required><button type="button" :aria-controls="'security-password'" :aria-pressed="!!visibleSecrets['security-password']" @click="visibleSecrets['security-password'] = !visibleSecrets['security-password']">{{ visibleSecrets['security-password'] ? '隐藏' : '显示' }}</button></div><QuestionFields :questions="questions" /><button class="secondary">替换全部密保</button></fieldset></form>
+          <form class="settings-card" @submit.prevent="changeEmail"><fieldset :disabled="busy"><h3>{{ user.email ? '更换邮箱' : '绑定邮箱' }}</h3><p>{{ user.email || '尚未绑定邮箱；原密保找回暂时保留。' }}</p><p>新邮箱验证完成后启用，密保找回随即停用，所有旧会话退出。</p><label for="new-email">新邮箱</label><input id="new-email" v-model="email" type="email" autocomplete="email" maxlength="254" required><label for="email-password">验证当前密码</label><input id="email-password" v-model="emailPassword" type="password" autocomplete="current-password" maxlength="128" required><button class="secondary">发送验证邮件</button></fieldset></form>
         </template>
           <template v-if="user && view === 'presets'"><p class="muted">存档仅保存识别来源和布局偏好。加载后仍需选择房间并手动开麦，不包含 API Key 或房主权限。</p><div v-if="!presets.length && !busy && !error" class="empty-state"><span aria-hidden="true">▤</span><h2>还没有房间存档</h2><p>在 HakiSub 的“个人房间存档”中保存当前配置，下次就能从这里继续。</p></div><article v-for="preset in presets" :key="preset.id" class="settings-card preset"><form @submit.prevent="renamePreset(preset)"><label :for="`preset-${preset.id}`">存档名称</label><input :id="`preset-${preset.id}`" v-model="editingNames[preset.id]" maxlength="60" required :disabled="busy"><small>更新于 {{ date(preset.updatedAt) }}</small><div class="button-row"><button class="secondary" :disabled="busy">保存名称</button><a :href="`${projectOrigin}/?preset=${encodeURIComponent(preset.id)}`" target="_blank" rel="noopener noreferrer">在 HakiSub 加载 ↗</a><button type="button" class="danger" @click="deletePreset(preset)" :disabled="busy">删除</button></div></form></article><button class="text-button" @click="loadPresets" :disabled="busy">刷新存档</button></template>
         </section>

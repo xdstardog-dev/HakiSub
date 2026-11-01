@@ -1,3 +1,4 @@
+import { createMailTestServer, registerMailFixture } from './emailFixtures.mjs'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -22,7 +23,7 @@ async function start() {
     connectUpstream() { throw Error('账号入房测试禁止真实ASR') } })
   gateway.server.listen(0, '127.0.0.1'); await once(gateway.server, 'listening')
   base = `http://127.0.0.1:${gateway.server.address().port}`
-  accounts = await createAccountServer({ ...configuration, roomGatewayUrl: base })
+  accounts = await createMailTestServer({ ...configuration, roomGatewayUrl: base })
 }
 function client(ip) {
   const cookies = new Map()
@@ -33,6 +34,10 @@ function client(ip) {
     return { status: response.statusCode, body: response.json() }
   }
   async function write(url, payload) {
+    if (url === '/api/account/register') return registerMailFixture(accounts, (path, body) => writeRaw(path, body), payload)
+    return writeRaw(url, payload)
+  }
+  async function writeRaw(url, payload) {
     const csrf = await request(url.startsWith(prefix) ? prefix + '/csrf' : '/api/account/csrf')
     return request(url, 'POST', payload, { 'x-csrf-token': csrf.body.token })
   }

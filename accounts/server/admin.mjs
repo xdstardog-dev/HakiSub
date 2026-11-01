@@ -4,6 +4,7 @@ import { createRequestSecurity } from './requestSecurity.mjs'
 import { existsSync, chmodSync, mkdirSync, openSync, closeSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import Database from 'better-sqlite3'
 
 export async function clearIpLimit(database, configuration, ip) {
   const security = createRequestSecurity(database, configuration)
@@ -29,8 +30,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   let database
   try {
     const configuration = await readAccountConfiguration(process.env, process.argv.includes('--development'))
-    database = openAccountDatabase(configuration.databasePath)
     const [command, value] = process.argv.slice(2).filter(value => value !== '--development')
+    // 升级前备份必须直接打开旧库；不能先触发自动迁移再备份。
+    database = command === 'backup' ? new Database(configuration.databasePath, { readonly: true, fileMustExist: true }) : openAccountDatabase(configuration.databasePath)
     if (command === 'clear-ip' && value) { await clearIpLimit(database, configuration, value); console.log('指定网络的注册/来源限制已解除并记录审计。') }
     else if (command === 'warnings') console.log(JSON.stringify(database.prepare('SELECT kind,detail,created_at FROM security_events ORDER BY id DESC LIMIT 100').all(), null, 2))
     else if (command === 'backup' && value) { await backupDatabase(database, value); console.log('一致性数据库备份完成；请在隔离位置验证恢复。') }
