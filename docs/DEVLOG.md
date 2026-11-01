@@ -1247,3 +1247,11 @@ SQLite v3 仅新增邮件令牌表与已验证邮箱唯一索引，旧用户记�
 最终通过：npm test全套；npm run test:accounts（模拟邮件完整注册/三标识登录/换绑/重置、链接过期/用途/重放/并发消费、旧密保迁移、SMTP失败与配置、限流/注册配额/重复信息、密码轮换撤销邮件、SQLite升级/备份/重启、Cookie/CSRF和存档）；npm run test:room-management；npm run build；npm run build:accounts；npm run test:accounts:browser -- file:///C:/Users/XDstar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs（375/768/1440px合成API，含检查邮箱不自动登录、绑定表单、原密保恢复、邮件链接显式确认/fragment移除和新密码页）；git diff --check。初次esbuild/CLI子进程被沙箱拦截，获准后重跑通过。新增浏览器链接测试发现同页面fragment导航不触发挂载，补hashchange监听后最终回归通过。浏览器截图在ignored artifacts/account-workspace/，375px登录页已目视检查。
 
 更新根README、accounts/README、ARCHITECTURE、SMTP环境示例及ACCOUNT-EMAIL-MIGRATION（手动SMTP参数、加密备份、隔离演练、事务升级、回退风险）。未操作生产服务器/数据库，未部署、提交或推送；未编辑DEEPSEEK-MEMORY。真实SMTP送达/垃圾箱、生产跨域Cookie、物理手机/麦克风及豆包API未验收，模拟成功不替代真实验收。无本地代码阻塞。
+
+## 2026-11-01 · 邮箱改造已推送，服务器候选就绪（待SMTP）
+
+用户授权GitHub与服务器同步，随后明确选择配置SMTP后再切换。功能提交69424ba6a2a8508fcc4c32ec89484f198c53633e已推送main；新增Nodemailer许可证记录及白名单账号包的迁移文档/测试收录。服务器确认SMTP六项均未配置，按用户选择保持线上原账号服务、schema v2、网关和Caddy不变，三个容器ID未变且最终健康检查正常。
+
+候选xdstar-accounts-20261101T070153Z已上传、完整校验并构建；复用原Linux原生依赖，新增Nodemailer从锁文件官方URL下载核验SHA-512，不复制Windows模块。服务器加密一致性备份实际解密核验成功；隔离Linux模拟邮件/安全7项测试全部通过。生产数据库副本v2→v3演练通过，11旧账号及users/sessions/security_questions/hakisub_room_presets/user_projects/registration_events全部逐项相同，完整性/外键正常，房间文件未变。测试目录权限导致首次候选测试停止，修正非秘密测试目录权限后通过；生产无影响。
+
+实际版本、校验和、备份/候选镜像及后续步骤见RELEASE-ACCOUNT-EMAIL-20261101.md。SMTP凭据需用户在服务器secrets/accounts.env配置，未索取/输出密码。正式切换仍待SMTP就绪，届时必须另存最新一致性备份；此次未部署激活、未迁移正式库、未重启业务、未发送真实邮件、未下载生产备份或凭据。
