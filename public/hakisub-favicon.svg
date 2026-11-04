@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 6 112 112">
+  <mask id="eyes">
+    <rect width="128" height="128" fill="white"/>
+    <circle cx="41" cy="75" r="14.3" fill="black"/>
+    <circle cx="87" cy="75" r="14.3" fill="black"/>
+    <circle cx="41" cy="75" r="10.2" fill="white"/>
+    <circle cx="87" cy="75" r="10.2" fill="white"/>
+  </mask>
+  <path fill="#41454a" mask="url(#eyes)" d="M19 59C15 47 17 27 24 23C29 19 43 29 53 40C60 38.5 68 38.5 75 40C85 29 99 19 104 23C111 27 113 47 109 59C119 72 119 89 111 100C104 109 96 109 64 109S24 109 17 100C9 89 9 72 19 59Z"/>
+</svg>

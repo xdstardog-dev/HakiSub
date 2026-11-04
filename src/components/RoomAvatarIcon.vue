@@ -6,5 +6,6 @@ const avatar = computed(() => ROOM_AVATARS.find(avatar => avatar.id === normaliz
 </script>
 
 <template>
-  <svg class="room-avatar-icon" :data-avatar-id="avatar.id" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path v-for="(path, index) in avatar.paths" :key="index" :d="path" /></svg>
+  <img v-if="avatar.id === 'cat'" class="room-avatar-icon" :data-avatar-id="avatar.id" src="/hakisub-favicon.svg" width="26" height="26" alt="" aria-hidden="true" />
+  <svg v-else class="room-avatar-icon" :data-avatar-id="avatar.id" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path v-for="(path, index) in avatar.paths" :key="index" :d="path" /></svg>
 </template>

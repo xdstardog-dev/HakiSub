@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="860" viewBox="0 0 1120 860">
+<rect width="1120" height="860" fill="#ecece8"/>
+<text x="56" y="62" font-family="Microsoft YaHei,sans-serif" font-size="28" font-weight="700" fill="#303438">HakiSub 图标风格探索</text>
+<text x="58" y="95" font-family="Microsoft YaHei,sans-serif" font-size="15" fill="#707579">同一组功能，用四种视觉语言呈现 · 灰白配色</text>
+<g font-family="Microsoft YaHei,sans-serif" fill="#303438">
+<rect x="48" y="122" width="1024" height="160" rx="22" fill="#fafaf8"/>
+<text x="78" y="164" font-size="21" font-weight="700">01 精密几何</text><text x="78" y="190" font-size="13" fill="#777c7e">轻、克制、清晰</text>
+<rect x="48" y="300" width="1024" height="160" rx="22" fill="#fafaf8"/>
+<text x="78" y="342" font-size="21" font-weight="700">02 圆角粗线</text><text x="78" y="368" font-size="13" fill="#777c7e">醒目、亲切、有力量</text>
+<rect x="48" y="478" width="1024" height="160" rx="22" fill="#fafaf8"/>
+<text x="78" y="520" font-size="21" font-weight="700">03 点阵像素</text><text x="78" y="546" font-size="13" fill="#777c7e">复古、数字感、个性鲜明</text>
+<rect x="48" y="656" width="1024" height="160" rx="22" fill="#fafaf8"/>
+<text x="78" y="698" font-size="21" font-weight="700">04 浮雕块面</text><text x="78" y="724" font-size="13" fill="#777c7e">柔软、安静、有层次</text>
+</g>
+<!-- 精密几何 -->
+<g transform="translate(350 156)" fill="none" stroke="#42484b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<g><path d="M3 30 32 7l29 23v29H3z"/><path d="M23 59V39h18v20"/></g>
+<g transform="translate(170)"><rect x="5" y="10" width="55" height="42" rx="8"/><path d="m19 52-2 10 14-10M16 23h31M16 32h25M16 41h17"/></g>
+<g transform="translate(340)"><rect x="22" y="5" width="20" height="37" rx="10"/><path d="M13 32v3a19 19 0 0 0 38 0v-3M32 54v9M22 63h20"/></g>
+<g transform="translate(510)"><path d="M6 15h52M6 32h52M6 49h52"/><circle cx="24" cy="15" r="5" fill="#fafaf8"/><circle cx="44" cy="32" r="5" fill="#fafaf8"/><circle cx="28" cy="49" r="5" fill="#fafaf8"/></g>
+</g>
+<!-- 粗线 -->
+<g transform="translate(350 334)" fill="none" stroke="#383d40" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+<g><path d="M5 30 32 9l27 21v26a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5z"/><path d="M25 61V43h14v18"/></g>
+<g transform="translate(170)"><path d="M13 12h39a9 9 0 0 1 9 9v26a9 9 0 0 1-9 9H30L17 64l2-8h-6a9 9 0 0 1-9-9V21a9 9 0 0 1 9-9Z"/><path d="M18 28h29M18 40h20"/></g>
+<g transform="translate(340)"><rect x="22" y="6" width="20" height="36" rx="10"/><path d="M13 33v3a19 19 0 0 0 38 0v-3M32 55v8M22 63h20"/></g>
+<g transform="translate(510)"><path d="M7 16h50M7 33h50M7 50h50"/><circle cx="23" cy="16" r="5" fill="#fafaf8"/><circle cx="43" cy="33" r="5" fill="#fafaf8"/><circle cx="27" cy="50" r="5" fill="#fafaf8"/></g>
+</g>
+<!-- 点阵 -->
+<g transform="translate(350 513)" fill="#41474a" shape-rendering="crispEdges">
+<path d="M24 0h16v8h8v8h8v8h8v40H40V40H24v24H0V24h8v-8h8V8h8z M8 32v24h8V32h32v24h8V32H48v-8H16v8z" fill-rule="evenodd"/>
+<g transform="translate(170)"><path d="M8 8h48v8h8v32h-8v8H32L16 64v-8H8v-8H0V16h8z M8 16v32h48V16z" fill-rule="evenodd"/><path d="M16 24h32v8H16zm0 16h24v8H16z"/></g>
+<g transform="translate(340)"><path d="M24 0h16v8h8v32h-8v8H24v-8h-8V8h8z M24 8v32h16V8z" fill-rule="evenodd"/><path d="M8 24h8v24h8v8h16v-8h8V24h8v24h-8v8h-8v8H24v-8h-8v-8H8z"/></g>
+<g transform="translate(510)"><path d="M0 8h16v-8h16v8h32v8H32v8H16v-8H0zm0 24h32v-8h16v8h16v8H48v8H32v-8H0zm0 24h16v-8h16v8h32v8H32v8H16v-8H0z"/></g>
+</g>
+<!-- 块面 -->
+<g transform="translate(350 690)" stroke-linejoin="round" stroke-linecap="round">
+<g><path d="M2 31 32 8l30 23v27a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#c5c8c5"/><path d="M22 64V42a10 10 0 0 1 20 0v22" fill="#f8f8f5"/><path d="M8 30 32 12l24 18" fill="none" stroke="#858b8b" stroke-width="3"/></g>
+<g transform="translate(170)"><path d="M12 10h42a10 10 0 0 1 10 10v30a10 10 0 0 1-10 10H29L15 68l2-8h-5A10 10 0 0 1 2 50V20a10 10 0 0 1 10-10Z" fill="#c5c8c5"/><path d="M16 27h32M16 39h25M16 50h18" fill="none" stroke="#fafaf8" stroke-width="5"/></g>
+<g transform="translate(340)"><rect x="19" y="4" width="26" height="42" rx="13" fill="#bfc3c0"/><path d="M10 34v3a22 22 0 0 0 44 0v-3M32 59v7M22 66h20" fill="none" stroke="#858b8b" stroke-width="5"/></g>
+<g transform="translate(510)"><rect x="3" y="5" width="58" height="58" rx="16" fill="#c5c8c5"/><path d="M13 22h38M13 33h38M13 44h38" fill="none" stroke="#f8f8f5" stroke-width="4"/><circle cx="25" cy="22" r="5" fill="#737a7a"/><circle cx="42" cy="33" r="5" fill="#737a7a"/><circle cx="27" cy="44" r="5" fill="#737a7a"/></g>
+</g>
+<g font-family="Microsoft YaHei,sans-serif" font-size="13" text-anchor="middle" fill="#777c7e">
+<text x="382" y="254">房间</text><text x="552" y="254">字幕</text><text x="722" y="254">麦克风</text><text x="892" y="254">设置</text>
+<text x="382" y="432">房间</text><text x="552" y="432">字幕</text><text x="722" y="432">麦克风</text><text x="892" y="432">设置</text>
+<text x="382" y="610">房间</text><text x="552" y="610">字幕</text><text x="722" y="610">麦克风</text><text x="892" y="610">设置</text>
+<text x="382" y="788">房间</text><text x="552" y="788">字幕</text><text x="722" y="788">麦克风</text><text x="892" y="788">设置</text>
+</g>
+</svg>

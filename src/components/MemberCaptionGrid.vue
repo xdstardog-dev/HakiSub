@@ -37,9 +37,9 @@ watch(() => props.entrances, async (current, previous = {}) => {
     if (!card?.animate) continue
     const background = card.querySelector<HTMLElement>('.tile-background')
     if (!background?.animate) continue
-    const animations = [background.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.015)', offset: .35 }, { transform: 'scale(1)' }], { duration: 650, easing: 'ease-out' })]
+    const animations = [background.animate([{ borderColor: '#e4b83f', offset: .35 }], { duration: 650, easing: 'ease-out' })]
     for (const [index, ring] of Array.from(card.querySelectorAll<HTMLElement>('.speech-ring')).entries()) {
-      animations.push(ring.animate([{ transform: 'scale(.8)', opacity: .55 }, { transform: 'scale(1.65)', opacity: 0 }], { duration: 650, delay: index * 90, easing: 'ease-out', fill: 'backwards' }))
+      animations.push(ring.animate([{ transform: 'scale(.8)', opacity: .55 }, { transform: 'scale(2.4)', opacity: 0 }], { duration: 650, delay: index * 90, easing: 'ease-out', fill: 'backwards' }))
     }
     entranceAnimations.set(id, animations)
     void Promise.all(animations.map(animation => animation.finished.catch(() => {}))).then(() => { if (entranceAnimations.get(id) === animations) entranceAnimations.delete(id) })
@@ -49,6 +49,7 @@ const contractionStates = reactive(new Map<string, MemberContractionState>())
 const pressedMembers = reactive(new Map<number, string>())
 const focusedMemberId = ref<string | null>(null), modeMenuMemberId = ref<string | null>(null)
 const selectedReactionOptions = computed(() => (props.selectedReactions ?? DEFAULT_REACTION_TYPES).slice(0, REACTION_SELECTION_LIMIT).flatMap(type => QUICK_REACTIONS.filter(option => option.type === type)))
+const orderedReactionOptions = computed(() => [...selectedReactionOptions.value, ...QUICK_REACTIONS.filter(option => !selectedReactionOptions.value.some(pinned => pinned.type === option.type))])
 const reactionMenu = ref<{ memberId: string; left: number; top: number } | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let pressStart: { x: number; y: number; pointerId: number } | undefined
@@ -296,9 +297,11 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
       </div>
     </article>
     <div v-if="reactionMenu" class="reaction-menu" role="dialog" aria-label="快捷回应" :style="{ left: `${reactionMenu.left}px`, top: `${reactionMenu.top}px` }" @click.stop>
-      <button v-for="option in selectedReactionOptions" :key="option.type" :disabled="now < (reactionCooldownUntil ?? 0)" @click="selectReaction(option.type)">{{ option.emoji }} {{ option.label }}</button>
+      <div class="reaction-menu-options" tabindex="0" role="group" aria-label="回应列表">
+        <button v-for="option in orderedReactionOptions" :key="option.type" :disabled="now < (reactionCooldownUntil ?? 0)" @click="selectReaction(option.type)">{{ option.emoji }} {{ option.label }}</button>
+        <button type="button" class="reaction-settings-trigger" @click="openReactionSettings">设置</button>
+      </div>
       <small v-if="now < (reactionCooldownUntil ?? 0)">请稍后再回应</small>
-      <div class="reaction-menu-footer"><button @click="reactionMenu = null">取消</button><button class="reaction-settings-trigger" @click="openReactionSettings">设置</button></div>
     </div>
     <p v-if="!visibleTiles.length" class="grid-empty">
       <span>{{ tiles.length ? '没人说话喵' : '暂无成员' }}</span>
@@ -385,12 +388,23 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
 .reaction-target { -webkit-touch-callout: none; user-select: none; touch-action: pan-y; }
 .can-type { cursor: text; }
 .start-typing { width: 100%; min-height: 28px; padding: 4px 8px; font-size: 12px; flex-shrink: 0; }
-.reaction-menu { position: fixed; z-index: 1000; width: 208px; max-height: calc(100dvh - 16px); overflow: auto; display: grid; gap: 3px; padding: 6px; background: var(--room-card-bg); color: var(--home-text); border: 1px solid var(--home-border); border-radius: 10px; box-shadow: 0 4px 18px #0003; }
+.reaction-menu { position: fixed; z-index: 1000; width: 208px; max-height: calc(100dvh - 16px); overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--room-card-bg); color: var(--home-text); border: 1px solid var(--home-border); border-radius: 10px; box-shadow: 0 4px 18px #0003; }
+.reaction-menu-options { display: flex; flex-direction: column; gap: 3px; max-height: 182px; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; }
+.reaction-menu-options { --reaction-scrollbar-thumb: rgb(128 128 128 / 30%); scrollbar-width: thin; scrollbar-color: var(--reaction-scrollbar-thumb) transparent; }
+.reaction-menu-options:hover, .reaction-menu-options:active, .reaction-menu-options:focus-visible { --reaction-scrollbar-thumb: rgb(128 128 128 / 80%); }
+/* Chromium 使用伪元素去掉系统箭头；其他浏览器保留透明轨道的细滚动条。 */
+@supports selector(::-webkit-scrollbar) {
+  .reaction-menu-options { scrollbar-width: auto; scrollbar-color: auto; }
+  .reaction-menu-options::-webkit-scrollbar { width: 6px; background: transparent; }
+  .reaction-menu-options::-webkit-scrollbar-track, .reaction-menu-options::-webkit-scrollbar-corner { background: transparent; border: 0; box-shadow: none; }
+  .reaction-menu-options::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  .reaction-menu-options::-webkit-scrollbar-thumb { background: var(--reaction-scrollbar-thumb); border: 0; border-radius: 999px; }
+}
+.reaction-menu-options button { flex: 0 0 34px; }
+.reaction-menu > small { flex-shrink: 0; }
 .reaction-menu button { text-align: left; min-height: 34px; padding: 4px 10px; }
 .reaction-menu small { padding: 0 10px; }
-.reaction-menu-footer { display: flex; gap: 4px; border-top: 1px solid #e3e3e3; padding-top: 3px; }
-.reaction-menu-footer button { flex: 1; }
-.reaction-menu-footer .reaction-settings-trigger { flex: 0 0 auto; min-width: 56px; text-align: center; color: var(--home-secondary-text); }
+.reaction-menu-options .reaction-settings-trigger { border-top: 1px solid var(--home-border); color: var(--home-secondary-text); }
 .reaction-bubbles { position: absolute; right: 6px; top: 4px; z-index: 2; max-width: calc(100% - 12px); pointer-events: none; display: grid; gap: 3px; }
 .reaction-bubble { margin: 0; padding: 3px 8px; border: 1px solid var(--home-border); border-radius: 12px; background: #dedfdb; color: var(--home-text); font-size: 12px; overflow-wrap: anywhere; box-shadow: 0 1px 4px #0001; }
 .member-caption-grid[data-count="1"],

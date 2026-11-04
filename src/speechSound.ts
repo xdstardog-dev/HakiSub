@@ -22,8 +22,8 @@ export function createSpeechSound(createContext = () => new AudioContext()) {
         const oscillator = context.createOscillator(), gain = context.createGain(), time = context.currentTime
         oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(SPEECH_FREQUENCIES[toneSlot]!, time)
         gain.gain.setValueAtTime(0, time)
-        gain.gain.linearRampToValueAtTime(.055 * (volume / 100) ** 1.6, time + .012)
-        gain.gain.exponentialRampToValueAtTime(.0001, time + .19)
+        gain.gain.linearRampToValueAtTime(.18 * (volume / 100), time + .012)
+        gain.gain.linearRampToValueAtTime(0, time + .28)
         oscillator.connect(gain); gain.connect(context.destination)
         let stopped = false
         stop = () => {
@@ -32,7 +32,7 @@ export function createSpeechSound(createContext = () => new AudioContext()) {
           try { oscillator.stop(); oscillator.disconnect(); gain.disconnect() } catch { /* 设备可提前关闭。 */ }
         }
         active.add(stop); oscillator.onended = stop
-        oscillator.start(time); oscillator.stop(time + .21)
+        oscillator.start(time); oscillator.stop(time + .3)
         return true
       } catch { stop?.(); return false }
     },

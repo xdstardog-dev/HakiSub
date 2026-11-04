@@ -38,7 +38,7 @@ function openMenu(focus = false) {
   const rect = microphoneButton.value?.getBoundingClientRect()
   if (!rect) return
   const menuWidth = 64, menuHeight = 56
-  menuPosition.value = { left: Math.max(8, Math.min(rect.left - menuWidth - 8, window.innerWidth - menuWidth - 8)), top: Math.max(8, Math.min(rect.top + (rect.height - menuHeight) / 2, window.innerHeight - menuHeight - 8)) }
+  menuPosition.value = { left: Math.max(8, Math.min(rect.left - menuWidth - 8, window.innerWidth - menuWidth - 8)), top: Math.max(8, Math.min(rect.top + (rect.height - menuHeight) / 2, window.innerHeight - menuHeight)) }
   menuOpen.value = true
   if (focus) nextTick(() => typingOption.value?.focus({ preventScroll: true }))
 }

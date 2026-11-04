@@ -1,4 +1,6 @@
 node_modules/
+tools/*-server.log
+tools/*-server-error.log
 dist/
 artifacts/
 public/vad/ort-wasm-*

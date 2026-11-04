@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+  <!-- 猫头绕各自中心逆时针倾斜25度；边界副本保持相同旋转，平铺时仍接合。 -->
+  <defs>
+    <mask id="eyes">
+      <rect width="128" height="128" fill="white"/>
+      <circle cx="41" cy="75" r="14.3" fill="black"/>
+      <circle cx="87" cy="75" r="14.3" fill="black"/>
+      <!-- 白色小尺寸底纹有视觉膨胀感，仅缩小眼珠并保持正视。 -->
+      <circle cx="41" cy="75" r="8" fill="white"/>
+      <circle cx="87" cy="75" r="8" fill="white"/>
+    </mask>
+    <symbol id="cat" viewBox="8 6 112 112">
+      <path fill="#FFFFFF" mask="url(#eyes)" d="M19 59C15 47 17 27 24 23C29 19 43 29 53 40C60 38.5 68 38.5 75 40C85 29 99 19 104 23C111 27 113 47 109 59C119 72 119 89 111 100C104 109 96 109 64 109S24 109 17 100C9 89 9 72 19 59Z"/>
+    </symbol>
+  </defs>
+  <use href="#cat" x="36" y="36" width="88" height="88" transform="rotate(-25 80 80)"/>
+  <use href="#cat" x="196" y="36" width="88" height="88" transform="rotate(-25 240 80)"/>
+  <use href="#cat" x="-44" y="196" width="88" height="88" transform="rotate(-25 0 240)"/>
+  <use href="#cat" x="116" y="196" width="88" height="88" transform="rotate(-25 160 240)"/>
+  <use href="#cat" x="276" y="196" width="88" height="88" transform="rotate(-25 320 240)"/>
+</svg>

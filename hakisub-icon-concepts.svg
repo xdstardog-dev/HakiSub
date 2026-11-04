@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="650" viewBox="0 0 960 650">
+  <rect width="960" height="650" rx="32" fill="#f4f3ee"/>
+  <text x="58" y="75" fill="#34383b" font-family="Microsoft YaHei, sans-serif" font-size="30" font-weight="700">HakiSub · 小图标提案</text>
+  <text x="60" y="109" fill="#777d7b" font-family="Microsoft YaHei, sans-serif" font-size="15">灰白配色 · 圆润线条 · 清晰易辨</text>
+  <g fill="#fff" stroke="#e8e9e4" stroke-width="1">
+    <rect x="48" y="145" width="200" height="194" rx="24"/><rect x="269" y="145" width="200" height="194" rx="24"/><rect x="490" y="145" width="200" height="194" rx="24"/><rect x="711" y="145" width="200" height="194" rx="24"/>
+    <rect x="48" y="357" width="200" height="194" rx="24"/><rect x="269" y="357" width="200" height="194" rx="24"/><rect x="490" y="357" width="200" height="194" rx="24"/><rect x="711" y="357" width="200" height="194" rx="24"/>
+  </g>
+  <g fill="none" stroke="#41494b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 房间 -->
+    <g transform="translate(108 175)"><path d="M8 34 39 10 70 34v31a7 7 0 0 1-7 7H15a7 7 0 0 1-7-7z" fill="#e3e4e0"/><path d="M30 72V49c0-5 4-9 9-9s9 4 9 9v23" fill="#fff"/></g>
+    <!-- 字幕 -->
+    <g transform="translate(329 175)"><path d="M12 14h54a8 8 0 0 1 8 8v34a8 8 0 0 1-8 8H35L21 74l2-10H12a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8Z" fill="#e3e4e0"/><path d="M17 31h26M17 43h39M17 54h24"/></g>
+    <!-- 讲话 -->
+    <g transform="translate(550 175)"><rect x="25" y="9" width="28" height="45" rx="14" fill="#e3e4e0"/><path d="M16 39v4a23 23 0 0 0 46 0v-4M39 66v8M28 74h22"/></g>
+    <!-- 静音 -->
+    <g transform="translate(771 175)"><rect x="25" y="9" width="28" height="45" rx="14" fill="#e3e4e0"/><path d="M16 39v4a23 23 0 0 0 46 0v-4M39 66v8M28 74h22M10 9l58 65"/></g>
+    <!-- 文字 -->
+    <g transform="translate(108 387)"><rect x="5" y="18" width="68" height="48" rx="12" fill="#e3e4e0"/><path d="M17 34h4m7 0h4m7 0h4m7 0h4m7 0h.1M17 45h4m7 0h4m7 0h4m7 0h4m7 0h.1M25 56h28"/></g>
+    <!-- 分享 -->
+    <g transform="translate(329 387)"><path d="M17 38v23a9 9 0 0 0 9 9h29a9 9 0 0 0 9-9V38" fill="#e3e4e0"/><path d="M40 52V10m-12 12 12-12 12 12"/></g>
+    <!-- 设置 -->
+    <g transform="translate(550 387)"><path d="M11 19h56M11 39h56M11 59h56"/><circle cx="28" cy="19" r="7" fill="#e3e4e0"/><circle cx="51" cy="39" r="7" fill="#e3e4e0"/><circle cx="32" cy="59" r="7" fill="#e3e4e0"/></g>
+    <!-- 回应 -->
+    <g transform="translate(771 387)"><path d="M39 72S9 55 9 33c0-17 21-23 30-8 9-15 30-9 30 8 0 22-30 39-30 39Z" fill="#e3e4e0"/></g>
+  </g>
+  <g text-anchor="middle" font-family="Microsoft YaHei, sans-serif" fill="#41494b" font-size="16" font-weight="600">
+    <text x="148" y="304">房间</text><text x="369" y="304">字幕</text><text x="590" y="304">麦克风</text><text x="811" y="304">静音</text>
+    <text x="148" y="516">打字</text><text x="369" y="516">分享</text><text x="590" y="516">设置</text><text x="811" y="516">快捷回应</text>
+  </g>
+  <text x="60" y="600" fill="#818784" font-family="Microsoft YaHei, sans-serif" font-size="14">概念预览 · 灰白配色与现有界面呼应 · 尚未替换应用中的图标</text>
+</svg>

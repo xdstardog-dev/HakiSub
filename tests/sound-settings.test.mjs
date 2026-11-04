@@ -36,7 +36,7 @@ mounted.forEach(fn => fn()); assert.equal(opened, 1)
 const html = () => renderToString(Vue.createSSRApp({ setup: () => ({ ...view, ...Vue.toRefs(props) }), render }))
 assert.match(await html(), /全局音效/); assert.match(await html(), /试听音效/)
 assert.match(await html(), /60%/); assert.match(await html(), /音效已就绪/)
-assert.match(await html(), /试听内容/); assert.match(await html(), /通用提示音/); assert.match(await html(), /请再说一遍/)
+assert.match(await html(), /试听内容/); assert.match(await html(), /通用提示音/); assert.match(await html(), /😆😆😆/)
 view.previewSlot.value = 'question'; view.emit('preview', view.previewSlot.value)
 assert.deepEqual(plain(emitted.at(-1)), ['preview', 'question'])
 view.changeEnabled({ target: { checked: false } }); assert.deepEqual(plain(emitted.at(-1)), ['update', { enabled: false, volume: 60 }])
@@ -55,7 +55,7 @@ for (const file of [manifest.default, ...Object.values(manifest.reactions)]) {
   assert.ok(data.subarray(0, 3).toString() === 'ID3' || data[0] === 0xff, `${file} 必须是真正MP3，不能改后缀冒充`)
 }
 assert.match(readFileSync(new URL('../public/sounds/reactions/LICENSE.kenney.txt', import.meta.url), 'utf8'), /CC0/)
-const fixtureSlots = { version: 1, default: 'default.mp3', reactions: { agree: 'agree.mp3' } }
+const fixtureSlots = { version: 1, default: 'default.mp3', reactions: { agree: 'agree.mp3' }, gains: { 'agree.mp3': 2.5, 'default.mp3': 2 } }
 const files = new Map([['slots.json', JSON.stringify(fixtureSlots)], ['default.mp3', new Uint8Array([1])], ['agree.mp3', new Uint8Array([2])]])
 const requests = []
 const request = async (url, options) => { requests.push({ url, options }); const body = files.get(url.split('/').at(-1)); return new Response(body ?? 'missing', { status: body === undefined ? 404 : 200 }) }
@@ -76,7 +76,7 @@ assert.equal(engine.getState(), 'muted'); assert.equal(await engine.unlock(), fa
 assert.equal(await engine.play(), false); assert.equal(requests.length, 0)
 engine.configure({ enabled: true, volume: 20 }); assert.equal(await engine.unlock(), true)
 assert.equal(engine.getState(), 'ready'); assert.equal(await engine.play('agree'), true)
-assert.equal(stats.gains[0], 0.2); assert.equal(stats.nodes[0].buffer.tag, 2)
+assert.equal(stats.gains[0], 0.5); assert.equal(stats.nodes[0].buffer.tag, 2)
 assert.equal(requests[0].options.cache, 'no-cache')
 engine.configure({ enabled: false, volume: 20 }); assert.equal(stats.disconnected, 2, '关闭时立即停止已有音符')
 assert.equal(await engine.play(), false); assert.equal(stats.starts, 1)
@@ -89,12 +89,13 @@ assert.equal(requests.filter(item => item.url.endsWith('/default.mp3')).length, 
 engine.close(); engine.close(); assert.equal(stats.closed, 1); assert.equal(stats.disconnected, 8)
 assert.ok(stats.stops >= stats.starts)
 const invalidSlots = modelApi.normalizeSoundSlots({ default: 'https://bad.example/a.mp3', reactions: { agree: '../secret.mp3', question: 'custom.mp3' } })
-assert.equal(invalidSlots.default, 'default.mp3'); assert.equal(invalidSlots.reactions.agree, 'agree.mp3'); assert.equal(invalidSlots.reactions.question, 'custom.mp3')
+assert.equal(invalidSlots.default, '00_default.mp3'); assert.equal(invalidSlots.reactions.agree, '01_agree.mp3'); assert.equal(invalidSlots.reactions.question, 'custom.mp3')
 for (const replacement of [undefined, new Uint8Array([255]), new Uint8Array([254]), new Uint8Array(1024 * 1024 + 1)]) {
   if (replacement) files.set('agree.mp3', replacement); else files.delete('agree.mp3')
   const fallback = fakeAudio(), sound = modelApi.createReactionSound(() => fallback.audio, undefined, request)
   await sound.unlock(); assert.equal(await sound.play('agree'), true)
   assert.equal(fallback.stats.nodes[0].buffer.tag, 1, '缺失/损坏/过长/过大素材回退通用MP3')
+  assert.equal(fallback.stats.gains[0], 1.2, '回退时使用通用音效的增益')
   sound.close()
 }
 const missing = fakeAudio(), missingSound = modelApi.createReactionSound(() => missing.audio, undefined, async () => new Response('missing', { status: 404 }))

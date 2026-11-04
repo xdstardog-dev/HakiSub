@@ -16,7 +16,7 @@ const window = { innerWidth: 320, innerHeight: 568, addEventListener: (name, han
 const context = vm.createContext({ ...Vue, window, Date: Clock, defineProps: () => props, defineEmits: () => (...args) => emitted.push(args),
   setTimeout: fn => { timers.set(++timerId, fn); return timerId }, clearTimeout: id => timers.delete(id), onMounted: fn => fn(), onUnmounted: fn => unmounted.push(fn) })
 const scope = Vue.effectScope()
-scope.run(() => vm.runInContext(ts.transpile(script + '\nglobalThis.view = {actionLabel,microphoneButton,typingOption,menuOpen,menuPosition,dragSelected,handleClick,startPress,movePress,finishPress,cancelPress,handleContextMenu,handleKeydown,handleWindowKeydown};', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context))
+scope.run(() => vm.runInContext(ts.transpile(script + '\nglobalThis.view = {actionLabel,microphoneButton,typingOption,menuOpen,menuPosition,dragSelected,openMenu,handleClick,startPress,movePress,finishPress,cancelPress,handleContextMenu,handleKeydown,handleWindowKeydown};', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context))
 const view = context.view
 let focused = 0
 const button = { getBoundingClientRect: () => ({ left: 270, top: 540, width: 44, height: 44 }), focus() { focused++ }, setPointerCapture() {} }
@@ -35,8 +35,10 @@ view.handleContextMenu(event({ pointerType: 'mouse' })); assert.equal(view.menuO
 view.handleKeydown({ key: 'ArrowLeft', preventDefault() {} }); assert.equal(view.menuOpen.value, false)
 props.mode = 'muted'; await Vue.nextTick()
 view.startPress(event()); fire(); assert.equal(view.menuOpen.value, true)
-assert.ok(view.menuPosition.value.left >= 8 && view.menuPosition.value.top <= 508)
+assert.ok(view.menuPosition.value.left >= 8 && view.menuPosition.value.top <= 512)
 view.finishPress(event()); view.handleClick(event()); assert.equal(toggles(), 1, '长按后合成click不能开关麦')
+button.getBoundingClientRect = () => ({ left: 248, top: 506, width: 64, height: 56 })
+view.openMenu(); assert.equal(view.menuPosition.value.top, 506, '贴近底部时输入方式按钮与主按钮对齐')
 assert.equal(view.menuOpen.value, true, '长按原地松手保留菜单以供点击')
 view.cancelPress(); view.startPress(event()); fire()
 view.movePress(event({ clientX: 230 })); assert.equal(view.dragSelected.value, true)

@@ -22,7 +22,7 @@ assert.equal(saveRoomPreferences({}, { setItem() { throw Error('blocked') } }), 
 const oscillators = [], gains = []
 const audio = { state: 'suspended', currentTime: 10, destination: {}, resume() { this.state = 'running' }, close() { this.state = 'closed'; return Promise.resolve() },
   createOscillator() { const node = { frequency: { setValueAtTime(value) { node.pitch = value } }, connect() {}, disconnect() {}, start() { node.started = true }, stop() { node.stopped = true } }; oscillators.push(node); return node },
-  createGain() { const node = { gain: { setValueAtTime() {}, linearRampToValueAtTime(value) { node.peak = value }, exponentialRampToValueAtTime() {} }, connect() {}, disconnect() {} }; gains.push(node); return node },
+  createGain() { const node = { gain: { setValueAtTime() {}, linearRampToValueAtTime(value) { node.peak = Math.max(node.peak ?? 0, value) }, exponentialRampToValueAtTime() {} }, connect() {}, disconnect() {} }; gains.push(node); return node },
 }
 const sound = createSpeechSound(() => audio)
 assert.equal(sound.play(0), false, '未解锁不排队')

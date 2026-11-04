@@ -8,10 +8,10 @@
   --home-light-text: #f1f1ee;
   --home-border: #c9cac7;
   --home-card-radius: 28px;
-  --home-control-radius: 12px;
-  --home-space: 16px;
-  --home-card-gap: 8px;
-  --home-page-gutter: 24px;
+  --home-control-radius: var(--ui-radius-control);
+  --home-space: var(--ui-space-4);
+  --home-card-gap: var(--ui-space-2);
+  --home-page-gutter: var(--ui-space-6);
   --mobile-card-ratio: 3 / 4;
   --desktop-card-ratio: 6 / 7;
   --card-active-scale: 1;
@@ -26,6 +26,68 @@
   --home-layout-breakpoint: 768px;
 }
 .app-shell.home-shell { max-width: none; width: 100%; padding: 0 0 env(safe-area-inset-bottom, 0px); background: var(--home-bg); color: var(--home-light-text); box-shadow: none; }
+.app-shell.home-shell { position: relative; isolation: isolate; }
+.home-background-texture { display: none; }
+
+/* 只绘制 1120px 首页主体以外的留白；固定遮罩不随纹理移动。 */
+@media (min-width: 1121px) {
+  .home-shell:not(.in-room) > .home-background-texture {
+    --home-texture-period: 320px;
+    --home-texture-gutter: max(0px, calc((100% - var(--home-content-max-width)) / 2));
+    position: fixed;
+    z-index: -1;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to right,
+      #fff 0, #fff max(0px, calc(var(--home-texture-gutter) - 48px)),
+      transparent var(--home-texture-gutter),
+      transparent calc(100% - var(--home-texture-gutter)),
+      #fff min(100%, calc(100% - var(--home-texture-gutter) + 48px)), #fff 100%);
+    mask-image: linear-gradient(to right,
+      #fff 0, #fff max(0px, calc(var(--home-texture-gutter) - 48px)),
+      transparent var(--home-texture-gutter),
+      transparent calc(100% - var(--home-texture-gutter)),
+      #fff min(100%, calc(100% - var(--home-texture-gutter) + 48px)), #fff 100%);
+  }
+
+  .home-shell:not(.in-room) > .home-background-texture::before,
+  .home-shell:not(.in-room) > .home-background-texture::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: calc(-1 * var(--home-texture-period));
+    width: calc(var(--home-texture-gutter) + var(--home-texture-period));
+    pointer-events: none;
+    background: url('/hakisub-cat-texture.svg') repeat 0 0 / var(--home-texture-period) var(--home-texture-period);
+    opacity: .08;
+    animation: home-texture-drift 72s linear infinite, home-texture-breathe 14s ease-in-out infinite;
+  }
+
+  /* 左/下各预留一整周期，平移后仍覆盖全部留白，不创建整屏纹理层。 */
+  .home-shell:not(.in-room) > .home-background-texture::before { left: calc(-1 * var(--home-texture-period)); }
+  .home-shell:not(.in-room) > .home-background-texture::after { right: 0; }
+}
+
+/* 320px 包含两行错位猫头（间距160px）；位移恰好为完整平铺周期。 */
+@keyframes home-texture-drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--home-texture-period), calc(-1 * var(--home-texture-period))); }
+}
+@keyframes home-texture-breathe {
+  0%, 100% { opacity: .08; }
+  50% { opacity: .10; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-shell:not(.in-room) > .home-background-texture::before,
+  .home-shell:not(.in-room) > .home-background-texture::after {
+    animation: none;
+    transform: none;
+    opacity: .09;
+  }
+}
+
 .home-container { width: 100%; max-width: var(--home-content-max-width); margin-inline: auto; padding-inline: var(--home-page-gutter); }
 .home-header { display: flex; align-items: center; justify-content: space-between; gap: var(--home-space); min-height: 100px; padding-top: env(safe-area-inset-top, 0px); }
 .home-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -66,18 +128,24 @@
 .home-room-details strong { display: block; font-size: clamp(20px, 5vw, 26px); line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
 .home-room-details small { display: block; margin-top: 12px; font-size: 13px; color: var(--home-secondary-text); }
 .home-function-card { justify-content: center; }
-.home-function-actions { width: 100%; display: grid; gap: 10px; }
-.home-function-actions button { display: flex; align-items: center; justify-content: center; width: 100%; padding: 10px 12px; border: 1px solid #bfc1bd; border-radius: var(--home-control-radius); background: #e3e4e0; color: var(--home-text); font-size: 14px; }
+.home-function-actions { width: 100%; display: grid; gap: 10px; container-type: inline-size; }
+/* 图标与文字作为一组居中，窄卡片缩放尺寸以保留两侧留白。 */
+.home-function-actions button { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 4cqw, 12px); width: 100%; min-height: clamp(48px, 24cqw, 68px); padding: 8px; border: 1px solid #bfc1bd; border-radius: 999px; background: #e3e4e0; color: var(--home-text); font-size: clamp(14px, 7cqw, 20px); font-weight: 700; letter-spacing: 1.5px; line-height: 1.25; }
+.home-function-actions button > span:last-child { white-space: nowrap; }
+.home-function-icon { flex: none; display: grid; place-items: center; width: clamp(24px, 14cqw, 42px); aspect-ratio: 1; border-radius: 50%; background: #d0d3cf; }
+.home-function-icon svg { width: 50%; height: 50%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .home-function-actions button:first-child { background: #3f4347; color: var(--home-light-text); border-color: #3f4347; }
+.home-function-actions button:first-child .home-function-icon { background: #606568; }
 .home-shell :is(button, a, input):focus-visible { outline: 2px solid #c5c7c9; outline-offset: 4px; }
 .home-room-card:focus-visible, .home-function-actions button:focus-visible { outline-color: #242629; }
-.home-dialog { width: min(600px, calc(100% - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid var(--home-border); border-radius: 24px; background: var(--room-card-bg); color: var(--home-text); overflow: hidden; }
+.home-dialog { width: min(600px, calc(100% - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid var(--home-border); border-radius: var(--ui-radius-dialog); background: var(--room-card-bg); color: var(--home-text); overflow: hidden; }
 .home-dialog::backdrop { background: #181a1db3; }
 .home-dialog-layout { display: flex; flex-direction: column; max-height: min(778px, calc(100dvh - 50px)); min-height: 0; }
 .home-dialog.home-entry-dialog { width: min(var(--home-entry-dialog-width), calc(100% - 24px)); }
 .home-entry-dialog .home-dialog-layout { min-height: min(var(--home-entry-dialog-min-height), calc(100dvh - 50px)); }
 .home-entry-dialog .home-entry-form { flex: 1; align-content: space-between; gap: 28px; padding: 32px; }
-.home-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; padding: 16px 24px; border-bottom: 1px solid var(--home-border); }
+.home-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); flex-shrink: 0; padding: var(--ui-space-4) var(--ui-space-6); border-bottom: 1px solid var(--home-border); }
+.home-entry-dialog .home-dialog-header { padding-inline: var(--ui-space-8); }
 .home-dialog-header h2 { margin: 0; font-size: 21px; }
 .home-icon-button { width: 44px; height: 44px; border-radius: var(--home-control-radius); font-size: 28px; }
 .home-list-search { padding: 16px 24px; flex-shrink: 0; }
@@ -121,6 +189,7 @@
   .home-dialog-layout { max-height: calc(100dvh - 26px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .home-dialog:has(.home-room-list) .home-dialog-layout { height: calc(100dvh - 26px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .home-dialog-header { padding: 12px 16px; }
+  .home-entry-dialog .home-dialog-header { padding-inline: var(--ui-space-5); }
   .home-list-search { padding: 16px; }
   .home-room-list { padding-inline: 16px; }
   .home-entry-form { padding: 20px 16px; }
@@ -139,5 +208,4 @@
   .home-room-avatar { width: 88px; }
   .home-room-details strong { font-size: 18px; }
   .home-room-details small { margin-top: 8px; font-size: 12px; }
-  .home-function-actions button { font-size: 13px; }
 }

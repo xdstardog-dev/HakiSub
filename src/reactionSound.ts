@@ -4,17 +4,22 @@ export type SoundSlot = ReactionType | 'default'
 const soundDirectory = '/sounds/reactions/'
 const maximumAssetBytes = 1024 * 1024
 const maximumDurationSeconds = 5
-type SoundSlots = { default: string; reactions: Partial<Record<ReactionType, string>> }
+// 仅校准保留的原始素材；更换这些文件时应同时调整 slots.json 中的增益。
+const maximumAssetGain = 3
+type SoundSlots = { default: string; reactions: Partial<Record<ReactionType, string>>; gains: Record<string, number> }
 export function normalizeSoundSlots(value: unknown): SoundSlots {
-  const defaults: SoundSlots = { default: 'default.mp3', reactions: Object.fromEntries(QUICK_REACTIONS.map(option => [option.type, `${option.type}.mp3`])) }
+  const defaults: SoundSlots = { default: '00_default.mp3', reactions: {"agree":"01_agree.mp3","disagree":"02_disagree.mp3","question":"03_question.mp3","received":"04_received.mp3","fun":"05_fun.mp3","thanks":"06_thanks.mp3","sorry":"07_sorry.mp3","slower":"08_volume.mp3","repeat":"09_laughter.mp3","wait":"10_wait.mp3","unclear":"11_penguin.mp3","understood":"12_correct.mp3","okay":"13_incorrect.mp3"}, gains: {} }
   if (!value || typeof value !== 'object') return defaults
-  const candidate = value as { default?: unknown; reactions?: Record<string, unknown> }
+  const candidate = value as { default?: unknown; reactions?: Record<string, unknown>; gains?: Record<string, unknown> }
   // 配置只允许同目录 MP3，不能把成员浏览器导向外部地址或其他应用资源。
   const validFile = (file: unknown): file is string => typeof file === 'string' && /^[a-zA-Z0-9_-]{1,80}\.mp3$/i.test(file)
   if (validFile(candidate.default)) defaults.default = candidate.default
   for (const option of QUICK_REACTIONS) {
     const file = candidate.reactions?.[option.type]
     if (validFile(file)) defaults.reactions[option.type] = file
+  }
+  for (const [file, gain] of Object.entries(candidate.gains ?? {})) {
+    if (validFile(file) && typeof gain === 'number' && Number.isFinite(gain) && gain >= 0 && gain <= maximumAssetGain) defaults.gains[file] = gain
   }
   return defaults
 }
@@ -102,18 +107,19 @@ export function createReactionSound(createContext = () => new AudioContext(), in
       try {
         const slots = await loadSlots()
         if (!current()) return false
-        const file = slot === 'default' ? slots.default : slots.reactions[slot] ?? slots.default
+        let file = slot === 'default' ? slots.default : slots.reactions[slot] ?? slots.default
         let buffer: AudioBuffer
         try { buffer = await loadBuffer(file, requested) }
         catch {
           if (!current() || file === slots.default) throw Error('Sound slot unavailable')
-          buffer = await loadBuffer(slots.default, requested)
+          file = slots.default
+          buffer = await loadBuffer(file, requested)
         }
         // 解码可能晚于静音、音量修改或离房；过期任务不能继续发声。
         if (!current()) return false
         const source = requested.createBufferSource(), gain = requested.createGain()
         source.buffer = buffer
-        gain.gain.setValueAtTime(preferences.volume / 100, requested.currentTime)
+        gain.gain.setValueAtTime((preferences.volume / 100) * (slots.gains[file] ?? 1), requested.currentTime)
         source.connect(gain); gain.connect(requested.destination)
         let stopped = false
         const stop = () => {

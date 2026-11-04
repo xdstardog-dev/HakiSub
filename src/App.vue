@@ -172,7 +172,7 @@ function receiveReaction(event: RoomReaction) {
   const target = members.value.find(member => member.id === event.targetId)
   const option = QUICK_REACTIONS.find(option => option.type === event.reaction)
   if (!joined.value || !sender || !target || !option || reactions.value.some(reaction => reaction.id === event.id)) return
-  const message = sender.id === target.id ? `${option.emoji} ${sender.name}：${option.label}`
+  const message = !option.label ? `${option.emoji} ${sender.name}${sender.id === target.id ? "" : ` → ${target.name}`}` : sender.id === target.id ? `${option.emoji} ${sender.name}：${option.label}`
     : ['agree', 'disagree', 'question', 'received'].includes(option.type) ? `${option.emoji} ${sender.name} ${option.label}了 ${target.name}` : `${option.emoji} ${sender.name} 对 ${target.name}：${option.label}`
   reactions.value = [...reactions.value, { ...event, message, expiresAt: Date.now() + REACTION_DURATION_MS }].slice(-24)
   void playReactionSound(event.reaction)

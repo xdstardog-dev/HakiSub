@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720">
+<rect width="1100" height="720" rx="28" fill="#ecece8"/>
+<text x="60" y="66" fill="#303438" font-family="Microsoft YaHei,sans-serif" font-size="28" font-weight="700">HakiSub · 圆角灰阶图标</text>
+<text x="61" y="98" fill="#747a7a" font-family="Microsoft YaHei,sans-serif" font-size="14">统一笔画、简化形状，在真实尺寸下保持辨识</text>
+<defs>
+<g id="home"><path d="M3.5 10.8 12 4l8.5 6.8v8.1a1.6 1.6 0 0 1-1.6 1.6H5.1a1.6 1.6 0 0 1-1.6-1.6z" fill="#d7d9d5"/><path d="M9.1 20.5v-6.2h5.8v6.2" fill="#f6f6f3"/></g>
+<g id="caption"><path d="M5.2 4.6h13.6a2.7 2.7 0 0 1 2.7 2.7v9a2.7 2.7 0 0 1-2.7 2.7h-7.6L6 21v-2H5.2a2.7 2.7 0 0 1-2.7-2.7v-9a2.7 2.7 0 0 1 2.7-2.7Z" fill="#d7d9d5"/><path d="M7 9h10M7 13h7"/></g>
+<g id="mic"><rect x="8.5" y="3" width="7" height="12" rx="3.5" fill="#d7d9d5"/><path d="M5.5 11.8v.8a6.5 6.5 0 0 0 13 0v-.8M12 19.1v2M9 21.1h6"/></g>
+<g id="mute"><rect x="8.5" y="3" width="7" height="12" rx="3.5" fill="#d7d9d5"/><path d="M5.5 11.8v.8a6.5 6.5 0 0 0 13 0v-.8M12 19.1v2M9 21.1h6"/><path d="M3 3l18 18" stroke="#f6f6f3" stroke-width="4"/><path d="M3 3l18 18"/></g>
+<g id="type"><rect x="2.5" y="5.5" width="19" height="13" rx="3" fill="#d7d9d5"/><path d="M6.5 9.5h.1m3.7 0h.1m3.7 0h.1m3.7 0h.1M6.5 13h.1m3.7 0h.1m3.7 0h.1m3.7 0h.1M8 16h8"/></g>
+<g id="share"><path d="M7 10H5.5A2.5 2.5 0 0 0 3 12.5v5A2.5 2.5 0 0 0 5.5 20h13a2.5 2.5 0 0 0 2.5-2.5v-5a2.5 2.5 0 0 0-2.5-2.5H17" fill="#d7d9d5"/><path d="M12 15V3m-4 4 4-4 4 4"/></g>
+<g id="settings"><path d="M4 6.5h16M4 12h16M4 17.5h16"/><circle cx="9" cy="6.5" r="2.2" fill="#d7d9d5"/><circle cx="15" cy="12" r="2.2" fill="#d7d9d5"/><circle cx="10" cy="17.5" r="2.2" fill="#d7d9d5"/></g>
+<g id="reply"><path d="M12 20s-8.5-4.6-8.5-10a4.8 4.8 0 0 1 8.5-3 4.8 4.8 0 0 1 8.5 3C20.5 15.4 12 20 12 20Z" fill="#d7d9d5"/></g>
+</defs>
+<rect x="48" y="125" width="1004" height="270" rx="24" fill="#f9f9f6"/>
+<g fill="none" stroke="#343a3d" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+<use href="#home" transform="translate(91 164) scale(2.6)"/><use href="#caption" transform="translate(210 164) scale(2.6)"/><use href="#mic" transform="translate(329 164) scale(2.6)"/><use href="#mute" transform="translate(448 164) scale(2.6)"/><use href="#type" transform="translate(567 164) scale(2.6)"/><use href="#share" transform="translate(686 164) scale(2.6)"/><use href="#settings" transform="translate(805 164) scale(2.6)"/><use href="#reply" transform="translate(924 164) scale(2.6)"/>
+</g>
+<g font-family="Microsoft YaHei,sans-serif" font-size="14" fill="#62696a" text-anchor="middle"><text x="122" y="273">房间</text><text x="241" y="273">字幕</text><text x="360" y="273">开麦</text><text x="479" y="273">静音</text><text x="598" y="273">打字</text><text x="717" y="273">分享</text><text x="836" y="273">设置</text><text x="955" y="273">回应</text></g>
+<path d="M82 304h936" stroke="#e1e3df"/><text x="82" y="348" font-family="Microsoft YaHei,sans-serif" fill="#777d7c" font-size="14">上方为放大展示，实际按钮采用 24 × 24 图标 / 48 × 48 点击区域</text>
+<rect x="48" y="415" width="1004" height="255" rx="24" fill="#41454a"/>
+<text x="80" y="459" font-family="Microsoft YaHei,sans-serif" fill="#f1f1ee" font-size="17" font-weight="700">放进现有界面的效果</text>
+<rect x="80" y="486" width="940" height="144" rx="18" fill="#f1f1ee"/>
+<rect x="104" y="510" width="48" height="48" rx="12" fill="#e3e4e0"/><rect x="172" y="510" width="48" height="48" rx="12" fill="#e3e4e0"/><rect x="240" y="510" width="48" height="48" rx="12" fill="#e3e4e0"/><rect x="308" y="510" width="48" height="48" rx="12" fill="#e3e4e0"/>
+<g fill="none" stroke="#343a3d" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><use href="#home" x="116" y="522"/><use href="#caption" x="184" y="522"/><use href="#mic" x="252" y="522"/><use href="#settings" x="320" y="522"/></g>
+<text x="105" y="594" font-family="Microsoft YaHei,sans-serif" fill="#666c6d" font-size="14">房间、字幕与控制按钮 · 正常大小</text>
+<rect x="745" y="507" width="235" height="66" rx="15" fill="#41454a"/><g fill="none" stroke="#f1f1ee" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><use href="#mic" x="764" y="528"/></g><text x="804" y="547" font-family="Microsoft YaHei,sans-serif" fill="#f1f1ee" font-size="15">开始讲话</text>
+</svg>

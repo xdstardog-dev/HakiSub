@@ -9,15 +9,15 @@ export const QUICK_REACTIONS = [
   { type: 'disagree', label: '反对', emoji: '👎' },
   { type: 'question', label: '疑问', emoji: '❓' },
   { type: 'received', label: '收到', emoji: '✅' },
-  { type: 'fun', label: '闹麻了', emoji: '😆' },
+  { type: 'fun', label: '闹麻了', emoji: '😅' },
   { type: 'thanks', label: '谢谢', emoji: '🙏' },
-  { type: 'sorry', label: '抱歉', emoji: '🙇' },
-  { type: 'slower', label: '请慢一点', emoji: '🐢' },
-  { type: 'repeat', label: '请再说一遍', emoji: '🔁' },
-  { type: 'wait', label: '稍等一下', emoji: '⏳' },
-  { type: 'unclear', label: '没听清', emoji: '👂' },
-  { type: 'understood', label: '明白了', emoji: '👌' },
-  { type: 'okay', label: '没关系', emoji: '🤝' },
+  { type: 'sorry', label: '对不起', emoji: '🥺' },
+  { type: 'slower', label: '↑↓', emoji: '📢' },
+  { type: 'repeat', label: '', emoji: '😆😆😆' },
+  { type: 'wait', label: '等一下', emoji: '⏳' },
+  { type: 'unclear', label: '咕咕嘎嘎', emoji: '🐧' },
+  { type: 'understood', label: '对的', emoji: '👌' },
+  { type: 'okay', label: '不对', emoji: '🤝' },
 ] as const
 export type ReactionType = typeof QUICK_REACTIONS[number]['type']
 export const DEFAULT_REACTION_TYPES: ReactionType[] = ['agree', 'disagree', 'question', 'received', 'fun']

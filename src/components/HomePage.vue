@@ -12,6 +12,7 @@ function selectRoom(room: RememberedRoom) { listOpen.value = false; emit('enter'
 </script>
 
 <template>
+  <div class="home-background-texture" aria-hidden="true"></div>
   <header class="home-header home-container">
     <a href="/" class="home-brand" aria-label="哈基字幕 HakiSub 首页"><span class="home-logo" aria-hidden="true"><img src="/hakisub-logo.svg" alt="" width="56" height="56" /></span><span><b>哈基字幕</b><small>HakiSub</small></span></a>
     <nav aria-label="首页导航"><AccountAccess @identity="emit('identity', $event)" /></nav>

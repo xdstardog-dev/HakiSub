@@ -12,8 +12,8 @@ const emit = defineEmits<{ enter: [room: RememberedRoom]; create: []; join: [] }
   </button>
   <section v-else class="home-room-card home-function-card" aria-label="创建或加入房间">
     <div class="home-function-actions">
-      <button type="button" :disabled="busy" @click="emit('create')">创建房间</button>
-      <button type="button" :disabled="busy" @click="emit('join')">加入房间</button>
+      <button type="button" :disabled="busy" @click="emit('create')"><span class="home-function-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span><span>创建房间</span></button>
+      <button type="button" :disabled="busy" @click="emit('join')"><span class="home-function-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></span><span>加入房间</span></button>
     </div>
   </section>
 </template>

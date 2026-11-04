@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1060" viewBox="0 0 1200 1060">
+<rect width="1200" height="1060" fill="#ecece8"/>
+<g font-family="Microsoft YaHei, PingFang SC, sans-serif">
+<text x="56" y="65" font-size="29" font-weight="700" fill="#292d30">HakiSub 按钮文字方案</text>
+<text x="58" y="96" font-size="15" fill="#6f7577">基于现有灰白界面 · 以下均为设计预览，展示同一组常用操作</text>
+<!-- panels -->
+<g fill="#fafaf8"><rect x="48" y="125" width="1104" height="266" rx="22"/><rect x="48" y="410" width="1104" height="266" rx="22"/><rect x="48" y="695" width="1104" height="266" rx="22"/></g>
+<!-- headings -->
+<text x="82" y="174" font-size="21" font-weight="700" fill="#303538">A  清晰自然</text><text x="82" y="201" font-size="14" fill="#767c7d">15px · 常规字重 · 紧凑、安静</text>
+<text x="82" y="459" font-size="21" font-weight="700" fill="#303538">B  醒目友好</text><text x="82" y="486" font-size="14" fill="#767c7d">16px · 粗体 · 适合主要操作</text>
+<text x="82" y="744" font-size="21" font-weight="700" fill="#303538">C  舒展轻盈</text><text x="82" y="771" font-size="14" fill="#767c7d">16px · 常规字重 · 略宽字距</text>
+<!-- section labels -->
+<g font-size="13" fill="#777d7e"><text x="82" y="244">主要按钮</text><text x="82" y="315">次要按钮</text><text x="82" y="529">主要按钮</text><text x="82" y="600">次要按钮</text><text x="82" y="814">主要按钮</text><text x="82" y="885">次要按钮</text></g>
+<!-- buttons -->
+<g fill="#41454a"><rect x="252" y="216" width="226" height="48" rx="12"/><rect x="494" y="216" width="226" height="48" rx="12"/><rect x="736" y="216" width="226" height="48" rx="12"/><rect x="252" y="501" width="226" height="48" rx="12"/><rect x="494" y="501" width="226" height="48" rx="12"/><rect x="736" y="501" width="226" height="48" rx="12"/><rect x="252" y="786" width="226" height="48" rx="12"/><rect x="494" y="786" width="226" height="48" rx="12"/><rect x="736" y="786" width="226" height="48" rx="12"/></g>
+<g fill="#e3e4e0" stroke="#c9cac7"><rect x="252" y="287" width="226" height="48" rx="12"/><rect x="494" y="287" width="226" height="48" rx="12"/><rect x="736" y="287" width="226" height="48" rx="12"/><rect x="252" y="572" width="226" height="48" rx="12"/><rect x="494" y="572" width="226" height="48" rx="12"/><rect x="736" y="572" width="226" height="48" rx="12"/><rect x="252" y="857" width="226" height="48" rx="12"/><rect x="494" y="857" width="226" height="48" rx="12"/><rect x="736" y="857" width="226" height="48" rx="12"/></g>
+<!-- mic icon centered as a group with label -->
+<g fill="none" stroke="#f1f1ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(806 229)"><rect x="6" y="1" width="7" height="11" rx="3.5"/><path d="M3 9v1a6.5 6.5 0 0 0 13 0V9M9.5 16.5V19M6.5 19h6"/></g><g transform="translate(804 514)"><rect x="6" y="1" width="7" height="11" rx="3.5"/><path d="M3 9v1a6.5 6.5 0 0 0 13 0V9M9.5 16.5V19M6.5 19h6"/></g><g transform="translate(803 799)"><rect x="6" y="1" width="7" height="11" rx="3.5"/><path d="M3 9v1a6.5 6.5 0 0 0 13 0V9M9.5 16.5V19M6.5 19h6"/></g></g>
+<g text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="400"><g fill="#f8f8f5"><text x="365" y="240">创建房间</text><text x="607" y="240">确定</text><text x="871" y="240">开始讲话</text></g><g fill="#303438"><text x="365" y="311">加入房间</text><text x="607" y="311">取消</text><text x="849" y="311">房主设置</text></g></g>
+<g text-anchor="middle" dominant-baseline="central" font-size="16" font-weight="700"><g fill="#f8f8f5"><text x="365" y="525">创建房间</text><text x="607" y="525">确定</text><text x="871" y="525">开始讲话</text></g><g fill="#303438"><text x="365" y="596">加入房间</text><text x="607" y="596">取消</text><text x="849" y="596">房主设置</text></g></g>
+<g text-anchor="middle" dominant-baseline="central" font-size="16" font-weight="400" letter-spacing="0.5"><g fill="#f8f8f5"><text x="365" y="810">创建房间</text><text x="607" y="810">确定</text><text x="871" y="810">开始讲话</text></g><g fill="#303438"><text x="365" y="881">加入房间</text><text x="607" y="881">取消</text><text x="849" y="881">房主设置</text></g></g>
+<text x="59" y="1010" font-size="14" fill="#747a7a">示意字体：Windows 微软雅黑；其他设备使用系统中文字体，实际字形与粗细会略有不同。</text>
+</g></svg>

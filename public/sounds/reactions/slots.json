@@ -1,19 +1,24 @@
 {
   "version": 1,
-  "default": "default.mp3",
+  "default": "00_default.mp3",
   "reactions": {
-    "agree": "agree.mp3",
-    "disagree": "disagree.mp3",
-    "question": "question.mp3",
-    "received": "received.mp3",
-    "fun": "fun.mp3",
-    "thanks": "thanks.mp3",
-    "sorry": "sorry.mp3",
-    "slower": "slower.mp3",
-    "repeat": "repeat.mp3",
-    "wait": "wait.mp3",
-    "unclear": "unclear.mp3",
-    "understood": "understood.mp3",
-    "okay": "okay.mp3"
+    "agree": "01_agree.mp3",
+    "disagree": "02_disagree.mp3",
+    "question": "03_question.mp3",
+    "received": "04_received.mp3",
+    "fun": "05_fun.mp3",
+    "thanks": "06_thanks.mp3",
+    "sorry": "07_sorry.mp3",
+    "slower": "08_volume.mp3",
+    "repeat": "09_laughter.mp3",
+    "wait": "10_wait.mp3",
+    "unclear": "11_penguin.mp3",
+    "understood": "12_correct.mp3",
+    "okay": "13_incorrect.mp3"
+  },
+  "gains": {
+    "01_agree.mp3": 2.5,
+    "02_disagree.mp3": 2.8,
+    "00_default.mp3": 2.8
   }
 }

@@ -43,6 +43,29 @@ async function openPage(mobile = false) {
   page.on('pageerror', error => errors.push(error.message))
   return page
 }
+async function checkReactionScrolling(page, mobile = false) {
+  const options = page.locator('.reaction-menu-options')
+  const menu = page.locator('.reaction-menu')
+  const bounds = await options.boundingBox(), menuBefore = await menu.boundingBox()
+  assert.ok(await options.evaluate(element => element.scrollHeight > element.clientHeight), '完整词库超出五行显示区')
+  if (mobile) {
+    const session = await page.context().newCDPSession(page)
+    const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height - 12
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    for (let step = 1; step <= 6; step++) {
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 20 }] })
+      await page.waitForTimeout(20)
+    }
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await session.detach()
+  } else {
+    await options.hover()
+    await page.mouse.wheel(0, 300)
+  }
+  await page.waitForFunction(() => document.querySelector('.reaction-menu-options')?.scrollTop > 0)
+  assert.deepEqual(await menu.boundingBox(), menuBefore, '滚动词库不改变菜单尺寸')
+  assert.equal(await page.locator('.reaction-menu').count(), 1, '滚动不关闭菜单')
+}
 async function enter(page, name, code) {
   await page.goto(origin + '/?debug=1')
   await page.evaluate(([name, code]) => localStorage.setItem('hakisub.rooms.v1', JSON.stringify([{ code: code || '100000', name }])), [name, code])
@@ -150,13 +173,10 @@ try {
   await bobTile.locator('.tile-identity, .member-avatar').click()
   assert.equal(await alice.locator('.reaction-menu').count(), 0, '桌面左键不弹回应菜单')
   await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
-  assert.equal(await alice.getByRole('button', { name: '😆 闹麻了', exact: true }).count(), 1)
-  assert.equal(await alice.locator('.reaction-menu > button').count(), 5)
-  const footer = await alice.locator('.reaction-menu-footer').evaluate(element => {
-    const [cancel, settings] = element.querySelectorAll('button')
-    return { cancel: cancel.getBoundingClientRect().right, settings: settings.getBoundingClientRect().left }
-  })
-  assert.ok(footer.cancel <= footer.settings, '取消在左，设置在右')
+  assert.equal(await alice.getByRole('button', { name: '😅 闹麻了', exact: true }).count(), 1)
+  assert.equal(await alice.locator('.reaction-menu-options > button:not(.reaction-settings-trigger)').count(), 13)
+  await checkReactionScrolling(alice)
+  assert.equal(await alice.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).count(), 0)
   await alice.getByRole('button', { name: '👍 赞同', exact: true }).click()
   await reactionWith(bob, '👍 A 赞同了 B').waitFor()
   await reactionWith(alice, '👍 A 赞同了 B').waitFor()
@@ -183,6 +203,7 @@ try {
   const contextPrevented = await remote.evaluate(element => !element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
   assert.equal(contextPrevented, true)
   await remote.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 7, bubbles: true })
+  await checkReactionScrolling(bob, true)
   await bob.getByRole('button', { name: '✅ 收到', exact: true }).tap()
   await reactionWith(alice, '✅ B 收到了 A').waitFor()
   await bob.waitForFunction(() => window.testToneStarts === 2)
@@ -194,17 +215,17 @@ try {
   // 个人词库配置只影响自己的菜单，新词仍向所有同房成员广播。
   await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   await alice.locator('.reaction-menu').getByRole('button', { name: '设置', exact: true }).click()
-  const reactionSettings = alice.getByRole('dialog', { name: '你需要哪五个词汇？' })
+  const reactionSettings = alice.getByRole('dialog', { name: '置顶回应设置' })
   await reactionSettings.waitFor()
   assert.equal(await alice.locator('.reaction-menu').count(), 0)
-  assert.equal(await reactionSettings.getByRole('checkbox', { name: '谢谢', exact: true }).isDisabled(), true)
-  await reactionSettings.getByRole('checkbox', { name: '反对', exact: true }).uncheck()
-  await reactionSettings.getByRole('checkbox', { name: '谢谢', exact: true }).check()
-  assert.match(await reactionSettings.getByRole('status').innerText(), /已选 5 \/ 5/)
+  assert.equal(await reactionSettings.getByRole('button', { name: /^谢谢，/ }).isDisabled(), true)
+  await reactionSettings.getByRole('button', { name: /^反对，/ }).click()
+  await reactionSettings.getByRole('button', { name: /^谢谢，/ }).click()
+  assert.match(await reactionSettings.getByRole('status').innerText(), /置顶 5 \/ 5/)
   await reactionSettings.getByRole('button', { name: '保存', exact: true }).click()
   await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
-  assert.equal(await alice.locator('.reaction-menu > button').count(), 5)
-  assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 0)
+  assert.equal(await alice.locator('.reaction-menu-options > button:not(.reaction-settings-trigger)').count(), 13)
+  assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 1)
   await alice.getByRole('button', { name: '🙏 谢谢', exact: true }).click()
   await reactionWith(bob, '🙏 A 对 B：谢谢').waitFor()
   assert.deepEqual(await alice.evaluate(() => JSON.parse(localStorage.getItem('hakisub.reaction-selection.v1'))), ['agree', 'question', 'received', 'fun', 'thanks'])
@@ -213,22 +234,22 @@ try {
   await bob.getByRole('dialog', { name: '快捷回应' }).waitFor()
   await remote.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 8, bubbles: true })
   assert.equal(await bob.getByRole('button', { name: '👎 反对', exact: true }).count(), 1)
-  assert.equal(await bob.getByRole('button', { name: '🙏 谢谢', exact: true }).count(), 0)
+  assert.equal(await bob.getByRole('button', { name: '🙏 谢谢', exact: true }).count(), 1)
   await bob.locator('.reaction-menu').getByRole('button', { name: '设置', exact: true }).tap()
-  const mobileSettings = bob.getByRole('dialog', { name: '你需要哪五个词汇？' })
+  const mobileSettings = bob.getByRole('dialog', { name: '置顶回应设置' })
   const settingsBounds = await mobileSettings.evaluate(element => {
     const rect = element.getBoundingClientRect()
     return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: innerWidth, height: innerHeight }
   })
   assert.ok(settingsBounds.left >= 0 && settingsBounds.top >= 0 && settingsBounds.right <= settingsBounds.width && settingsBounds.bottom <= settingsBounds.height, JSON.stringify(settingsBounds))
-  await mobileSettings.getByRole('checkbox', { name: '反对', exact: true }).uncheck()
-  await mobileSettings.getByRole('checkbox', { name: '疑问', exact: true }).uncheck()
+  await mobileSettings.getByRole('button', { name: /^反对，/ }).click()
+  await mobileSettings.getByRole('button', { name: /^疑问，/ }).click()
   await mobileSettings.getByRole('button', { name: '保存', exact: true }).tap()
   await remote.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 9, isPrimary: true, clientX: 50, clientY: 250, bubbles: true })
   await bob.getByRole('dialog', { name: '快捷回应' }).waitFor()
   await remote.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 9, bubbles: true })
-  assert.equal(await bob.locator('.reaction-menu > button').count(), 3, '可以保存少于五个回应')
-  await bob.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).tap()
+  assert.equal(await bob.locator('.reaction-menu-options > button:not(.reaction-settings-trigger)').count(), 13, '少于五个置顶仍保留完整词库')
+  await bob.touchscreen.tap(1, 1)
 
   // 恢复语音沿用原广播/撤回路径，关麦后再进打字，草稿保留。
   await selectTyping(alice, own)
@@ -308,8 +329,8 @@ try {
   assert.deepEqual(await alice.evaluate(() => JSON.parse(localStorage.getItem('hakisub.sound-preferences.v1'))), { enabled: false, volume: 25 })
   await bobTile.locator('.tile-identity, .member-avatar').click({ button: 'right' })
   assert.equal(await alice.getByRole('button', { name: '🙏 谢谢', exact: true }).count(), 1, '刷新后恢复个人菜单')
-  assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 0)
-  await alice.locator('.reaction-menu').getByRole('button', { name: '取消', exact: true }).click()
+  assert.equal(await alice.getByRole('button', { name: '👎 反对', exact: true }).count(), 1)
+  await alice.mouse.click(1, 1)
   // 自己的卡片支持右键/真实触屏长按；松手不能误打开打字框，回应仍广播同房。
   const output = new URL('../artifacts/room-interactions/', import.meta.url)
   await mkdir(output, { recursive: true })

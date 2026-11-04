@@ -20,17 +20,14 @@ onUnmounted(() => settingsDialog.value?.close())
 </script>
 
 <template>
-  <dialog ref="settingsDialog" class="reaction-settings" aria-labelledby="reaction-settings-title" @cancel.prevent="emit('close')">
-    <div class="settings-heading"><h2 id="reaction-settings-title">你需要哪五个词汇？</h2><button type="button" aria-label="关闭回应设置" @click="emit('close')">关闭</button></div>
-    <p class="settings-help">从词库中选择 1～5 个，作为你自己的快捷回应。</p>
-    <p class="selection-count" role="status">已选 {{ selection.length }} / {{ REACTION_SELECTION_LIMIT }}<small v-if="atLimit"> · 先取消一个再替换</small></p>
+  <dialog ref="settingsDialog" class="reaction-settings" aria-label="置顶回应设置" @cancel.prevent="emit('close')">
+    <div class="settings-heading"><p class="selection-count" role="status">置顶 {{ selection.length }} / {{ REACTION_SELECTION_LIMIT }}</p><button type="button" aria-label="关闭回应设置" @click="emit('close')">×</button></div>
     <div class="reaction-vocabulary" role="group" aria-label="回应词库">
-      <label v-for="option in QUICK_REACTIONS" :key="option.type" :class="{ 'is-selected': selection.includes(option.type), 'is-disabled': atLimit && !selection.includes(option.type) }">
-        <input type="checkbox" :value="option.type" :checked="selection.includes(option.type)" :disabled="atLimit && !selection.includes(option.type)" @change="toggleReaction(option.type)" />
-        <span aria-hidden="true">{{ option.emoji }}</span><span>{{ option.label }}</span>
-      </label>
+      <button v-for="option in QUICK_REACTIONS" :key="option.type" type="button" :class="{ 'is-selected': selection.includes(option.type) }" :aria-pressed="selection.includes(option.type)" :aria-label="`${option.label || option.emoji}${selection.includes(option.type) ? `，置顶第${selection.indexOf(option.type) + 1}位` : '，未置顶'}`" :disabled="atLimit && !selection.includes(option.type)" @click="toggleReaction(option.type)">
+        <span class="pin-order" aria-hidden="true">{{ selection.includes(option.type) ? selection.indexOf(option.type) + 1 : '' }}</span>
+        <span :aria-hidden="option.label ? true : undefined">{{ option.emoji }}</span><span>{{ option.label }}</span>
+      </button>
     </div>
-    <p class="settings-help">只影响你的菜单，保存在当前浏览器。</p>
     <div class="settings-actions"><button type="button" @click="restoreDefaults">恢复默认</button><div><button type="button" @click="emit('close')">取消</button><button type="button" class="save-selection" :disabled="!selection.length" @click="save">保存</button></div></div>
   </dialog>
 </template>
@@ -39,16 +36,14 @@ onUnmounted(() => settingsDialog.value?.close())
 .reaction-settings { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 18px; overflow: auto; border: 1px solid var(--home-border); border-radius: 14px; background: var(--room-card-bg); color: var(--home-text); box-shadow: 0 8px 32px #00000030; }
 .reaction-settings::backdrop { background: #181a1d80; }
 .settings-heading, .settings-actions, .settings-actions > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.settings-heading h2 { margin: 0; font-size: 18px; }
-.settings-heading button { min-height: 36px; font-size: 13px; padding: 6px 8px; }
-.settings-help { margin: 10px 0; color: var(--home-secondary-text); font-size: 12px; line-height: 1.6; }
+.settings-heading { margin-bottom: 12px; }
+.settings-heading button { width: 44px; min-height: 44px; font-size: 24px; padding: 6px 8px; }
 .selection-count { margin: 10px 0; font-size: 13px; font-weight: 600; }
-.selection-count small { color: var(--home-secondary-text); font-size: 11px; font-weight: 400; }
 .reaction-vocabulary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.reaction-vocabulary label { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px; border: 1px solid var(--home-border); border-radius: 8px; font-size: 14px; cursor: pointer; }
-.reaction-vocabulary label.is-selected { border-color: var(--home-bg); background: #dedfdb; }
-.reaction-vocabulary label.is-disabled { opacity: .5; cursor: default; }
-.reaction-vocabulary input { width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--home-bg); flex-shrink: 0; }
+.reaction-vocabulary button { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px; border: 1px solid var(--home-border); border-radius: 8px; font-size: 14px; text-align: left; }
+.reaction-vocabulary button.is-selected { border-color: var(--home-bg); background: #dedfdb; }
+.pin-order { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--home-border); border-radius: 4px; flex-shrink: 0; font-size: 12px; }
+.is-selected .pin-order { background: var(--home-bg); color: var(--room-card-bg); border-color: var(--home-bg); }
 .settings-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--home-border); }
 .settings-actions button { min-height: 40px; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
 .save-selection { background: #dedfdb; }
