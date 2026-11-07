@@ -71,6 +71,28 @@ async function waitForSelection(page, index) {
     return card.getAttribute('aria-current') === 'true' && Math.abs(card.getBoundingClientRect().left + card.clientWidth / 2 - track.getBoundingClientRect().left - track.clientWidth / 2) < 1
   }, index)
 }
+async function waitForCatPress(page, action, pressed) {
+  await page.waitForFunction(({ action, pressed }) => {
+    const button = document.querySelector(`.home-cat-button--${action}`)
+    const face = button.querySelector('.home-cat-face')
+    const shadow = button.querySelector('.home-cat-shadow')
+    const surprise = button.querySelector('.home-cat-surprise')
+    return getComputedStyle(surprise).opacity === (pressed ? '1' : '0')
+      && Math.abs(face.getBoundingClientRect().top - (pressed ? shadow : button).getBoundingClientRect().top) < .15
+  }, { action, pressed })
+}
+async function waitForCardPress(card, pressed) {
+  await card.evaluate(async (element, pressed) => {
+    const surface = getComputedStyle(element, '::before')
+    const depth = parseFloat(getComputedStyle(element).getPropertyValue('--card-depth'))
+    const expected = pressed ? depth : 0
+    const displacement = () => parseFloat(surface.translate.split(' ')[1] ?? '0')
+    for (let frame = 0; frame < 60 && displacement() !== expected; frame++) {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    }
+    if (displacement() !== expected) throw new Error(`卡面位移应为 ${expected}px，实际为 ${displacement()}px`)
+  }, pressed)
+}
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
   const rooms = []
@@ -133,6 +155,18 @@ try {
       assert.notEqual(layout.outerBackground, layout.pageBackground, '页面外侧灰色应与页面区分')
       assert.ok(Math.abs(layout.cards[0].width / layout.cards[0].height - 6 / 7) < .003)
       assert.ok(layout.cards.every(card => card.width === layout.cards[0].width && card.scale === 1 && card.overlayDisplay === 'none'))
+      if (width === 1440) {
+        const card = page.locator('button.home-room-card').first()
+        const bounds = await card.boundingBox()
+        await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 2)
+        await page.mouse.down()
+        await waitForCardPress(card, true)
+        assert.deepEqual(await card.boundingBox(), bounds, '下压时普通卡片的点击区域保持原位')
+        await page.mouse.move(bounds.x + bounds.width / 2, bounds.y - 10)
+        await waitForCardPress(card, false)
+        await page.mouse.up()
+        assert.equal(new URL(page.url()).pathname, '/', '移出松手不会进入房间')
+      }
       await page.locator('.home-carousel').evaluate(track => track.scrollLeft = track.scrollWidth)
       await page.getByRole('button', { name: '加入房间', exact: true }).click()
       await page.getByRole('dialog', { name: '加入房间', exact: true }).waitFor()
@@ -228,6 +262,37 @@ try {
   assert.equal(new URL(mousePreview.url()).pathname, `/${rooms[0].code}/`, '拖动后仍可正常点击进入')
   await mousePreview.context().close()
   const desktopEntry = await openPage(1440, 900, [])
+  const entryCard = desktopEntry.locator('.home-function-card')
+  await entryCard.locator('img').evaluateAll(images => Promise.all(images.map(image => image.decode())))
+  await entryCard.screenshot({ path: fileURLToPath(new URL('cats-idle-1440.png', output)) })
+  await entryCard.hover({ position: { x: 80, y: 24 } })
+  await desktopEntry.mouse.down()
+  await waitForCardPress(entryCard, true)
+  await waitForCatPress(desktopEntry, 'create', false)
+  await waitForCatPress(desktopEntry, 'join', false)
+  await desktopEntry.mouse.up()
+  await waitForCardPress(entryCard, false)
+  assert.equal(await desktopEntry.getByRole('dialog').count(), 0, '空白处下压不打开弹窗')
+  for (const [action, title] of [['create', '创建房间'], ['join', '加入房间']]) {
+    const button = desktopEntry.getByRole('button', { name: title, exact: true })
+    await button.hover()
+    await desktopEntry.mouse.down()
+    await waitForCatPress(desktopEntry, action, true)
+    await waitForCardPress(entryCard, false)
+    assert.equal(await desktopEntry.getByRole('dialog').count(), 0, '按住时仅显示按压反馈')
+    await entryCard.screenshot({ path: fileURLToPath(new URL(`cats-${action}-1440.png`, output)) })
+    await desktopEntry.mouse.up()
+    await desktopEntry.getByRole('dialog', { name: title, exact: true }).waitFor()
+    await desktopEntry.keyboard.press('Escape')
+    await waitForCatPress(desktopEntry, action, false)
+  }
+  await desktopEntry.emulateMedia({ reducedMotion: 'reduce' })
+  await desktopEntry.getByRole('button', { name: '加入房间', exact: true }).focus()
+  await desktopEntry.keyboard.down('Space')
+  await waitForCatPress(desktopEntry, 'join', true)
+  await desktopEntry.keyboard.up('Space')
+  await desktopEntry.getByRole('dialog', { name: '加入房间', exact: true }).waitFor()
+  await desktopEntry.keyboard.press('Escape')
   await desktopEntry.getByRole('button', { name: '创建房间', exact: true }).click()
   const desktopCreate = desktopEntry.getByRole('dialog', { name: '创建房间', exact: true })
   const createBounds = await desktopCreate.boundingBox()
@@ -249,6 +314,27 @@ try {
   await desktopEntry.context().close()
   const empty = await openPage(320, 568, [])
   assert.equal(await empty.locator('.home-room-card').count(), 1)
+  const createButton = empty.getByRole('button', { name: '创建房间', exact: true })
+  const createButtonBox = await createButton.boundingBox()
+  const touch = await empty.context().newCDPSession(empty)
+  const touchCard = empty.locator('.home-function-card')
+  const touchCardBounds = await touchCard.boundingBox()
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{
+    x: touchCardBounds.x + touchCardBounds.width / 2,
+    y: touchCardBounds.y + 24,
+  }] })
+  await waitForCardPress(touchCard, true)
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+  await waitForCardPress(touchCard, false)
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{
+    x: createButtonBox.x + createButtonBox.width / 2,
+    y: createButtonBox.y + createButtonBox.height / 2,
+  }] })
+  await waitForCatPress(empty, 'create', true)
+  await empty.locator('.home-function-card').screenshot({ path: fileURLToPath(new URL('cats-create-320.png', output)) })
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+  await waitForCatPress(empty, 'create', false)
+  assert.equal(await empty.getByRole('dialog').count(), 0, '触摸取消后复位且不触发创建')
   await empty.getByRole('button', { name: '创建房间', exact: true }).click()
   const createDialog = empty.getByRole('dialog', { name: '创建房间', exact: true })
   assert.equal(await createDialog.locator('input').count(), 1)
@@ -289,10 +375,10 @@ try {
   await privateDialog.getByRole('button', { name: '确定', exact: true }).click()
   await empty.locator('.room-bottom-bar').waitFor()
   await empty.getByRole('heading', { level: 1, name: '私密交流室', exact: true }).waitFor()
-  await empty.getByRole('button', { name: '房间设置', exact: true }).click()
+  await empty.getByRole('button', { name: '设置', exact: true }).click()
   await empty.locator('.owner-entry').click()
   assert.equal(await empty.getByRole('switch', { name: /房间密码/ }).isChecked(), true)
-  await empty.getByRole('button', { name: '返回房间设置', exact: true }).click()
+  await empty.getByRole('button', { name: '返回设置', exact: true }).click()
   await empty.getByRole('button', { name: '关闭设置', exact: true }).click()
   const privateCode = /\d{6}/.exec(new URL(empty.url()).pathname)[0]
   const savedEntries = await empty.evaluate(() => localStorage.getItem('hakisub.rooms.v1'))
@@ -322,5 +408,5 @@ try {
     return Math.abs(card.getBoundingClientRect().left + card.clientWidth / 2 - track.clientWidth / 2) < 1
   })
   assert.deepEqual(errors, [])
-  console.log('通过：首页六视口/触屏滑动、窄窗口鼠标双向拖动/连续缩放/松手吸附/移出松手/短拖防误入/随后点击、列表及本地WebSocket创建加入、私密建房与密码回归。未使用真实麦克风/豆包或物理手机。')
+  console.log('通过：首页六视口、猫按钮鼠标和键盘按压、触屏按压与取消、触屏滑动、窄窗口拖动防误入、列表及本地 WebSocket 创建加入、私密建房与密码回归。未使用真实麦克风、豆包或物理手机。')
 } finally { await browser?.close(); peers.forEach(peer => peer.terminate()); await gateway.close() }

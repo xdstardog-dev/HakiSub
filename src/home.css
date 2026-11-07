@@ -1,10 +1,11 @@
 /* 首页临时灰阶主题。布局断点统一为 768px；JS 从 --home-carousel-mobile 读取布局模式。 */
 :root {
   --home-bg: #41454a;
-  --home-outer-bg: #62666b;
+  --ui-secondary-gray: #62666a;
+  --home-outer-bg: var(--ui-secondary-gray);
   --room-card-bg: #f1f1ee;
   --home-text: #242629;
-  --home-secondary-text: #62666a;
+  --home-secondary-text: var(--ui-secondary-gray);
   --home-light-text: #f1f1ee;
   --home-border: #c9cac7;
   --home-card-radius: 28px;
@@ -113,11 +114,32 @@
 .home-carousel::-webkit-scrollbar { display: none; }
 .home-carousel-item { --card-distance: 1; position: relative; flex: 0 0 var(--home-card-width); min-width: 0; aspect-ratio: var(--mobile-card-ratio); scroll-snap-align: center; }
 .home-room-card {
+  --card-depth: 4px;
+  --card-press: 0px;
   position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
   width: 100%; height: 100%; min-height: 0; padding: 28px; border-radius: var(--home-card-radius);
-  color: var(--home-text); background: var(--room-card-bg); text-align: left; isolation: isolate;
+  color: var(--home-text); text-align: left; isolation: isolate;
   transform: scale(calc(var(--card-active-scale) - (var(--card-active-scale) - var(--card-inactive-scale)) * var(--card-distance)));
 }
+/* 卡片热区保持原位。表面每下移一像素，阴影偏移就减少一像素。 */
+.home-room-card::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--room-card-bg);
+  box-shadow: 0 calc(var(--card-depth) - var(--card-press)) rgb(0 0 0 / .23);
+}
+.home-room-card:is(.is-pointer-pressed, .home-carousel:not(.is-pointer-down) :focus-visible:active):not(:disabled) {
+  --card-press: var(--card-depth);
+}
+.home-room-card::before, .home-room-card::after, .home-room-card > * {
+  translate: 0 var(--card-press);
+  transition: translate 100ms ease-out;
+}
+.home-room-card::before { transition-property: translate, box-shadow; }
 /* 覆盖内容的中性灰蒙层随槽位距离变化；不改变卡片或文字的整体透明度。 */
 .home-room-card::after { content: ''; position: absolute; z-index: 1; inset: 0; border-radius: inherit; pointer-events: none; background: rgba(var(--card-overlay-color), calc(var(--card-overlay-opacity) * var(--card-distance))); }
 .home-room-card:disabled { opacity: 1; cursor: progress; }
@@ -127,17 +149,62 @@
 .home-room-details { display: block; width: 100%; min-width: 0; }
 .home-room-details strong { display: block; font-size: clamp(20px, 5vw, 26px); line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
 .home-room-details small { display: block; margin-top: 12px; font-size: 13px; color: var(--home-secondary-text); }
-.home-function-card { justify-content: center; }
-.home-function-actions { width: 100%; display: grid; gap: 10px; container-type: inline-size; }
-/* 图标与文字作为一组居中，窄卡片缩放尺寸以保留两侧留白。 */
-.home-function-actions button { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 4cqw, 12px); width: 100%; min-height: clamp(48px, 24cqw, 68px); padding: 8px; border: 1px solid #bfc1bd; border-radius: 999px; background: #e3e4e0; color: var(--home-text); font-size: clamp(14px, 7cqw, 20px); font-weight: 700; letter-spacing: 1.5px; line-height: 1.25; }
-.home-function-actions button > span:last-child { white-space: nowrap; }
-.home-function-icon { flex: none; display: grid; place-items: center; width: clamp(24px, 14cqw, 42px); aspect-ratio: 1; border-radius: 50%; background: #d0d3cf; }
-.home-function-icon svg { width: 50%; height: 50%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.home-function-actions button:first-child { background: #3f4347; color: var(--home-light-text); border-color: #3f4347; }
-.home-function-actions button:first-child .home-function-icon { background: #606568; }
+.home-room-card.home-function-card {
+  padding: 0;
+  container-type: inline-size;
+  border-radius: 12.64% / 10.84%;
+}
+.home-function-card::before {
+  background: url('/room-entry/card-dots.svg') center / 100% 100% no-repeat,
+    url('/room-entry/card-surface.svg') center / 100% 100% no-repeat;
+}
+.home-cat-button {
+  --cat-travel: 1.44cqw;
+  --cat-surprise-side: -2.5%;
+  --cat-surprise-height: 93%;
+  position: absolute;
+  inset-inline-start: 8.8%;
+  width: 82.4%;
+  aspect-ratio: 515 / 198;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 16px;
+  font-size: clamp(13px, 6cqw, 21px);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.home-cat-button--create { top: 28.5%; color: var(--home-light-text); }
+.home-cat-button--join { top: 58%; color: var(--home-text); }
+@media (orientation: landscape) {
+  .home-cat-button--create { top: 25%; }
+}
+.home-cat-shadow, .home-cat-face { position: absolute; inset: 0; width: 100%; pointer-events: none; }
+.home-cat-shadow { transform: translateY(var(--cat-travel)); }
+.home-cat-face { transform: translateY(var(--cat-press, 0px)); transition: transform 100ms ease-out; }
+.home-cat-face > img { display: block; width: 100%; }
+.home-cat-label {
+  position: absolute;
+  inset-inline-start: 64%;
+  top: 66%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+.home-cat-button--join .home-cat-label { inset-inline-start: 36%; top: 33%; }
+.home-cat-face > .home-cat-surprise { position: absolute; width: 15.5%; opacity: var(--cat-surprise-opacity, 0); }
+/* 以猫身为参照，白猫的符号位置和方向一起旋转 180°。 */
+.home-cat-button--create .home-cat-surprise { inset-inline-start: var(--cat-surprise-side); bottom: var(--cat-surprise-height); }
+.home-cat-button--join .home-cat-surprise { inset-inline-end: var(--cat-surprise-side); top: var(--cat-surprise-height); rotate: 180deg; }
+/* 只移动猫身和文字。按钮热区与下方影子固定，拖动轮播时收起按压反馈。 */
+.home-cat-button:is(.is-pointer-pressed, .home-carousel:not(.is-pointer-down) :focus-visible:active):not(:disabled) {
+  --cat-press: var(--cat-travel);
+  --cat-surprise-opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-room-card::before, .home-room-card::after, .home-room-card > *,
+  .home-cat-face { transition: none; }
+}
 .home-shell :is(button, a, input):focus-visible { outline: 2px solid #c5c7c9; outline-offset: 4px; }
-.home-room-card:focus-visible, .home-function-actions button:focus-visible { outline-color: #242629; }
+.home-room-card:focus-visible, .home-cat-button:focus-visible { outline-color: #242629; }
 .home-dialog { width: min(600px, calc(100% - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid var(--home-border); border-radius: var(--ui-radius-dialog); background: var(--room-card-bg); color: var(--home-text); overflow: hidden; }
 .home-dialog::backdrop { background: #181a1db3; }
 .home-dialog-layout { display: flex; flex-direction: column; max-height: min(778px, calc(100dvh - 50px)); min-height: 0; }

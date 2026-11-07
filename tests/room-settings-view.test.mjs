@@ -10,6 +10,7 @@ import { renderToString } from '@vue/server-renderer'
 import { loadVueComponent } from './load-vue-component.mjs'
 
 const PinCodeInput = await loadVueComponent(new URL('../accounts/shared/PinCodeInput.vue', import.meta.url))
+const SoundVolumeControl = await loadVueComponent(new URL('../src/components/SoundVolumeControl.vue', import.meta.url))
 
 const source = readFileSync(new URL('../src/components/RoomApiSettings.vue', import.meta.url), 'utf8')
 const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
@@ -27,8 +28,8 @@ function createView(fetchResponse) {
     setTimeout: callback => { timers.set(++next, callback); return next }, clearTimeout: id => timers.delete(id),
     fetch: (url, options) => { calls.push({ url, options }); return fetchResponse(url, options) },
   })
-  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { countNameUnits,isValidDisplayName,ROOM_NAME_MAXIMUM_UNITS,...toRefs(props),speechMuted,reactionMuted,toggleSpeechSound,toggleReactionSound,page,editingName,passwordEnabled,openOwnerSettings,backToPersonal,changePasswordSwitch,changeAsrSwitch,changeReactionVolume,clearKeyDisplay,configuration,newRoomName,newAccessCode,editingKey,apiKey,busy,message,failed,confirmDelete,activeAction,connectionTestMessage,connectionTestFailed,nameEditor,beginNameEditing,cancelNameEditing,cancelNameEditingOutside,startKeyReplacement,openDeleteConfirmation,closeDeleteConfirmation,confirmKeyRemoval,resetConnectionTest,requestConfiguration,emit,props,accountCenterUrl };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
-  return { state: context.view, props, emitted, calls, timers, unmount: () => unmount(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.view, render }).component('PinCodeInput', PinCodeInput)) }
+  vm.runInContext(ts.transpile(script + '\nglobalThis.view = { countNameUnits,isValidDisplayName,ROOM_NAME_MAXIMUM_UNITS,...toRefs(props),speechMuted,reactionMuted,toggleSpeechSound,toggleReactionSound,page,editingName,passwordEnabled,openOwnerSettings,backToPersonal,changePasswordSwitch,changeAsrSwitch,clearKeyDisplay,configuration,newRoomName,newAccessCode,editingKey,apiKey,busy,message,failed,confirmDelete,activeAction,connectionTestMessage,connectionTestFailed,nameEditor,beginNameEditing,cancelNameEditing,cancelNameEditingOutside,startKeyReplacement,openDeleteConfirmation,closeDeleteConfirmation,confirmKeyRemoval,resetConnectionTest,requestConfiguration,emit,props,accountCenterUrl };', { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }), context)
+  return { state: context.view, props, emitted, calls, timers, unmount: () => unmount(), html: () => renderToString(Vue.createSSRApp({ setup: () => context.view, render }).component('PinCodeInput', PinCodeInput).component('SoundVolumeControl', SoundVolumeControl)) }
 }
 const owner = createView((_url, options) => json(options.method === 'POST' ? JSON.parse(options.body).action === 'test' ? { ok: true } : { ...status, configured: true, source: 'room', message: 'saved', name: '日常交流' } : status))
 await owner.state.requestConfiguration()

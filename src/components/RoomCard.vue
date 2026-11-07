@@ -3,6 +3,10 @@ import type { RememberedRoom } from '../rememberedRooms'
 import RoomAvatarIcon from './RoomAvatarIcon.vue'
 defineProps<{ room?: RememberedRoom; busy: boolean }>()
 const emit = defineEmits<{ enter: [room: RememberedRoom]; create: []; join: [] }>()
+const roomActions = [
+  { event: 'create', cat: 'black-cat', label: '创建房间' },
+  { event: 'join', cat: 'white-cat', label: '加入房间' },
+] as const
 </script>
 
 <template>
@@ -11,9 +15,21 @@ const emit = defineEmits<{ enter: [room: RememberedRoom]; create: []; join: [] }
     <span class="home-room-details"><strong>{{ room.roomName ?? `房间 ${room.code}` }}</strong><small>房间号 {{ room.code }}</small></span>
   </button>
   <section v-else class="home-room-card home-function-card" aria-label="创建或加入房间">
-    <div class="home-function-actions">
-      <button type="button" :disabled="busy" @click="emit('create')"><span class="home-function-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span><span>创建房间</span></button>
-      <button type="button" :disabled="busy" @click="emit('join')"><span class="home-function-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></span><span>加入房间</span></button>
-    </div>
+    <button
+      v-for="{ event, cat, label } in roomActions"
+      :key="event"
+      type="button"
+      class="home-cat-button"
+      :class="`home-cat-button--${event}`"
+      :disabled="busy"
+      @click="event === 'create' ? emit('create') : emit('join')"
+    >
+      <img class="home-cat-shadow" :src="`/room-entry/${cat}-shadow.svg`" alt="" />
+      <span class="home-cat-face">
+        <img :src="`/room-entry/${cat}.svg`" alt="" />
+        <span class="home-cat-label">{{ label }}</span>
+        <img class="home-cat-surprise" src="/room-entry/cat-surprise.svg" alt="" />
+      </span>
+    </button>
   </section>
 </template>

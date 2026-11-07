@@ -37,7 +37,7 @@ watch(() => props.entrances, async (current, previous = {}) => {
     if (!card?.animate) continue
     const background = card.querySelector<HTMLElement>('.tile-background')
     if (!background?.animate) continue
-    const animations = [background.animate([{ borderColor: '#e4b83f', offset: .35 }], { duration: 650, easing: 'ease-out' })]
+    const animations = [background.animate([{ borderColor: 'var(--ui-standard-yellow)', offset: .35 }], { duration: 650, easing: 'ease-out' })]
     for (const [index, ring] of Array.from(card.querySelectorAll<HTMLElement>('.speech-ring')).entries()) {
       animations.push(ring.animate([{ transform: 'scale(.8)', opacity: .55 }, { transform: 'scale(2.4)', opacity: 0 }], { duration: 650, delay: index * 90, easing: 'ease-out', fill: 'backwards' }))
     }
@@ -367,6 +367,11 @@ watch(() => [props.adaptive, visibleTiles.value.map(member => member.id).join(',
 :global(.room-keyboard-open) .member-caption-surface { padding-bottom: 0; }
 .is-compact .member-tile { padding: 4px; }
 .is-compact :deep(.tile-mic) { width: 32px; height: 32px; min-height: 32px; }
+.member-tile :deep(.tile-mic.is-asr-disabled) {
+  color: var(--muted-microphone-background);
+  background: #e9d7d2;
+  border-color: transparent;
+}
 .member-tile.is-speaking .tile-background { border-color: #aeb2b6; box-shadow: inset 0 0 0 1px var(--home-bg); }
 .tile-heading { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .speech-avatar { position: relative; display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: #dedfdb; font-size: 12px; }

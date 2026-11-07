@@ -154,7 +154,16 @@ try {
   await page.getByRole('button', { name: '关闭设置', exact: true }).click()
   await page.getByText('语音转文字功能被关闭了喵！只能打字说话了喵~', { exact: true }).waitFor()
   assert.equal(await mainMic.getAttribute('aria-disabled'), 'true')
-  assert.equal(await mainMic.evaluate(element => getComputedStyle(element).color), 'rgb(135, 63, 69)')
+  for (const [mic, background, icon] of [
+    [mainMic, 'rgb(174, 25, 8)', 'rgb(226, 219, 208)'],
+    [selfCard.locator('.tile-mic'), 'rgb(233, 215, 210)', 'rgb(174, 25, 8)'],
+  ]) {
+    const colors = await mic.evaluate(element => {
+      const { backgroundColor, color } = getComputedStyle(element)
+      return { backgroundColor, color }
+    })
+    assert.deepEqual(colors, { backgroundColor: background, color: icon })
+  }
   const lockedMicBounds = await mainMic.boundingBox()
   await page.mouse.click(lockedMicBounds.x + 32, lockedMicBounds.y + 28)
   assert.equal(await mainMic.getAttribute('aria-pressed'), 'false', '禁用红麦短按不能开启')
@@ -163,7 +172,7 @@ try {
   await page.getByRole('menuitem', { name: '切换打字', exact: true }).click()
   await page.locator('.typing-composer').waitFor()
   assert.equal(await mainMic.getAttribute('aria-disabled'), 'false', '禁用语音仍可退出打字')
-  assert.notEqual(await mainMic.evaluate(element => getComputedStyle(element).color), 'rgb(135, 63, 69)')
+  assert.notEqual(await mainMic.evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(174, 25, 8)')
   await mainMic.click()
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('switch', { name: 'ASR 语音识别', exact: true }).check()
@@ -173,6 +182,21 @@ try {
   assert.equal(await mainMic.evaluate(element => getComputedStyle(element).color), normalMicColor)
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.locator('.owner-entry').waitFor()
+  const speechSlider = page.locator('#speech-volume')
+  const speechControl = page.locator('.sound-volume-control').filter({ has: speechSlider })
+  await speechSlider.press('Home')
+  assert.equal(await speechSlider.inputValue(), '0')
+  assert.equal(await speechSlider.isDisabled(), false, '手动拖到零后仍能调节')
+  assert.equal(await speechControl.locator('output').textContent(), '0%')
+  assert.equal(await speechControl.locator('.volume-fill').count(), 0)
+  const sliderBounds = await speechSlider.boundingBox()
+  const headBounds = await speechControl.locator('.volume-cat').boundingBox()
+  const sliderY = sliderBounds.y + sliderBounds.height / 2
+  await page.mouse.move(headBounds.x + headBounds.width / 2, sliderY)
+  await page.mouse.down()
+  await page.mouse.move(sliderBounds.x + sliderBounds.width / 2, sliderY, { steps: 8 })
+  await page.mouse.up()
+  assert.ok(Math.abs(Number(await speechSlider.inputValue()) - 50) <= 1, '拖动猫头使用原生滑块的量程')
   await slider(page, 'speech-volume', 54); await slider(page, 'reaction-volume', 100)
   assert.equal(await page.getByRole('switch', { name: '卡片布局', exact: true }).isChecked(), true)
   const sectionLayout = await page.evaluate(() => ({
@@ -185,6 +209,7 @@ try {
   assert.match(await page.locator('.owner-entry').innerText(), /房主设置/)
   await page.getByRole('button', { name: '静音发言提示音', exact: true }).click()
   assert.equal(await page.locator('#speech-volume').isDisabled(), true); assert.equal(await page.locator('#speech-volume').inputValue(), '54')
+  assert.equal(await speechControl.locator('output').textContent(), '0%')
   assert.equal(await page.locator('#reaction-volume').isDisabled(), false)
   await page.getByRole('button', { name: '静音快捷回复音效', exact: true }).click()
   assert.equal(await page.locator('#reaction-volume').isDisabled(), true); assert.equal(await page.locator('#reaction-volume').inputValue(), '100')

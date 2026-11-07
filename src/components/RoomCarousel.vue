@@ -8,8 +8,9 @@ const emit = defineEmits<{ enter: [room: RememberedRoom]; create: []; join: [] }
 const track = ref<HTMLElement | null>(null)
 const activeIndex = ref(0)
 const mouseDragging = ref(false)
+const pointerHeld = ref(false)
 let mobile = true, frame = 0, observer: ResizeObserver | undefined
-let pointerStart: { id: number; x: number; y: number; scrollLeft: number; mouse: boolean; horizontal?: boolean; snapType: string } | undefined
+let pointerStart: { id: number; x: number; y: number; scrollLeft: number; mouse: boolean; horizontal?: boolean; snapType: string; pressed?: HTMLElement } | undefined
 let dragged = false, suppressClickUntil = 0
 function items() { return Array.from(track.value?.querySelectorAll<HTMLElement>('.home-carousel-item') ?? []) }
 function updateProgress() {
@@ -53,7 +54,11 @@ function pointerDown(event: PointerEvent) {
   stopPointer()
   dragged = false; suppressClickUntil = 0
   const mouse = mobile && event.pointerType === 'mouse'
-  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, scrollLeft: track.value.scrollLeft, mouse, snapType: track.value.style.scrollSnapType }
+  const target = (event.target as Element).closest<HTMLElement>('.home-cat-button, .home-room-card')
+  const pressed = target && !props.busy && !target.matches(':disabled') ? target : undefined
+  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, scrollLeft: track.value.scrollLeft, mouse, snapType: track.value.style.scrollSnapType, pressed }
+  pointerHeld.value = true
+  pressed?.classList.add('is-pointer-pressed')
   // 窄窗口的鼠标按下不能先触发按钮聚焦滚动，否则卡片会在拖动前跳位。
   if (mouse) event.preventDefault()
   window.addEventListener('pointermove', pointerMove, { passive: false })
@@ -67,6 +72,8 @@ function pointerMove(event: PointerEvent) {
   if (gesture.mouse && event.buttons === 0) { stopPointer(); return }
   const deltaX = event.clientX - gesture.x, deltaY = event.clientY - gesture.y
   if (Math.hypot(deltaX, deltaY) <= 8 && !dragged) return
+  gesture.pressed?.classList.remove('is-pointer-pressed')
+  gesture.pressed = undefined
   dragged = true
   // 触屏交给浏览器原生平移；只在手机布局补充横向鼠标拖动。
   if (!gesture.mouse) return
@@ -86,6 +93,8 @@ function stopPointer(snap = true) {
   const gesture = pointerStart, element = track.value
   if (!gesture) return
   pointerStart = undefined
+  gesture.pressed?.classList.remove('is-pointer-pressed')
+  pointerHeld.value = false
   window.removeEventListener('pointermove', pointerMove)
   window.removeEventListener('pointerup', pointerEnd)
   window.removeEventListener('pointercancel', pointerEnd)
@@ -137,7 +146,7 @@ onUnmounted(() => { stopPointer(false); observer?.disconnect(); cancelAnimationF
 </script>
 
 <template>
-  <div ref="track" class="home-carousel" :class="{ 'is-dragging': mouseDragging }" role="region" aria-label="房间卡片，可左右滑动或拖动；方向键切换" @scroll.passive="scheduleProgress" @pointerdown="pointerDown" @click.capture="captureClick" @keydown="navigate" @focusin="focusCard" @dragstart.prevent>
+  <div ref="track" class="home-carousel" :class="{ 'is-dragging': mouseDragging, 'is-pointer-down': pointerHeld }" role="region" aria-label="房间卡片，可左右滑动或拖动；方向键切换" @scroll.passive="scheduleProgress" @pointerdown="pointerDown" @click.capture="captureClick" @keydown="navigate" @focusin="focusCard" @dragstart.prevent>
     <div v-for="(room, index) in rooms" :key="room.code" class="home-carousel-item" :aria-current="index === activeIndex ? 'true' : undefined">
       <RoomCard :room="room" :busy="busy" @enter="emit('enter', $event)" />
     </div>

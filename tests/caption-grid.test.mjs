@@ -185,7 +185,7 @@ const rings = [0, 1].map(i => ({ animate: animate('ring' + i) }))
 view.gridElement.value = { querySelector: () => ({ animate: animate('article'), querySelector: () => background, querySelectorAll: () => rings }) }
 props.entrances = { a: 1 }; await nextTick(); await new Promise(resolve => setImmediate(resolve))
 assert.deepEqual(animationTargets.map(a => a.target), ['background', 'ring0', 'ring1'])
-assert.equal(animationTargets[0].frames[0].borderColor, '#e4b83f', '卡片边框闪黄')
+assert.equal(animationTargets[0].frames[0].borderColor, 'var(--ui-standard-yellow)', '卡片边框使用标准黄')
 assert.ok(animationTargets[0].frames.every(frame => !('transform' in frame) && !('inset' in frame)), '闪动不改变卡片几何尺寸')
 assert.equal(animationTargets[1].frames[1].transform, 'scale(2.4)')
 props.entrances = { a: 1 }; await nextTick(); await nextTick(); assert.equal(animationTargets.length, 3)

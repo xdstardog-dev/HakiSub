@@ -161,7 +161,7 @@ onUnmounted(() => {
 .tile-mic { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 5px; touch-action: none; user-select: none; -webkit-touch-callout: none; }
 .tile-mic[aria-pressed="false"] { color: var(--home-secondary-text); }
 .tile-mic:hover, .mode-options-trigger:hover { background: #dedfdb; }
-.tile-mic.is-asr-disabled { color: var(--muted-microphone-color); border: 1px solid var(--muted-microphone-border); background: var(--muted-microphone-background); cursor: not-allowed; }
+.tile-mic.is-asr-disabled { color: #e2dbd0; border: 1px solid var(--muted-microphone-background); background: var(--muted-microphone-background); cursor: not-allowed; }
 .tile-mic.is-asr-disabled:disabled { opacity: 1; }
 .mode-options-trigger { min-width: 24px; padding: 0 6px; font-size: 22px; }
 .is-labelled { border: 1px solid var(--home-border); border-radius: 6px; background: var(--room-card-bg); }

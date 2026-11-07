@@ -161,7 +161,7 @@ input { display: block; width: 100%; min-height: 44px; border: 1px solid var(--h
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 button { border-radius: 8px; padding: 8px 12px; background: #dedfdb; font-size: 13px; }
 .save-key { background: var(--home-bg); color: var(--home-light-text); }
-.settings-error { color: #a32c2c; }
-.delete-confirm { padding: 8px; border: 1px solid #d9b2a8; border-radius: 8px; margin-top: 12px; }
+.settings-error { color: var(--ui-standard-red); }
+.delete-confirm { padding: 8px; border: 1px solid var(--ui-light-red); border-radius: 8px; margin-top: 12px; }
 .delete-confirm button { margin-right: 8px; }
 </style>

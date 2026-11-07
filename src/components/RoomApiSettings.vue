@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import PinCodeInput from '../../accounts/shared/PinCodeInput.vue'
+import SoundVolumeControl from './SoundVolumeControl.vue'
 import { createAccountClient, accountCenterUrl } from '../accountClient'
 import type { SoundPreferences } from '../roomInteractions'
 import { isValidDisplayName, ROOM_NAME_MAXIMUM_UNITS } from '../../accounts/shared/nameRules.mjs'
@@ -75,7 +76,6 @@ async function changeAsrSwitch(event: Event) {
   await requestConfiguration('asr')
   input.checked = configuration.value?.asrEnabled !== false
 }
-function changeReactionVolume(event: Event) { emit('sound', { enabled: true, volume: Number((event.target as HTMLInputElement).value) }) }
 const settingsDialog = ref<HTMLDialogElement | null>(null)
 let controller: AbortController | undefined, disposed = false
 let accountClient: ReturnType<typeof createAccountClient> | undefined
@@ -160,20 +160,24 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
     <template v-if="page === 'personal'">
       <section class="settings-section" aria-label="音效">
         <h3>音效</h3>
-        <label for="speech-volume" :class="{ 'is-muted-label': speechMuted }">发言提示音 <output>{{ speechVolume ?? 60 }}%</output></label>
-        <div class="volume-control" :class="{ 'is-muted': speechMuted }">
-          <button type="button" class="sound-toggle" :aria-label="speechMuted ? '恢复发言提示音' : '静音发言提示音'" :aria-pressed="speechMuted" :title="speechMuted ? '恢复音量' : '静音'" @click="toggleSpeechSound">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5Z"/><path v-if="speechMuted" d="m16 9 5 6m0-6-5 6"/><path v-else d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>
-          </button>
-          <input id="speech-volume" type="range" min="0" max="100" :value="speechVolume ?? 60" :disabled="speechEnabled === false" @input="emit('speech', Number(($event.target as HTMLInputElement).value))" />
-        </div>
-        <label for="reaction-volume" :class="{ 'is-muted-label': reactionMuted }">快捷回复音效 <output>{{ preferences?.volume ?? 60 }}%</output></label>
-        <div class="volume-control" :class="{ 'is-muted': reactionMuted }">
-          <button type="button" class="sound-toggle" :aria-label="reactionMuted ? '恢复快捷回复音效' : '静音快捷回复音效'" :aria-pressed="reactionMuted" :title="reactionMuted ? '恢复音量' : '静音'" @click="toggleReactionSound">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5Z"/><path v-if="reactionMuted" d="m16 9 5 6m0-6-5 6"/><path v-else d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>
-          </button>
-          <input id="reaction-volume" type="range" min="0" max="100" :value="preferences?.volume ?? 60" :disabled="preferences?.enabled === false" @input="changeReactionVolume" />
-        </div>
+        <SoundVolumeControl
+          id="speech-volume"
+          label="发言提示音"
+          :volume="speechVolume ?? 60"
+          :muted="speechMuted"
+          :disabled="speechEnabled === false"
+          @toggle="toggleSpeechSound"
+          @volume="emit('speech', $event)"
+        />
+        <SoundVolumeControl
+          id="reaction-volume"
+          label="快捷回复音效"
+          :volume="preferences?.volume ?? 60"
+          :muted="reactionMuted"
+          :disabled="preferences?.enabled === false"
+          @toggle="toggleReactionSound"
+          @volume="emit('sound', { enabled: true, volume: $event })"
+        />
       </section>
       <section class="settings-section" aria-label="卡片布局">
         <h3>卡片布局</h3>
@@ -235,15 +239,9 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
   </dialog>
 </template>
 <style scoped>
-.room-api-settings{margin:auto;padding:20px;width:min(440px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--home-border);border-radius:18px;background:var(--room-card-bg);color:var(--home-text)}.room-api-settings::backdrop{background:#0005}.settings-heading,.name-row,.switch-row,.owner-entry{display:flex;align-items:center;justify-content:space-between;gap:12px}.settings-heading h2{font-size:18px;margin:0}.settings-section{padding:16px 0;border-bottom:1px solid var(--home-border)}h3{font-size:14px;margin:0 0 12px}p{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.settings-note{color:var(--home-secondary-text)}label{display:block;font-size:14px;margin:12px 0 6px}label output{float:right}input{width:100%;min-height:44px;padding:10px;border:1px solid var(--home-border);border-radius:8px}input[type=range]{padding:0;accent-color:var(--home-bg)}.layout-choice{display:flex;align-items:center;gap:8px;min-height:44px}.layout-choice input,.switch-row input{width:24px;min-height:24px;height:24px;margin:0;accent-color:var(--home-bg)}.switch-row input{margin-left:auto}.settings-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}button{min-height:44px;padding:8px 12px;background:#dedfdb;border-radius:9px;font-size:13px}.owner-entry{width:100%;margin-top:12px}.error{color:#9d2929}.name-row strong{overflow-wrap:anywhere;min-width:0}
+.room-api-settings{margin:auto;padding:20px;width:min(440px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--home-border);border-radius:18px;background:var(--room-card-bg);color:var(--home-text)}.room-api-settings::backdrop{background:#0005}.settings-heading,.name-row,.switch-row,.owner-entry{display:flex;align-items:center;justify-content:space-between;gap:12px}.settings-heading h2{font-size:18px;margin:0}.settings-section{padding:16px 0;border-bottom:1px solid var(--home-border)}h3{font-size:14px;margin:0 0 12px}p{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.settings-note{color:var(--home-secondary-text)}label{display:block;font-size:14px;margin:12px 0 6px}label output{float:right}input{width:100%;min-height:44px;padding:10px;border:1px solid var(--home-border);border-radius:8px}input[type=range]{padding:0;accent-color:var(--home-bg)}.layout-choice{display:flex;align-items:center;gap:8px;min-height:44px}.layout-choice input,.switch-row input{width:24px;min-height:24px;height:24px;margin:0;accent-color:var(--home-bg)}.switch-row input{margin-left:auto}.settings-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}button{min-height:44px;padding:8px 12px;background:#dedfdb;border-radius:9px;font-size:13px}.owner-entry{width:100%;margin-top:12px}.error{color:var(--ui-standard-red)}.name-row strong{overflow-wrap:anywhere;min-width:0}
 .switch-row input[role=switch]{appearance:none;position:relative;flex:0 0 40px;width:40px;height:24px;min-height:24px;padding:0;border:0;border-radius:999px;background:var(--home-border);cursor:pointer;transition:background 160ms}.switch-row input[role=switch]::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--home-light-text);transition:transform 160ms}.switch-row input[role=switch]:checked{background:var(--home-bg)}.switch-row input[role=switch]:checked::after{transform:translateX(16px)}.switch-row input[role=switch]:disabled{opacity:.5}.switch-row input[role=switch]:focus-visible{outline:2px solid var(--home-secondary-text);outline-offset:3px}@media(prefers-reduced-motion:reduce){.switch-row input[role=switch],.switch-row input[role=switch]::after{transition:none}}
 
-.volume-control { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.volume-control .sound-toggle { display: grid; place-items: center; flex: 0 0 40px; width: 40px; padding: 0; background: transparent; color: var(--home-bg); }
-.volume-control input[type=range] { flex: 1; min-width: 0; width: 0; margin: 0; }
-.volume-control.is-muted input[type=range] { accent-color: #b5bbc1; opacity: .5; }
-.volume-control input:disabled { cursor: not-allowed; }
-.volume-control.is-muted .sound-toggle, .is-muted-label { color: #92989e; }
 .layout-switch, .asr-switch { justify-content: flex-start; gap: 12px; min-height: 44px; margin: 0; }
 .layout-switch input[role=switch], .asr-switch input[role=switch] { margin-left: 0; }
 .owner-management { margin: 16px -12px 0; padding: 16px 12px; border: 0; border-radius: 12px; background: #e3e4e0; }
@@ -273,11 +271,10 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
 .connection-test-button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 2px; border: 0; border-bottom: 1px dashed var(--home-secondary-text); border-radius: 0; background: transparent; color: var(--home-secondary-text); }
 .connection-test-button:hover { color: var(--home-text); border-bottom-style: solid; }
 .connection-test-result { font-size: 12px; color: #3c6652; overflow-wrap: anywhere; }
-.connection-test-result.error { color: #9d2929; }
+.connection-test-result.error { color: var(--ui-standard-red); }
 .key-delete-dialog { margin: auto; width: min(340px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; border: 1px solid var(--home-border); border-radius: 14px; background: var(--room-card-bg); color: var(--home-text); }
 .key-delete-dialog::backdrop { background: #0005; }
 .key-delete-dialog .settings-actions { justify-content: flex-end; }
 input { background: #fafaf8; color: var(--home-text); }
 input:focus { border-color: var(--home-secondary-text); box-shadow: 0 0 0 2px #62666a22; }
-input[type=range] { background: transparent; }
 </style>

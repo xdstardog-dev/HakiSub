@@ -12,9 +12,11 @@
   --ui-control: 48px;
   --ui-radius-control: 12px;
   --ui-radius-dialog: 24px;
+  --ui-standard-red: #ae1908;
+  --ui-light-red: #f0b1b5;
+  --ui-standard-yellow: #f9a647;
   --muted-microphone-color: #873f45;
-  --muted-microphone-background: #f5e9ea;
-  --muted-microphone-border: #d9b8bc;
+  --muted-microphone-background: var(--ui-standard-red);
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: #243b34;
   background: #e9ede8;
@@ -108,7 +110,7 @@ body:has(.app-shell.in-room) { overflow: hidden; }
 .room-layout .room-back-button:active { background: var(--home-border); }
 .in-room :is(button, a, input, select):focus-visible { outline: 2px solid #aeb2b6; outline-offset: 3px; }
 .in-room input:focus { border-color: var(--home-secondary-text); box-shadow: 0 0 0 3px #62666a22; }
-.in-room .room-error { color: #f0b1b5; }
+.in-room .room-error { color: var(--ui-light-red); }
 .room-copy-toast { position: fixed; z-index: 1000; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max-content; max-width: calc(100vw - 32px); margin: 0; padding: 12px 20px; border-radius: 10px; background: rgb(0 0 0 / 50%); color: #fff; font-size: 14px; line-height: 1.5; text-align: center; pointer-events: none; }
 .room-copy-toast-enter-active { transition: opacity 120ms ease-out; }
 .room-copy-toast-leave-active { transition: opacity 240ms ease-out; }
@@ -122,7 +124,7 @@ body:has(.app-shell.in-room) { overflow: hidden; }
 .room-bottom-bar { display: flex; align-items: center; margin-left: auto; flex-shrink: 0; }
 .room-main-control .tile-mic { width: 64px; height: 56px; border: 1px solid var(--home-border); border-radius: 16px; }
 .room-layout .room-main-control .tile-mic:not(.is-asr-disabled) { border-color: #81858a; background: #55595e; color: var(--home-light-text); }
-.room-layout .room-main-control .tile-mic:not(.is-asr-disabled):hover { background: #62666b; }
+.room-layout .room-main-control .tile-mic:not(.is-asr-disabled):hover { background: var(--ui-secondary-gray); }
 .room-main-control .tile-mic svg { width: 24px; height: 24px; }
 .room-layout .room-main-control .tile-mic[aria-pressed="true"]:not(.is-asr-disabled) { background: var(--room-card-bg); border-color: var(--home-border); color: var(--home-text); }
 .room-main-control .mode-options-trigger { min-width: 28px; min-height: 44px; padding: 0; }
