@@ -1,7 +1,7 @@
 // 使用正式构建与隔离内存网关；房间由真实 WebSocket 创建，不读取现有房间或 .env。
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 import { createAsrGateway } from '../server/asrGateway.mjs'
@@ -93,8 +93,189 @@ async function waitForCardPress(card, pressed) {
     if (displacement() !== expected) throw new Error(`卡面位移应为 ${expected}px，实际为 ${displacement()}px`)
   }, pressed)
 }
+async function checkBrandCats() {
+  const page = await openPage(320, 568, [], false)
+  const brand = page.getByRole('button', { name: '哈基字幕 HakiSub，召唤猫咪' })
+  const cat = page.locator('.home-brand-cat')
+  const box = await brand.boundingBox()
+  const clickX = Math.floor(box.x + box.width - 4)
+  await page.mouse.click(clickX, box.y + box.height / 2)
+  await cat.waitFor()
+  const motion = await cat.evaluate(popup => {
+    const flight = popup.getAnimations()[0]
+    const frames = flight.effect.getKeyframes()
+    const body = popup.querySelector('.home-brand-cat-motion')
+    const footOrigin = parseFloat(getComputedStyle(body).transformOrigin.split(' ')[1])
+    const sparks = popup.querySelector('.home-brand-cat-sparks')
+    const hiss = popup.querySelector('.home-brand-cat-hiss')
+    const hissDuration = hiss.getAnimations()[0].effect.getTiming().duration
+    const sparksDuration = sparks.getAnimations()[0].effect.getTiming().duration
+    const animations = popup.getAnimations({ subtree: true })
+    for (const animation of animations) animation.pause()
+    const sample = milliseconds => {
+      for (const animation of animations) animation.currentTime = milliseconds
+      const horizontal = new DOMMatrix(getComputedStyle(popup).transform)
+      const vertical = new DOMMatrix(getComputedStyle(body).transform)
+      return {
+        x: horizontal.e, y: vertical.f, scale: Math.abs(vertical.d), facing: Math.sign(vertical.a),
+        foot: body.getBoundingClientRect().bottom - (body.offsetHeight - footOrigin) * Math.abs(vertical.d),
+        sparks: +getComputedStyle(sparks).opacity, hiss: +getComputedStyle(hiss).opacity,
+      }
+    }
+    const start = sample(0), entry = sample(78), landing = sample(690), shout = sample(946.5)
+    const beforeTurn = sample(1189), afterTurn = sample(1211)
+    const exitPeaks = [1336.5, 1564.3, 1729.3].map(sample)
+    const landings = [156.8, 376.4, 690, 1146, 1470.1, 1658.6].map(sample)
+    for (const animation of animations) animation.play()
+    return {
+      left: parseFloat(popup.style.left), width: popup.offsetWidth, pointerEvents: getComputedStyle(popup).pointerEvents,
+      duration: flight.effect.getTiming().duration, frames, start, entry, landing, shout, beforeTurn, afterTurn,
+      hissDuration, sparksDuration,
+      exitPeaks, landings, text: hiss.textContent, hissAnchor: parseFloat(hiss.style.left), hissShift: getComputedStyle(hiss).translate,
+    }
+  })
+  assert.equal(motion.left, clickX + 20)
+  assert.ok(motion.left + motion.width < 320)
+  assert.equal(motion.pointerEvents, 'none')
+  assert.equal(motion.duration, 1800)
+  assert.equal(motion.hissDuration, 370.5)
+  assert.equal(motion.sparksDuration, 370.5)
+  assert.equal(motion.frames[0].opacity, '0')
+  assert.equal(motion.frames.at(-1).opacity, '0')
+  assert.ok(motion.left + motion.start.x >= 320 - motion.width * .2, '窄屏从右边缘入场')
+  assert.ok(motion.entry.x > motion.landing.x && motion.shout.y < motion.landing.y)
+  assert.ok(motion.entry.scale < motion.landing.scale && motion.shout.scale > motion.landing.scale)
+  assert.ok(motion.landings.every(landing => Math.abs(landing.foot - motion.landing.foot) < 1), '缩放也沿猫脚底的基线落地')
+  assert.equal(motion.beforeTurn.facing, 1)
+  assert.equal(motion.afterTurn.facing, -1)
+  assert.ok(motion.exitPeaks.every((peak, index, peaks) => peak.x > (peaks[index - 1]?.x ?? motion.afterTurn.x)
+    && peak.y < 0 && (index === 0 || peak.y > peaks[index - 1].y)))
+  assert.ok([motion.entry, ...motion.exitPeaks].every(sample => sample.sparks === 0 && sample.hiss === 0))
+  assert.deepEqual([motion.shout.sparks, motion.shout.hiss, motion.text], [1, 1, '哈！'])
+  assert.ok(motion.hissAnchor < motion.width * .3 && motion.hissShift.startsWith('-100%'))
+  await cat.waitFor({ state: 'detached' })
+  assert.equal(page.url(), origin + '/')
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320)
+
+  await page.setViewportSize({ width: 1100, height: 780 })
+  await brand.click()
+  await cat.waitFor()
+  const desktopTravel = await cat.evaluate(popup => parseFloat(popup.style.getPropertyValue('--brand-cat-travel')) / popup.offsetWidth)
+  assert.ok(desktopTravel > 2, '桌面跳跃距离至少超过两只猫身')
+  await page.setViewportSize({ width: 320, height: 568 })
+  await page.reload()
+  const assets = (await readdir(new URL('../src/assets/home-cats/', import.meta.url)))
+    .filter(name => name.endsWith('.svg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+  assert.ok(assets.length >= 11)
+  const brandMotions = new Set()
+  const hissPositions = new Set()
+  for (const [index, asset] of assets.entries()) {
+    const random = index === 0 ? 0 : (index - 0.5) / (assets.length - 1)
+    const feedback = await brand.evaluate((button, random) => {
+      const original = Math.random
+      Math.random = () => random
+      try { button.click() } finally { Math.random = original }
+      const animations = button.querySelector('.home-brand-mark').getAnimations()
+      const frames = animations[0].effect.getKeyframes()
+      const transforms = frames.map(frame => new DOMMatrix(frame.transform))
+      const width = button.getBoundingClientRect().width
+      animations[0].currentTime = 70
+      return {
+        count: animations.length,
+        fixedHitbox: width === button.getBoundingClientRect().width,
+        duration: animations[0].effect.getTiming().duration,
+        shaking: transforms.some(transform => transform.e < 0) && transforms.some(transform => transform.e > 0),
+        rotatesBothWays: transforms.some(transform => transform.b < 0) && transforms.some(transform => transform.b > 0),
+        horizontalOnly: transforms.every(transform => Math.abs(transform.e) <= 1.5 && transform.b === 0 && transform.c === 0),
+        kind: frames.some(frame => frame.filter?.includes('brightness')) ? 'brightness'
+          : frames.some(frame => frame.transform?.includes('translateY(-')) ? 'hop'
+            : frames.some(frame => frame.transform?.includes('translateY(')) ? 'sink'
+              : frames.some(frame => frame.transform?.includes('scale(')) ? 'scale' : 'shake',
+      }
+    }, random)
+    assert.equal(feedback.count, 1)
+    assert.ok(feedback.fixedHitbox)
+    assert.ok(feedback.shaking && feedback.duration <= 300)
+    if (feedback.kind === 'hop' || feedback.kind === 'sink') assert.ok(feedback.rotatesBothWays)
+    else assert.ok(feedback.horizontalOnly)
+    brandMotions.add(feedback.kind)
+    await page.waitForFunction(name => {
+      const popup = document.querySelector('.home-brand-cat')
+      return popup?.dataset.asset === name && [...popup.querySelectorAll('img')].every(image => image.complete && image.naturalWidth > 0)
+    }, asset)
+    assert.equal(await cat.count(), 1)
+    const layers = await cat.evaluate(popup => {
+      const readSvg = image => new DOMParser().parseFromString(decodeURIComponent(image.src.split(',')[1]), 'image/svg+xml')
+      const selector = '#shout-marks, #sparks'
+      const body = readSvg(popup.querySelector('.home-brand-cat-art'))
+      const sparks = readSvg(popup.querySelector('.home-brand-cat-sparks'))
+      const { left, top, fontSize } = popup.querySelector('.home-brand-cat-hiss').style
+      return { separated: !body.querySelector(selector) && Boolean(sparks.querySelector(selector)), left, top, fontSize }
+    })
+    assert.ok(layers.separated)
+    hissPositions.add(layers.left + layers.top + layers.fontSize)
+    await cat.evaluate(popup => popup.getAnimations()[0].finish())
+    await cat.waitFor({ state: 'detached' })
+    await brand.evaluate(button => button.querySelector('.home-brand-mark').getAnimations()[0]?.finish())
+  }
+  assert.deepEqual([...brandMotions].sort(), ['brightness', 'hop', 'scale', 'shake', 'sink'])
+  assert.ok(hissPositions.size > 1)
+
+  await brand.evaluate(button => {
+    button.click()
+    const mark = button.querySelector('.home-brand-mark')
+    const feedback = mark.getAnimations()[0]
+    for (let click = 0; click < 20; click++) button.click()
+    if (mark.getAnimations()[0] !== feedback) throw new Error('连点重启了 Logo 动画')
+  })
+  await cat.waitFor()
+  const layer = page.locator('.home-brand-cat-layer')
+  for (let count = 1; count <= 4; count++) {
+    await page.waitForFunction(count => document.querySelectorAll('.home-brand-cat').length === count, count)
+    await cat.nth(count - 1).evaluate((popup, order) => {
+      popup.getAnimations()[0].pause()
+      popup.dataset.testOrder = order
+    }, String(count))
+    await brand.evaluate(button => button.querySelector('.home-brand-mark').getAnimations()[0]?.finish())
+    if (count < 4) await brand.evaluate(button => button.click())
+  }
+  assert.equal(await layer.count(), 1)
+  await brand.evaluate(async button => {
+    const mark = button.querySelector('.home-brand-mark')
+    await mark.getAnimations()[0]?.finished
+    for (let click = 0; click < 20; click++) button.click()
+    if (mark.getAnimations().some(animation => animation.playState === 'running')) throw new Error('满员时仍然触发 Logo 动画')
+  })
+  const catOrder = () => cat.evaluateAll(cats => cats.map(popup => popup.dataset.testOrder))
+  assert.deepEqual(await catOrder(), ['1', '2', '3', '4'])
+  await cat.first().evaluate(popup => popup.getAnimations()[0].finish())
+  await page.locator('[data-test-order="1"]').waitFor({ state: 'detached' })
+  assert.deepEqual(await catOrder(), ['2', '3', '4'])
+  await brand.evaluate(button => button.click())
+  await page.waitForFunction(() => document.querySelectorAll('.home-brand-cat').length === 4)
+  assert.deepEqual(await catOrder(), ['2', '3', '4', undefined])
+  await cat.evaluateAll(cats => cats.forEach(popup => popup.getAnimations()[0].finish()))
+  await layer.waitFor({ state: 'detached' })
+  await brand.evaluate(button => button.querySelector('.home-brand-mark').getAnimations()[0]?.finish())
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await brand.focus()
+  await brand.press('Enter')
+  const reducedBrandFrames = await brand.evaluate(button => button.querySelector('.home-brand-mark').getAnimations()[0].effect.getKeyframes())
+  assert.ok(reducedBrandFrames.some(frame => +frame.opacity < 1))
+  assert.ok(reducedBrandFrames.every(frame => !frame.transform && !frame.filter))
+  await page.waitForFunction(() => {
+    const image = document.querySelector('.home-brand-cat')
+    return image && getComputedStyle(image).animationName === 'home-brand-cat-fade'
+  })
+  await cat.waitFor({ state: 'detached' })
+  assert.equal(page.url(), origin + '/')
+  await page.context().close()
+  console.log(`通过：${assets.length} 只编号 SVG、五种品牌短抖动、连点拦截、四猫叠加与独立退场、猫咪宽窄屏动线、脚底落地、翻面、左侧哈字、键盘和减少动态效果。`)
+}
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
+  await checkBrandCats()
   const rooms = []
   for (let index = 0; index < 12; index++) rooms.push(await createRoom(index))
   for (const [width, height] of [[320, 568], [390, 844], [767, 900], [768, 900], [1024, 768], [1440, 900]]) {

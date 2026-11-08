@@ -91,9 +91,109 @@
 
 .home-container { width: 100%; max-width: var(--home-content-max-width); margin-inline: auto; padding-inline: var(--home-page-gutter); }
 .home-header { display: flex; align-items: center; justify-content: space-between; gap: var(--home-space); min-height: 100px; padding-top: env(safe-area-inset-top, 0px); }
-.home-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.home-brand { flex-shrink: 0; padding: 0; text-align: left; }
+.home-brand-mark { display: flex; align-items: center; gap: 10px; }
 .home-brand b { display: block; font-size: 20px; letter-spacing: -.4px; }
 .home-brand small { display: block; margin-top: 3px; font-size: 12px; }
+.home-brand-cat-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: clip;
+  pointer-events: none;
+  user-select: none;
+}
+.home-brand-cat {
+  --brand-cat-duration: 1800ms;
+  --brand-cat-hiss-delay: 804ms;
+  --brand-cat-hiss-duration: 370.5ms;
+  --brand-cat-rise: cubic-bezier(.333, .667, .667, 1);
+  --brand-cat-fall: cubic-bezier(.333, 0, .667, .333);
+  position: absolute;
+  animation: home-brand-cat-travel var(--brand-cat-duration) linear both;
+}
+.home-brand-cat-motion {
+  position: absolute;
+  inset: 0;
+  /* 这一组 SVG 的爪底落在约 95% 高度，缩放时保持贴地。 */
+  transform-origin: 50% 95%;
+  animation: home-brand-cat-hop var(--brand-cat-duration) linear both;
+}
+.home-brand-cat-art, .home-brand-cat-sparks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.home-brand-cat-sparks {
+  animation: home-brand-cat-sparks var(--brand-cat-hiss-duration) ease-out var(--brand-cat-hiss-delay) both;
+}
+.home-brand-cat-hiss {
+  position: absolute;
+  translate: -100% 0;
+  transform-origin: right center;
+  color: var(--ui-standard-yellow);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 2px 2px #242629;
+  animation: home-brand-cat-hiss var(--brand-cat-hiss-duration) ease-out var(--brand-cat-hiss-delay) both;
+}
+/* 约 690ms 入场、513ms 哈气和翻面、597ms 退场。每次落地共用同一基线。 */
+@keyframes home-brand-cat-travel {
+  0% { opacity: 0; transform: translateX(var(--brand-cat-travel)); }
+  8.71% { opacity: .7; transform: translateX(calc(var(--brand-cat-travel) * .78)); }
+  20.91% { opacity: 1; transform: translateX(calc(var(--brand-cat-travel) * .47)); }
+  38.33%, 66.83% { opacity: 1; transform: translateX(0); }
+  81.67% { opacity: .94; transform: translateX(calc(var(--brand-cat-travel) * .47)); }
+  92.14% { opacity: .58; transform: translateX(calc(var(--brand-cat-travel) * .78)); }
+  100% { opacity: 0; transform: translateX(var(--brand-cat-travel)); }
+}
+@keyframes home-brand-cat-hop {
+  0% { transform: translateY(0) scale(.7); animation-timing-function: var(--brand-cat-rise); }
+  4.36% { transform: translateY(calc(var(--brand-cat-hop-height) * -.34)) scale(.74); animation-timing-function: var(--brand-cat-fall); }
+  8.71% { transform: translateY(0) scale(.78); animation-timing-function: var(--brand-cat-rise); }
+  14.81% { transform: translateY(calc(var(--brand-cat-hop-height) * -.62)) scale(.83); animation-timing-function: var(--brand-cat-fall); }
+  20.91% { transform: translateY(0) scale(.88); animation-timing-function: var(--brand-cat-rise); }
+  29.62% { transform: translateY(calc(0px - var(--brand-cat-hop-height))) scale(.94); animation-timing-function: var(--brand-cat-fall); }
+  38.33% { transform: translateY(0) scale(1); }
+  44.67% { transform: translateY(0) scale(.98, .94); animation-timing-function: var(--brand-cat-rise); }
+  52.58% { transform: translateY(calc(var(--brand-cat-hop-height) * -.24)) scale(1.06); animation-timing-function: var(--brand-cat-fall); }
+  63.67% { transform: translateY(0) scale(1); }
+  65.25% { transform: translateY(0) scale(1); animation-timing-function: step-end; }
+  66.83% { transform: translateY(0) scale(1) scaleX(-1); animation-timing-function: var(--brand-cat-rise); }
+  74.25% { transform: translateY(calc(0px - var(--brand-cat-hop-height))) scale(.94) scaleX(-1); animation-timing-function: var(--brand-cat-fall); }
+  81.67% { transform: translateY(0) scale(.88) scaleX(-1); animation-timing-function: var(--brand-cat-rise); }
+  86.91% { transform: translateY(calc(var(--brand-cat-hop-height) * -.62)) scale(.83) scaleX(-1); animation-timing-function: var(--brand-cat-fall); }
+  92.14% { transform: translateY(0) scale(.78) scaleX(-1); animation-timing-function: var(--brand-cat-rise); }
+  96.07% { transform: translateY(calc(var(--brand-cat-hop-height) * -.34)) scale(.74) scaleX(-1); animation-timing-function: var(--brand-cat-fall); }
+  100% { transform: translateY(0) scale(.7) scaleX(-1); }
+}
+@keyframes home-brand-cat-fade {
+  0%, 100% { opacity: 0; }
+  20%, 70% { opacity: 1; }
+}
+@keyframes home-brand-cat-sparks {
+  0%, 100% { opacity: 0; }
+  23.08%, 61.54% { opacity: 1; }
+}
+@keyframes home-brand-cat-hiss {
+  0% { opacity: 0; transform: translateY(7px) rotate(-9deg) scale(.55); }
+  30.77% { opacity: 1; transform: translateY(-2px) rotate(-9deg) scale(1.3); }
+  53.85% { opacity: 1; transform: translateY(-7px) rotate(-9deg) scale(1); }
+  100% { opacity: 0; transform: translateY(-19px) rotate(-9deg) scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-brand-cat {
+    --brand-cat-duration: 1400ms;
+    --brand-cat-hiss-delay: 672ms;
+    --brand-cat-hiss-duration: 182ms;
+    animation-name: home-brand-cat-fade;
+  }
+  .home-brand-cat-motion { animation: none; }
+  .home-brand-cat-hiss { animation-name: home-brand-cat-sparks; }
+}
 .home-logo { display: block; flex: 0 0 56px; width: 56px; height: 56px; overflow: hidden; border: 1px solid var(--home-border); border-radius: var(--home-control-radius); background: var(--room-card-bg); }
 .home-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .home-header nav { display: flex; align-items: center; justify-content: flex-end; gap: 20px; min-width: 0; }
@@ -246,7 +346,7 @@
   .home-header { --home-page-gutter: 16px; gap: 12px; min-height: 88px; }
   .home-header nav { gap: 12px; }
   .home-header .account-access { max-width: 118px; font-size: 12px; }
-  .home-brand { gap: 8px; }
+  .home-brand-mark { gap: 8px; }
   .home-brand b { font-size: 17px; }
   .home-content { padding-inline: 0; }
   .home-room-heading { padding-inline: var(--home-page-gutter); }
