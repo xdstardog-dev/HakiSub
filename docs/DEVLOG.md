@@ -1583,3 +1583,10 @@ roomNavigation.copyText 统一原生写入、缺失/异常后临时只读 textar
 ## 2026-11-09 浏览器标签页标题
 
 - 主应用的浏览器标签页标题改为「哈基字幕·hakisub」。`npm test`、`npm run build` 和 `git diff --check` 通过，并核对构建产物标题逐字一致。尚未部署。
+
+## 2026-11-09 首页猫咪资源清理上线
+
+- 功能提交 `e4d5956` 已推送 GitHub `main`。北京时间 16:26:00 切换 `brand-cat-cleanup-20261109`，只重建 HakiSub 网关。账号和代理容器继续运行，房间文件在切换前后逐字节一致。网关重启后房主需重填内存 ASR Key。
+- `npm test`、`npm run build`、`git diff --check` 和 Chrome 首页六视口回归通过。服务器 59 项、公网 55 项前端资源哈希匹配，公网健康接口正常。16:26:25 的线上 Chrome 冒烟确认标签页标题、隐藏猫召唤和退场后撤销临时图片 URL，入房测试使用隔离网关。未验收物理手机帧率和内存、真实麦克风或豆包 API。
+- 发布前只读检查显示，根盘使用率 21%、约 30 GB 可用，inode 使用率 7%，发布归档约 490 MB，系统日志约 56 MB，三个容器的日志均配置为每文件 10 MB、最多 3 个文件。当前无清理需求，保留镜像、备份和归档。
+- 发布目录为 `/srv/projects/hakisub/images/brand-cat-cleanup-20261109/`。切换前加密备份已解密核验，SHA-256 为 `2cf58f303fdb0eb68a26ccf48b63d1b095692f5c5e9a6cdfd674b582d18c5f6b`。回退命令为 `sudo -n python3 /srv/projects/hakisub/images/brand-cat-cleanup-20261109/publish.py rollback`，切回当天 00:48 的版本并沿用现有数据卷。
