@@ -11,16 +11,21 @@ const listOpen = ref(false)
 function selectRoom(room: RememberedRoom) { listOpen.value = false; emit('enter', room) }
 
 const brandCats = Object.entries(import.meta.glob<string>('../assets/home-cats/*.svg', {
-  query: '?raw', import: 'default',
+  eager: true, query: '?url&no-inline', import: 'default',
 })).sort(([first], [second]) => first.localeCompare(second, 'en', { numeric: true }))
+const hiddenCatPath = '../assets/home-cats/10-longhair.svg'
+const hiddenBrandCat = brandCats.find(([path]) => path === hiddenCatPath)
+const regularBrandCats = brandCats.filter(([path]) => path !== hiddenCatPath)
+const hiddenCatChance = hiddenBrandCat ? .01 : 0
 type BrandCat = {
   id: number; asset: string; body: string; sparks?: string
   left: number; top: number; size: number; travel: number; hopHeight: number
   hissLeft: number; hissTop: number; hissSize: number
 }
-const maximumActiveCats = 4
 const activeCats = shallowRef<BrandCat[]>([])
-const brandArtworkCache = new Map<string, ReturnType<typeof loadBrandArtwork>>()
+const catResources = new Map<number, { urls: string[]; timeout?: number }>()
+const homeLifetime = new AbortController()
+const touchPointer = window.matchMedia('(pointer: coarse)')
 const brandMark = ref<HTMLElement | null>(null)
 const brandMotions: Keyframe[][] = [
   [
@@ -66,16 +71,15 @@ const brandMotions: Keyframe[][] = [
   ],
 ]
 let brandAnimation: Animation | undefined
-let lastCat = -1
+let lastRegularCat = -1
 let brandClick = 0
 let loadingCat = false
-let disposed = false
 
 function activateBrand(event: MouseEvent) {
   // 素材未就绪或 Logo 还在播放时丢弃连点，避免异步加载排队。
   const feedbackState = brandAnimation?.playState
   if (loadingCat || feedbackState === 'running' || feedbackState === 'paused'
-    || activeCats.value.length >= maximumActiveCats) return
+    || activeCats.value.length >= (touchPointer.matches ? 2 : 4)) return
   void summonBrandCat(event)
   if (!brandMark.value?.animate) return
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -84,38 +88,45 @@ function activateBrand(event: MouseEvent) {
   brandAnimation = brandMark.value.animate(frames, { duration: reducedMotion ? 180 : 260, easing: 'ease-out' })
 }
 
-async function summonBrandCat(event: MouseEvent) {
-  if (!brandCats.length) return
-  const id = ++brandClick
+function pickBrandCat() {
+  const roll = Math.random()
+  // 隐藏款独立占用前 1%，其余区间均分给可选普通款。
+  if (hiddenBrandCat && roll < hiddenCatChance) return hiddenBrandCat
 
-  // 除第一只之外，从其余编号中随机抽取，避免连续点出同一只。
-  const skipLast = lastCat >= 0 && brandCats.length > 1
-  const choice = Math.floor(Math.random() * (brandCats.length - Number(skipLast)))
-  lastCat = skipLast && choice >= lastCat ? choice + 1 : choice
-  const [asset, loadCat] = brandCats[lastCat]
+  const skipLast = lastRegularCat >= 0 && regularBrandCats.length > 1
+  const regularRoll = (roll - hiddenCatChance) / (1 - hiddenCatChance)
+  const choice = Math.floor(regularRoll * (regularBrandCats.length - Number(skipLast)))
+  lastRegularCat = skipLast && choice >= lastRegularCat ? choice + 1 : choice
+  return regularBrandCats[lastRegularCat]
+}
+
+async function summonBrandCat(event: MouseEvent) {
+  const selection = pickBrandCat()
+  if (!selection) return
+  const [asset, source] = selection
+  const id = ++brandClick
+  const sizeScale = .9 + Math.random() * .2
   const button = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
   const x = event.detail ? event.clientX : button.right
   const y = event.detail ? event.clientY : button.top + button.height / 2
 
+  const { innerWidth, innerHeight } = window
+  const baseSize = Math.min(160, Math.floor(Math.min(innerWidth, innerHeight) * .34))
+  const size = baseSize * sizeScale
+  const resources: { urls: string[]; timeout?: number } = { urls: [] }
+  catResources.set(id, resources)
   let artwork: Awaited<ReturnType<typeof loadBrandArtwork>>
   loadingCat = true
   try {
-    let pendingArtwork = brandArtworkCache.get(asset)
-    if (!pendingArtwork) {
-      pendingArtwork = loadBrandArtwork(loadCat)
-      brandArtworkCache.set(asset, pendingArtwork)
-    }
-    artwork = await pendingArtwork
+    artwork = await loadBrandArtwork(source, size, resources.urls, homeLifetime.signal)
   } catch {
-    brandArtworkCache.delete(asset)
+    removeBrandCat(id)
     return
   } finally {
     loadingCat = false
   }
-  if (disposed) return
+  if (homeLifetime.signal.aborted) return
 
-  const { innerWidth, innerHeight } = window
-  const size = Math.min(160, Math.floor(Math.min(innerWidth, innerHeight) * .34))
   const left = Math.max(12, Math.min(innerWidth - size - 12, x + 20))
   const floor = Math.min(innerHeight - 16, Math.max(button.bottom + size * .95, y + size))
   const top = Math.max(8, floor - size * .95)
@@ -130,17 +141,36 @@ async function summonBrandCat(event: MouseEvent) {
     hissTop: 28 + Math.random() * 12,
     hissSize,
   }]
+  // 正常由动画结束清理；取消或漏发事件时也要归还资源和名额。
+  resources.timeout = window.setTimeout(() => removeBrandCat(id), 2000)
 }
 
 function removeBrandCat(id: number) {
+  const resources = catResources.get(id)
+  if (!resources) return
+  catResources.delete(id)
+  window.clearTimeout(resources.timeout)
+  for (const url of resources.urls) URL.revokeObjectURL(url)
   activeCats.value = activeCats.value.filter(cat => cat.id !== id)
 }
 
-async function loadBrandArtwork(loadCat: () => Promise<string>) {
-  const svg = new DOMParser().parseFromString(await loadCat(), 'image/svg+xml').documentElement
+async function loadBrandArtwork(source: string, size: number, urls: string[], signal: AbortSignal) {
+  const response = await fetch(source, { signal })
+  if (!response.ok) throw new Error('猫咪 SVG 加载失败')
+  const sourceText = await response.text()
+  if (signal.aborted) throw signal.reason
+  const svg = new DOMParser().parseFromString(sourceText, 'image/svg+xml').documentElement
   if (svg.localName !== 'svg') throw new Error('无效的猫咪 SVG')
+  // 保留 viewBox，以实际显示尺寸的最多两倍准备图像。
+  const imageSize = String(Math.max(1, Math.ceil(size * Math.min(window.devicePixelRatio, 2))))
+  svg.setAttribute('width', imageSize)
+  svg.setAttribute('height', imageSize)
   const serializer = new XMLSerializer()
-  const asImage = (layer: Element) => 'data:image/svg+xml,' + encodeURIComponent(serializer.serializeToString(layer))
+  const asImage = (layer: Element) => {
+    const url = URL.createObjectURL(new Blob([serializer.serializeToString(layer)], { type: 'image/svg+xml' }))
+    urls.push(url)
+    return url
+  }
   const marks = svg.querySelector('#shout-marks') ?? svg.querySelector('#sparks')
   let sparks: string | undefined
   if (marks) {
@@ -163,7 +193,8 @@ async function loadBrandArtwork(loadCat: () => Promise<string>) {
 }
 
 onBeforeUnmount(() => {
-  disposed = true
+  homeLifetime.abort()
+  for (const id of catResources.keys()) removeBrandCat(id)
   brandAnimation?.cancel()
 })
 </script>
@@ -191,7 +222,7 @@ onBeforeUnmount(() => {
     <div v-for="brandCat in activeCats" :key="brandCat.id" class="home-brand-cat" :data-asset="brandCat.asset"
       :style="{ left: brandCat.left + 'px', top: brandCat.top + 'px', width: brandCat.size + 'px', height: brandCat.size + 'px',
         '--brand-cat-travel': brandCat.travel + 'px', '--brand-cat-hop-height': brandCat.hopHeight + 'px' }"
-      @animationend.self="removeBrandCat(brandCat.id)">
+      @animationend.self="removeBrandCat(brandCat.id)" @animationcancel.self="removeBrandCat(brandCat.id)">
       <div class="home-brand-cat-motion">
         <img class="home-brand-cat-art" :src="brandCat.body" alt="" draggable="false" />
         <img v-if="brandCat.sparks" class="home-brand-cat-sparks" :src="brandCat.sparks" alt="" draggable="false" />

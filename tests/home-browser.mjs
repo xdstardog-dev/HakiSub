@@ -167,13 +167,24 @@ async function checkBrandCats() {
   const assets = (await readdir(new URL('../src/assets/home-cats/', import.meta.url)))
     .filter(name => name.endsWith('.svg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
   assert.ok(assets.length >= 11)
+  const hiddenAsset = '10-longhair.svg'
+  assert.ok(assets.includes(hiddenAsset))
+  const regularAssets = assets.filter(asset => asset !== hiddenAsset)
+  const summons = [
+    ...regularAssets.map((asset, index) => ({
+      asset,
+      roll: index === 0 ? .01 : .01 + .99 * (index - .5) / (regularAssets.length - 1),
+    })),
+    { asset: hiddenAsset, roll: .009999 },
+    { asset: hiddenAsset, roll: 0 },
+  ]
   const brandMotions = new Set()
   const hissPositions = new Set()
-  for (const [index, asset] of assets.entries()) {
-    const random = index === 0 ? 0 : (index - 0.5) / (assets.length - 1)
-    const feedback = await brand.evaluate((button, random) => {
+  for (const [index, { asset, roll }] of summons.entries()) {
+    const sizeRoll = index % 2 === 0 ? 0 : .999999
+    const feedback = await brand.evaluate((button, rolls) => {
       const original = Math.random
-      Math.random = () => random
+      Math.random = () => rolls.shift() ?? original()
       try { button.click() } finally { Math.random = original }
       const animations = button.querySelector('.home-brand-mark').getAnimations()
       const frames = animations[0].effect.getKeyframes()
@@ -192,7 +203,7 @@ async function checkBrandCats() {
             : frames.some(frame => frame.transform?.includes('translateY(')) ? 'sink'
               : frames.some(frame => frame.transform?.includes('scale(')) ? 'scale' : 'shake',
       }
-    }, random)
+    }, [roll, sizeRoll, (index % 5 + .5) / 5])
     assert.equal(feedback.count, 1)
     assert.ok(feedback.fixedHitbox)
     assert.ok(feedback.shaking && feedback.duration <= 300)
@@ -204,15 +215,18 @@ async function checkBrandCats() {
       return popup?.dataset.asset === name && [...popup.querySelectorAll('img')].every(image => image.complete && image.naturalWidth > 0)
     }, asset)
     assert.equal(await cat.count(), 1)
-    const layers = await cat.evaluate(popup => {
-      const readSvg = image => new DOMParser().parseFromString(decodeURIComponent(image.src.split(',')[1]), 'image/svg+xml')
+    const layers = await cat.evaluate(async popup => {
+      const readSvg = async image => new DOMParser().parseFromString(await (await fetch(image.src)).text(), 'image/svg+xml')
       const selector = '#shout-marks, #sparks'
-      const body = readSvg(popup.querySelector('.home-brand-cat-art'))
-      const sparks = readSvg(popup.querySelector('.home-brand-cat-sparks'))
+      const art = popup.querySelector('.home-brand-cat-art')
+      const [body, sparks] = await Promise.all([readSvg(art), readSvg(popup.querySelector('.home-brand-cat-sparks'))])
       const { left, top, fontSize } = popup.querySelector('.home-brand-cat-hiss').style
-      return { separated: !body.querySelector(selector) && Boolean(sparks.querySelector(selector)), left, top, fontSize }
+      return { separated: !body.querySelector(selector) && Boolean(sparks.querySelector(selector)), left, top, fontSize,
+        width: parseFloat(popup.style.width), decodedWidth: art.naturalWidth }
     })
     assert.ok(layers.separated)
+    assert.ok(Math.abs(layers.width - (sizeRoll === 0 ? 97.2 : 118.8)) < .001, '320px 视口体型覆盖基准尺寸的 ±10% 边界')
+    assert.equal(layers.decodedWidth, Math.ceil(layers.width), '按当前显示尺寸准备 1x 素材')
     hissPositions.add(layers.left + layers.top + layers.fontSize)
     await cat.evaluate(popup => popup.getAnimations()[0].finish())
     await cat.waitFor({ state: 'detached' })
@@ -271,13 +285,81 @@ async function checkBrandCats() {
   await cat.waitFor({ state: 'detached' })
   assert.equal(page.url(), origin + '/')
   await page.context().close()
-  console.log(`通过：${assets.length} 只编号 SVG、五种品牌短抖动、连点拦截、四猫叠加与独立退场、猫咪宽窄屏动线、脚底落地、翻面、左侧哈字、键盘和减少动态效果。`)
+  console.log(`通过：${assets.length} 只编号 SVG、隐藏猫 1% 边界与独立抽取、随机体型边界、五种品牌短抖动、连点拦截、四猫叠加与独立退场、猫咪宽窄屏动线、脚底落地、翻面、左侧哈字、键盘和减少动态效果。`)
+}
+async function checkTouchCatCleanup(room) {
+  const page = await openPage(390, 844, [room], true)
+  const brand = page.getByRole('button', { name: '哈基字幕 HakiSub，召唤猫咪' })
+  const cats = page.locator('.home-brand-cat')
+  await page.evaluate(() => {
+    const create = URL.createObjectURL.bind(URL)
+    const revoke = URL.revokeObjectURL.bind(URL)
+    const decode = HTMLImageElement.prototype.decode
+    window.catTest = { urls: new Set(), deferred: [], holdDecode: false }
+    URL.createObjectURL = blob => {
+      const url = create(blob)
+      window.catTest.urls.add(url)
+      return url
+    }
+    URL.revokeObjectURL = url => { window.catTest.urls.delete(url); revoke(url) }
+    HTMLImageElement.prototype.decode = function () {
+      if (window.catTest.holdDecode && window.catTest.urls.has(this.src)) {
+        return new Promise(resolve => window.catTest.deferred.push(resolve))
+      }
+      return decode.call(this)
+    }
+  })
+  const urls = () => page.evaluate(() => window.catTest.urls.size)
+  const finishFeedback = () => brand.evaluate(button => button.querySelector('.home-brand-mark').getAnimations()[0]?.finish())
+
+  await brand.tap()
+  await cats.first().waitFor()
+  await finishFeedback()
+  await brand.tap()
+  await cats.nth(1).waitFor()
+  // 暂停退场以模拟浏览器未送达结束事件。
+  await cats.evaluateAll(items => items.forEach(cat => cat.getAnimations()[0].pause()))
+  await finishFeedback()
+  await brand.tap()
+  assert.equal(await cats.count(), 2)
+  assert.equal(await urls(), 4)
+  await page.locator('.home-brand-cat-layer').waitFor({ state: 'detached' })
+  assert.equal(await urls(), 0)
+
+  await brand.tap()
+  await cats.first().waitFor()
+  await finishFeedback()
+  await page.evaluate(() => { window.catTest.holdDecode = true })
+  await brand.tap()
+  await page.waitForFunction(() => window.catTest.deferred.length === 2)
+  assert.equal(await urls(), 4)
+  await page.locator('button.home-room-card').first().tap()
+  const leave = page.getByRole('button', { name: '退出房间', exact: true })
+  await leave.waitFor()
+  assert.equal(await cats.count(), 0)
+  assert.equal(await urls(), 0, '进房时释放仍在播放和等待解码的全部素材')
+  await page.evaluate(() => {
+    window.catTest.holdDecode = false
+    window.catTest.deferred.splice(0).forEach(resolve => resolve())
+  })
+  await leave.tap()
+  await brand.waitFor()
+  assert.equal(await cats.count(), 0)
+  assert.equal(await urls(), 0)
+  await brand.tap()
+  await cats.first().waitFor()
+  await cats.first().evaluate(cat => cat.getAnimations()[0].cancel())
+  await page.locator('.home-brand-cat-layer').waitFor({ state: 'detached' })
+  assert.equal(await urls(), 0)
+  await page.context().close()
+  console.log('通过：触屏两猫上限、漏发结束事件兜底、动画取消、进房释放活跃和待解码素材、退房后可重新召唤。')
 }
 try {
   browser = await chromium.launch({ channel: process.env.HAKISUB_BROWSER_CHANNEL ?? 'chrome', headless: true })
   await checkBrandCats()
   const rooms = []
   for (let index = 0; index < 12; index++) rooms.push(await createRoom(index))
+  await checkTouchCatCleanup(rooms[0])
   for (const [width, height] of [[320, 568], [390, 844], [767, 900], [768, 900], [1024, 768], [1440, 900]]) {
     const page = await openPage(width, height, rooms)
     let layout = await geometry(page)
