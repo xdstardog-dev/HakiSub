@@ -151,7 +151,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); accountClient?.cancel(
 </script>
 
 <template>
-  <dialog ref="settingsDialog" class="room-api-settings" :aria-label="page === 'personal' ? '设置' : '房主设置'" @pointerdown="cancelNameEditingOutside" @cancel.prevent="page === 'owner' ? backToPersonal() : emit('close')">
+  <dialog ref="settingsDialog" class="room-api-settings" :aria-label="page === 'personal' ? '设置' : '房主设置'" :closedby="page === 'personal' ? 'any' : undefined" @pointerdown="cancelNameEditingOutside" @cancel.prevent="page === 'owner' ? backToPersonal() : emit('close')">
     <div class="settings-heading">
       <h2>{{ page === 'owner' ? '房主设置' : '设置' }}</h2>
       <button v-if="page === 'owner'" type="button" class="settings-back room-back-button" aria-label="返回设置" title="返回设置" @click="backToPersonal"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 7h7a6 6 0 0 1 0 12h-4m-3-17-5 5 5 5"/></svg></button>

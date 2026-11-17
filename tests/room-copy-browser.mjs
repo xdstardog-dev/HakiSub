@@ -58,7 +58,8 @@ try {
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }); document.execCommand = undefined })
   await codeButton.click(); await page.getByRole('dialog', { name: '手动复制房间号' }).waitFor()
   assert.equal(await page.getByLabel('房间号', { exact: true }).inputValue(), code)
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.mouse.click(2, 2)
+  await page.getByRole('dialog', { name: '手动复制房间号' }).waitFor({ state: 'detached' })
   assert.equal(await page.locator('textarea[aria-label="临时复制文本"]').count(), 0)
   await page.evaluate(() => { window.pendingCopies = []; window.fallbackCalls = 0; document.execCommand = () => { window.fallbackCalls++; return true }; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => new Promise((resolve, reject) => window.pendingCopies.push({ resolve, reject })) } }) })
   await codeButton.click(); await shareButton.click()
@@ -77,5 +78,5 @@ try {
   assert.equal(await page.evaluate(() => window.fallbackCalls), 0)
   assert.equal(await toast.count(), 0); assert.equal(await page.locator('.manual-copy-dialog').count(), 0)
   assert.deepEqual(errors, [])
-  console.log('通过：真实Chrome原生复制与读取、真实execCommand写入与读取；缺失API/权限异常/备用失败/均不可用/手动全选/Escape/临时DOM清理/连续点击/离房及换房迟到结果/链接无凭据。390px为桌面仿真，非真实手机。')
+  console.log('通过：真实Chrome原生复制与读取、真实execCommand写入与读取；缺失API/权限异常/备用失败/均不可用/手动全选/Escape与遮罩关闭/临时DOM清理/连续点击/离房及换房迟到结果/链接无凭据。390px为桌面仿真，非真实手机。')
 } finally { await browser?.close(); await gateway.close() }

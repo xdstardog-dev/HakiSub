@@ -1,5 +1,5 @@
 import { createAccountClient } from './accountClient'
-import { isValidRoomAvatar, type RoomAvatarId } from '../accounts/shared/roomAvatars.mjs'
+import { isValidRoomAvatar, LEGACY_ROOM_AVATAR_IDS, type RoomAvatarId } from '../accounts/shared/roomAvatars.mjs'
 
 export function createRoomAvatarClient(account = createAccountClient(), fetchRequest: typeof fetch = fetch) {
   const controllers = new Set<AbortController>()
@@ -18,8 +18,12 @@ export function createRoomAvatarClient(account = createAccountClient(), fetchReq
   return {
     async permission(code: string, token: string) {
       const status = await request(token)
-      if (status.bound === true) return { bound: true, canEdit: (await account.rooms()).rooms.some(room => room.code === code) }
-      return { bound: false, canEdit: status.readOnly === false }
+      // 旧网关不返回头像编号，只向它提交新旧版本共有的选择。
+      const avatarIds: RoomAvatarId[] = Array.isArray(status.availableAvatarIds)
+        ? status.availableAvatarIds.filter(isValidRoomAvatar)
+        : LEGACY_ROOM_AVATAR_IDS
+      if (status.bound === true) return { bound: true, canEdit: (await account.rooms()).rooms.some(room => room.code === code), avatarIds }
+      return { bound: false, canEdit: status.readOnly === false, avatarIds }
     },
     async save(code: string, token: string, avatarId: RoomAvatarId, bound: boolean) {
       if (!isValidRoomAvatar(avatarId)) throw Error('请选择有效的预制房间头像。')

@@ -20,7 +20,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <dialog ref="dialogElement" class="home-dialog" :aria-labelledby="titleId" @cancel.prevent="emit('close')">
+  <dialog ref="dialogElement" class="home-dialog" :aria-labelledby="titleId" closedby="any" @cancel.prevent="emit('close')">
     <div class="home-dialog-layout">
       <header class="home-dialog-header">
         <h2 :id="titleId">{{ title }}</h2>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 6 112 112">
+  <defs>
+    <path id="head" d="M19 59C15 47 17 27 24 23C29 19 43 29 53 40C60 38.5 68 38.5 75 40C85 29 99 19 104 23C111 27 113 47 109 59C119 72 119 89 111 100C104 109 96 109 64 109S24 109 17 100C9 89 9 72 19 59Z"/>
+    <clipPath id="coat"><use href="#head"/></clipPath>
+  </defs>
+  <use href="#head" fill="#b1b3b3"/>
+  <g clip-path="url(#coat)">
+    <path fill="#5e6468" d="M45 29h8l8 33c-5-1-11-10-16-33Zm30 0h8c-5 23-11 32-16 33Zm-15-2h8l-4 28ZM9 68c12-5 18-3 24 0-11 0-16 3-24 9Zm110 0c-12-5-18-3-24 0 11 0 16 3 24 9ZM8 87c13-4 20-3 26 0-9 1-15 5-23 8Zm112 0c-13-4-20-3-26 0 9 1 15 5 23 8Z"/>
+  </g>
+  <use href="#head" fill="none" stroke="#767a7c" stroke-width="2"/>
+  <g fill="#fff" stroke="#565c61" stroke-width="1.5">
+    <circle cx="41" cy="75" r="13.5"/>
+    <circle cx="87" cy="75" r="13.5"/>
+  </g>
+  <g fill="#36393d">
+    <circle cx="41" cy="75" r="9.75"/>
+    <circle cx="87" cy="75" r="9.75"/>
+  </g>
+</svg>

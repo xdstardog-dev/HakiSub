@@ -15,8 +15,21 @@ import { createRoomSettingsHandler } from '../server/roomSettings.mjs'
 import { createRoomStore } from '../server/roomStore.mjs'
 
 assert.equal(avatars.QUICK_ROOM_AVATARS.length, 4)
-assert.ok(avatars.ROOM_AVATARS.length > 4)
+assert.equal(avatars.ROOM_AVATAR_CHOICES.length, 32)
+assert.deepEqual(avatars.ROOM_AVATAR_GROUPS.map(({ id, avatars }) => [id, avatars.length]), [
+  ['buildings', 10], ['cats', 14], ['games', 3], ['daily', 3], ['nature', 2],
+])
+assert.deepEqual(avatars.QUICK_ROOM_AVATARS.map(({ id }) => id), ['home', 'cat', 'coffee', 'book'])
+for (const id of ['cat-tuxedo', 'cat-blaze']) {
+  assert.equal(avatars.ROOM_AVATAR_CHOICES.some(avatar => avatar.id === id), false)
+  assert.equal(avatars.normalizeRoomAvatar(id), id)
+}
 assert.equal(new Set(avatars.ROOM_AVATARS.map(avatar => avatar.id)).size, avatars.ROOM_AVATARS.length)
+for (const { id, image } of avatars.ROOM_AVATARS.filter(avatar => avatar.image)) {
+  assert.equal(avatars.normalizeRoomAvatar(id), id)
+  assert.match(readFileSync(new URL(`../public${image}`, import.meta.url), 'utf8'), /^<svg /)
+}
+for (const id of ['home', 'coffee', 'book', 'star', 'music', 'leaf', 'game']) assert.equal(avatars.normalizeRoomAvatar(id), id)
 for (const id of [undefined, null, '<svg>', 'https://example.com/avatar.svg']) assert.equal(avatars.normalizeRoomAvatar(id), 'home')
 const clientSource = readFileSync(new URL('../src/roomAvatarClient.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const context = vm.createContext({ ...avatars, AbortController, Error, setTimeout, clearTimeout })
@@ -24,7 +37,9 @@ vm.runInContext(ts.transpile(clientSource + ';globalThis.createClient=createRoom
 let status = { readOnly: false, bound: false }, posted, cancelled = 0
 const account = { rooms: async () => ({ rooms: [{ code: '123456' }] }), manageRoom: async (_code, command) => { posted = command; return { room: { avatarId: command.avatarId } } }, cancel() { cancelled++ } }
 const client = context.createClient(account, async (_url, options) => { if (options.method === 'POST') { posted = JSON.parse(options.body); return { ok: true, json: async () => ({ avatarId: posted.avatarId }) } }; return { ok: true, json: async () => status } })
-assert.equal((await client.permission('123456', 'session')).canEdit, true)
+assert.deepEqual(JSON.parse(JSON.stringify(await client.permission('123456', 'session'))), { canEdit: true, bound: false, avatarIds: avatars.LEGACY_ROOM_AVATAR_IDS })
+status = { readOnly: false, availableAvatarIds: ['home', 'cat-point', 'https://example.com/avatar.svg'] }
+assert.deepEqual((await client.permission('123456', 'session')).avatarIds, ['home', 'cat-point'])
 status = { readOnly: true, bound: false }; assert.equal((await client.permission('123456', 'session')).canEdit, false)
 status = { readOnly: true, bound: true }; assert.equal((await client.permission('123456', 'session')).canEdit, true)
 assert.equal((await client.permission('654321', 'session')).canEdit, false)
@@ -60,6 +75,13 @@ try {
   await start()
   const owner = await connect({ type: 'create' }), member = await connect({ type: 'join', code: owner.identity.code }), other = await connect({ type: 'create' })
   assert.equal(owner.identity.avatarId, 'home')
+  const available = avatars.ROOM_AVATAR_CHOICES.map(({ id }) => id)
+  assert.deepEqual((await (await settings(owner)).json()).availableAvatarIds, available)
+  for (const avatarId of available) {
+    const response = await settings(owner, { action: 'avatar', avatarId })
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).avatarId, avatarId)
+  }
   assert.equal((await settings(member, { action: 'avatar', avatarId: 'cat' })).status, 403)
   assert.equal((await settings(owner, { action: 'avatar', avatarId: 'cat' }, 'https://untrusted.example')).status, 403)
   for (const id of ['', '<svg>', 1, null, 'https://example.com/icon']) assert.equal((await settings(owner, { action: 'avatar', avatarId: id })).status, 400)
@@ -75,13 +97,13 @@ try {
   const uid = randomUUID(); await rooms.manageAccount({ action: 'bind', uid, code: owner.identity.code, ownerToken: owner.identity.ownerToken })
   assert.equal((await settings(owner, { action: 'avatar', avatarId: 'book' })).status, 403, '绑定后旧匿名身份不能改头像')
   await assert.rejects(rooms.manageAccount({ action: 'avatar', code: owner.identity.code, uid: randomUUID(), avatarId: 'book' }), /房主/)
-  await rooms.manageAccount({ action: 'avatar', code: owner.identity.code, uid, avatarId: 'star' })
-  assert.equal(store.list().find(room => room.code === owner.identity.code).avatarId, 'star')
+  await rooms.manageAccount({ action: 'avatar', code: owner.identity.code, uid, avatarId: 'cat-calico' })
+  assert.equal(store.list().find(room => room.code === owner.identity.code).avatarId, 'cat-calico')
   assert.equal((await readFile(file, 'utf8')).includes('synthetic-avatar-test-key'), false)
   const code = owner.identity.code; await stop(); rooms = undefined
-  await start(); const returned = await connect({ type: 'join', code }); assert.equal(returned.identity.avatarId, 'star')
+  await start(); const returned = await connect({ type: 'join', code }); assert.equal(returned.identity.avatarId, 'cat-calico')
   const record = store.list().find(room => room.code === code)
-  await store.save({ code, ownerHash: record.ownerHash, asrEnabled: false }); assert.equal(store.list().find(room => room.code === code).avatarId, 'star')
+  await store.save({ code, ownerHash: record.ownerHash, asrEnabled: false }); assert.equal(store.list().find(room => room.code === code).avatarId, 'cat-calico')
   await writeFile(join(directory, 'legacy.json'), JSON.stringify({ version: 5, rooms: [{ code: '123456', ownerHash: 'a'.repeat(64) }] }))
   assert.equal((await createRoomStore(join(directory, 'legacy.json'))).list()[0].avatarId, 'home')
   console.log('通过：预制编号、头像客户端权限/双链路/取消、房主与跨房隔离、广播、持久重启、旧资料默认房屋、写失败保留头像与Key且不停止ASR。仅本地模拟。')

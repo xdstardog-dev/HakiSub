@@ -1,3 +1,7 @@
+import { ROOM_AVATAR_CHOICES } from '../accounts/shared/roomAvatars.mjs'
+
+const availableAvatarIds = ROOM_AVATAR_CHOICES.map(({ id }) => id)
+
 export function createRoomSettingsHandler(rooms, { allowedOrigins }) {
   return async (request, response) => {
     const reply = (status, body) => {
@@ -8,7 +12,7 @@ export function createRoomSettingsHandler(rooms, { allowedOrigins }) {
     const member = token && rooms.findSession(token)
     if (!member) { reply(403, { message: '房间身份已失效，请重新进入房间。' }); return }
     const status = () => ({ ...(rooms.anonymousOwner(member) ? rooms.ownerStatus(member.room) : rooms.publicStatus(member.room)), readOnly: !rooms.anonymousOwner(member) })
-    if (request.method === 'GET') { reply(200, status()); return }
+    if (request.method === 'GET') { reply(200, { ...status(), availableAvatarIds }); return }
     if (request.method !== 'POST') { reply(405, { message: '不支持的房间配置操作。' }); return }
     if (!allowedOrigins.includes(request.headers.origin) || !rooms.anonymousOwner(member)) { reply(403, { message: '请使用合法房主身份；已绑定房间请登录个人中心管理。' }); return }
     if (request.headers['content-type']?.split(';')[0] !== 'application/json') { reply(415, { message: '请求格式不正确。' }); return }

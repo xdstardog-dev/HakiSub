@@ -1,3 +1,17 @@
+@font-face {
+  font-family: 'HakiSub Title Chinese';
+  src: url('/fonts/hakisub-title-zh.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HakiSub Title Latin';
+  src: url('/fonts/hakisub-title-en.woff2') format('woff2');
+  font-weight: 650;
+  font-display: swap;
+}
+
 /* 首页临时灰阶主题。布局断点统一为 768px；JS 从 --home-carousel-mobile 读取布局模式。 */
 :root {
   --home-bg: #41454a;
@@ -28,6 +42,20 @@
 }
 .app-shell.home-shell { max-width: none; width: 100%; padding: 0 0 env(safe-area-inset-bottom, 0px); background: var(--home-bg); color: var(--home-light-text); box-shadow: none; }
 .app-shell.home-shell { position: relative; isolation: isolate; }
+.app-shell.home-shell::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 6.5px 3.25px, #202427 0.85px, transparent 1.25px),
+    radial-gradient(circle at 19.5px 9.75px, #202427 0.85px, transparent 1.25px);
+  background-size: 26px 13px;
+  opacity: .38;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 40%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 40%, #000 100%);
+}
 .home-background-texture { display: none; }
 
 /* 只绘制 1120px 首页主体以外的留白；固定遮罩不随纹理移动。 */
@@ -93,8 +121,17 @@
 .home-header { display: flex; align-items: center; justify-content: space-between; gap: var(--home-space); min-height: 100px; padding-top: env(safe-area-inset-top, 0px); }
 .home-brand { flex-shrink: 0; padding: 0; text-align: left; }
 .home-brand-mark { display: flex; align-items: center; gap: 10px; }
-.home-brand b { display: block; font-size: 20px; letter-spacing: -.4px; }
-.home-brand small { display: block; margin-top: 3px; font-size: 12px; }
+.home-brand b {
+  display: block;
+  font: 400 23px/1.1 'HakiSub Title Chinese', 'Microsoft YaHei', sans-serif;
+  letter-spacing: -.025em;
+  -webkit-text-stroke: .02em var(--home-bg);
+}
+.home-brand small {
+  display: block;
+  margin-top: 1px;
+  font: 650 13px/1.15 'HakiSub Title Latin', system-ui, sans-serif;
+}
 .home-brand-cat-layer {
   position: fixed;
   inset: 0;
@@ -335,7 +372,7 @@
 .home-entry-form { display: grid; gap: 20px; min-height: 0; overflow-y: auto; padding: 24px; }
 .home-entry-form input { border-color: var(--home-border); border-radius: var(--home-control-radius); background: #fafaf8; color: var(--home-text); }
 .home-entry-form input:focus-visible { outline: 2px solid #565a5e; outline-offset: 2px; }
-.home-entry-form > button { width: 100%; min-height: 48px; padding: 12px; border-radius: var(--home-control-radius); background: #3f4347; color: var(--home-light-text); }
+.home-entry-form > button, .avatar-library-confirm { width: 100%; min-height: var(--ui-control); padding: 12px; border-radius: var(--home-control-radius); background: #3f4347; color: var(--home-light-text); }
 .home-entry-form > .home-private-option { justify-self: start; width: fit-content; min-height: 44px; padding: 8px 14px; background: #e3e4e0; color: var(--home-text); font-size: 15px; }
 .home-private-option[aria-pressed="true"] { background: #3f4347; color: var(--home-light-text); }
 .home-entry-error { margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }

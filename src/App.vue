@@ -67,6 +67,7 @@ function updateSimulationAccessCode(value: string) {
 const connectionState = ref<'connected' | 'reconnecting' | 'verification' | 'failed'>('connected')
 const connecting = ref(false), selfId = ref('')
 const roomPasswordOpen = ref(false), roomPasswordMessage = ref('')
+const roomPasswordFromJoin = ref(false)
 let entryRetryTimer: ReturnType<typeof setTimeout> | undefined
 let roomEntryOperation = 0, roomAccessClient: ReturnType<typeof createAccountClient> | undefined
 let roomClient: ReturnType<typeof createRoomClient> | undefined
@@ -97,6 +98,7 @@ function joinRoomByCode(value: string) {
 }
 function showRoomPassword(message: string) {
   if (joined.value) connectionState.value = 'verification'
+  if (!roomPasswordOpen.value) roomPasswordFromJoin.value = entryOpen.value
   entryOpen.value = false; roomPasswordOpen.value = true
   roomPasswordMessage.value = ['此房间需要四位入房码。', '请输入四位入房码。'].includes(message) ? '' : message
 }
@@ -737,7 +739,7 @@ if (activeRoom && location.pathname !== '/glasses' && (!explicitRoom || explicit
     <div class="concept-notes"><span>高对比字幕</span><span>清晰说话人标记</span><span>两行核心信息</span></div>
   </div>
   <div v-else class="app-shell" :class="{ 'in-room': joined, 'home-shell': !joined }">
-    <RoomPasswordPrompt v-if="roomPasswordOpen" :busy="connecting" :message="roomPasswordMessage" @submit="enter" @cancel="cancelRoomPassword" />
+    <RoomPasswordPrompt v-if="roomPasswordOpen" :busy="connecting" :message="roomPasswordMessage" :dismiss-on-backdrop="!roomPasswordFromJoin" @submit="enter" @cancel="cancelRoomPassword" />
     <HomePage v-if="!joined" :rooms="rememberedRooms" :busy="connecting" @identity="updateAccountIdentity" @enter="reenterRoom" @create="openRoomEntry('create')" @join="openRoomEntry('join')">
       <p v-if="connecting" class="home-status" role="status">正在连接房间…</p>
       <p v-if="error && !entryOpen" class="home-status" role="alert">{{ error }}</p>

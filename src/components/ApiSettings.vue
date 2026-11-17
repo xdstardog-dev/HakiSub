@@ -91,7 +91,7 @@ onUnmounted(() => { disposed = true; controller?.abort(); apiKey.value = ''; new
 </script>
 
 <template>
-  <component :is="props.roomName === undefined ? 'section' : 'dialog'" ref="localDialog" class="api-settings" aria-labelledby="api-settings-title" @cancel.prevent="emit('close')">
+  <component :is="props.roomName === undefined ? 'section' : 'dialog'" ref="localDialog" class="api-settings" aria-labelledby="api-settings-title" :closedby="props.roomName === undefined ? undefined : 'any'" @cancel.prevent="emit('close')">
     <div class="settings-heading"><h1 id="api-settings-title">设置</h1><button @click="emit('close')">返回房间</button></div>
     <div v-if="props.roomName !== undefined" class="settings-card simulation-room-settings">
       <h2>房主设置</h2><p>房间名称：{{ props.roomName }}</p>

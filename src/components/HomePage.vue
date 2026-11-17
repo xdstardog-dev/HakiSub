@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
     <button type="button" class="home-brand" aria-label="哈基字幕 HakiSub，召唤猫咪" @click="activateBrand">
       <span ref="brandMark" class="home-brand-mark">
         <span class="home-logo" aria-hidden="true"><img src="/hakisub-logo.svg" alt="" width="56" height="56" /></span>
-        <span><b>哈基字幕</b><small>HakiSub</small></span>
+        <span><b lang="zh-CN">哈基字幕</b><small lang="en">HakiSub</small></span>
       </span>
     </button>
     <nav aria-label="首页导航"><AccountAccess @identity="emit('identity', $event)" /></nav>

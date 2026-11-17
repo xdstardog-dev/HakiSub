@@ -10,7 +10,7 @@ onUnmounted(() => dialog.value?.close())
 </script>
 
 <template>
-  <dialog ref="dialog" class="manual-copy-dialog" aria-labelledby="manual-copy-title" @cancel.prevent="emit('close')">
+  <dialog ref="dialog" class="manual-copy-dialog" aria-labelledby="manual-copy-title" closedby="any" @cancel.prevent="emit('close')">
     <h2 id="manual-copy-title">手动复制{{ label }}</h2>
     <p>自动复制未完成，请长按文本或全选后复制。</p>
     <textarea ref="field" :aria-label="label" :value="text" readonly rows="3" />

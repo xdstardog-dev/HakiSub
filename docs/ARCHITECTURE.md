@@ -16,7 +16,13 @@
 
 [UI 色卡](UI-PALETTE.md)记录主应用正式色及原始参考色。`src/home.css` 的外侧背景和次级文字变量共用 `--ui-secondary-gray`（`#62666A`）。`src/style.css` 定义标准红、标准黄及共用浅红。房间与模拟设置复用标准红，深底错误文字与移除确认描边复用浅红，字幕入场动画读取标准黄变量。独立 SVG 和试听页沿用同一标准色值。
 
-首页 `HomePage.vue` 仅新增一个 `aria-hidden` 装饰容器，挂在 `.home-shell` 内，使用固定遮罩将中间 1120px 主体完全排除，并在两侧向内的 48px 渐隐。两个窄伪元素各覆盖一侧留白，以 transform 整层移动，预留完整平铺周期防止露空；不改变布局或拦截指针，也不参与无障碍树。`hakisub-cat-texture.svg` 复用 favicon 的猫头轮廓与镂空眼圈，改为 #FFFFFF，88px 猫头以 160px 间距、隔行错位组成 320×320px 周期。72 秒 linear 动画移动 (320px, -320px)，首尾平铺对齐；14 秒 ease-in-out 仅改变整层 opacity（0.08→0.10→0.08）。无 JS、Canvas、逐猫节点或滤镜；视口不超过 1120px 时不生成纹理，prefers-reduced-motion 时保留 0.09 静态纹理。HomePage 离房视图不挂载此容器，CSS 也排除 `.in-room`；网关与字幕生命周期保持原样。
+首页主体的深灰网点由 `src/home.css` 中的 `.home-shell::before` 绘制。每个 26×13px 平铺单元用两层径向渐变绘制 `#202427` 网点，两列水平间距为 13px，垂直错开 6.5px。底边不透明度为 38%，纵向遮罩使其到距顶部 40% 处完全消失。伪元素位于首页内容下方，指针事件可穿过，桌面与移动端共用同一静态样式。
+
+首页题头在 `src/home.css` 引用 `public/fonts/` 中的本地 WOFF2 子集。中文来自猫啃什锦黑，以 `0.02em` 底色细描边收细笔画，英文来自 Bricolage Grotesque，使用 650 字重。两个子集分别只包含「哈基字幕」和 `HakiSub` 的字形，授权随文件保留。
+
+可点遮罩返回的原生对话框标记 `closedby="any"`，统一走现有 `cancel` 关闭流程。`src/dialogBackdrop.ts` 为缺少该属性的浏览器提供回退，按下与点击均须落在同一窗口的外侧。首页房间列表、创建、加入、直接验证入房码及房间内个人设置、模拟设置、手动复制、调试音效启用此行为。房主设置复用个人设置的 `dialog`，进入时撤销该属性。从加入表单触发的入房码验证也保留显式关闭行为，重试时继续沿用首次打开的来源。
+
+首页 `HomePage.vue` 的 `aria-hidden` 装饰容器负责两侧猫头底纹，挂在 `.home-shell` 内，使用固定遮罩将中间 1120px 主体完全排除，并在两侧向内的 48px 渐隐。两个窄伪元素各覆盖一侧留白，以 transform 整层移动，预留完整平铺周期防止露空。`hakisub-cat-texture.svg` 复用 favicon 的猫头轮廓与镂空眼圈，改为 #FFFFFF，88px 猫头以 160px 间距、隔行错位组成 320×320px 周期。72 秒 linear 动画移动 (320px, -320px)，首尾平铺对齐。14 秒 ease-in-out 改变整层 opacity（0.08→0.10→0.08）。视口宽于 1120px 时显示猫头底纹，`prefers-reduced-motion` 时使用 0.09 不透明度的静态猫头。
 
 首页猫头纹理在 SVG 内绕各自中心统一 `rotate(-25)`，边界副本的旋转中心同步平移 320px，保留猫头的完整接合与原平铺周期。倾斜为静态矢量变换，不叠加逐猫动画，也不旋转遮罩或扩大运行时合成层。
 
@@ -44,7 +50,7 @@
 
 ## 房间头像元数据与交互（2026-11-01）
 
-accounts/shared/roomAvatars.mjs集中定义默认home、四个快捷项、八个首批预制头像与编号校验，配套d.mts类型。RoomAvatarIcon统一绘制可信SVG路径；RoomCard在姓名上方的可用区域居中放大头像，RoomListDialog和房内RoomAvatarControl共用同一图形。后续头像只需扩充此目录，不将SVG、上传文件或远程地址写入房间资料。
+`accounts/shared/roomAvatars.mjs` 定义默认 `home`、主题目录、保留的旧头像编号和编号校验，配套 `d.mts` 类型。`ROOM_AVATAR_GROUPS` 提供建筑、猫咪、游戏、日常和自然主题，派生出的 `ROOM_AVATAR_CHOICES` 供网关声明可选编号。头像库每个主题一行，相邻主题在右侧款式区用 2px 虚线分隔。中灰左栏固定首个可用头像，头像使用浅底和原色，右边横向滚动无边框款式。弹窗宽度上限为 320px，头像触控区域为 44px，预览复用房间头像的 26px 图标。点选以浅灰底标记右侧草稿，底部通栏「确定」始终可见，选中后启用，点击才保存，按钮配色、48px 高度和 12px 圆角复用房间入口主操作样式。左栏背景止于款式区。点击遮罩或按 Esc 关闭并丢弃草稿。快捷菜单显示房屋、黑猫、咖啡和书本。头像选项只显示图像，图像按钮和对话框通过 ARIA 提供名称。`RoomAvatarIcon` 统一渲染本地猫头 SVG 或线条图标路径，供 `RoomCard`、`RoomListDialog` 和 `RoomAvatarControl` 复用。房间资料只保存白名单中的头像编号。
 
 RoomAvatarControl独立处理鼠标／触屏500ms长按、10px移动取消、右键、Shift+F10及菜单方向键；短按继续打开原设置，长按后的合成点击不会误开设置。快捷菜单为四头像加“更多”，后者通过原生模态dialog显示完整库，单击头像即保存。框外点击／Escape／窗口变化及卸载关闭并清理手势、监听器和请求；异步操作编号防止离房后的回调更新新界面。组件保留房间设置的无障碍名称。
 
@@ -450,7 +456,9 @@ AccountApp.vue 使用原内存view新增password/email子页面，安全首页�
 
 主应用入口 `index.html` 将浏览器标签页标题设为「哈基字幕·hakisub」，并引用静态资源 `public/hakisub-favicon.svg` 作为标签页图标。猫形轮廓与镂空眼圈采用品牌深灰及透明背景。
 
-`RoomAvatarIcon` 的猫咪预设复用 `public/hakisub-favicon.svg`，其余预设继续使用共享路径；头像编号与同步行为不变。
+`RoomAvatarIcon` 的原版灰猫复用 `public/hakisub-favicon.svg`。`public/room-avatars/` 中的猫头以首页哈气猫的面部花纹为参考。白猫的耳朵和头部共用同一条填充路径。可选的新猫头分别填充眼白与瞳孔，眼白外沿描边宽度为 1.5 个 SVG 单位。暹罗猫使用椭圆形面罩和蓝色眼白。下架的两款黑白猫编号仍兼容既有房间资料。
+
+头像选择器按 `GET /api/rooms/settings` 返回的 `availableAvatarIds` 筛选可保存项。旧网关没有该字段，客户端按 `LEGACY_ROOM_AVATAR_IDS` 筛选兼容选项，避免提交旧网关无法识别的编号。新增头像发布时需同时更新前端与网关。
 
 成员字幕入场时，头像涟漪从 0.8 倍扩至 2.4 倍并淡出；卡片边框闪黄，两圈错峰时序及减少动态效果设置保持不变。
 

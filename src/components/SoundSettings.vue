@@ -19,7 +19,7 @@ onUnmounted(() => settingsDialog.value?.close())
 </script>
 
 <template>
-  <dialog ref="settingsDialog" class="sound-settings" aria-labelledby="sound-settings-title" @cancel.prevent="emit('close')">
+  <dialog ref="settingsDialog" class="sound-settings" aria-labelledby="sound-settings-title" closedby="any" @cancel.prevent="emit('close')">
     <div class="sound-heading"><h2 id="sound-settings-title">全局音效</h2><button type="button" aria-label="关闭音效设置" @click="emit('close')">关闭</button></div>
     <p class="sound-help">收到任意成员对任意卡片的快捷回应时播放提示音，与你是否开麦无关。</p>
     <label class="sound-toggle"><input type="checkbox" :checked="preferences.enabled" @change="changeEnabled" />启用快捷回应音效</label>

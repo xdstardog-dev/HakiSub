@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import PinCodeInput from '../../accounts/shared/PinCodeInput.vue'
-const props = defineProps<{ busy: boolean; message: string }>()
+const props = defineProps<{ busy: boolean; message: string; dismissOnBackdrop?: boolean }>()
 const emit = defineEmits<{ submit: [password: string]; cancel: [] }>()
 const dialogElement = ref<HTMLDialogElement | null>(null)
 const password = ref('')
@@ -15,7 +15,7 @@ onUnmounted(() => { password.value = ''; dialogElement.value?.close() })
 </script>
 
 <template>
-  <dialog ref="dialogElement" class="room-password-prompt" aria-labelledby="room-password-title" @cancel.prevent="emit('cancel')">
+  <dialog ref="dialogElement" class="room-password-prompt" aria-labelledby="room-password-title" :closedby="dismissOnBackdrop ? 'any' : undefined" @cancel.prevent="emit('cancel')">
     <header class="password-heading"><h2 id="room-password-title">这是一个加密房间</h2><button type="button" aria-label="关闭弹窗" @click="emit('cancel')">×</button></header>
     <form class="home-entry-form" @submit.prevent="submit">
       <PinCodeInput id="room-entry-password" v-model="password" aria-label="输入密码" autofocus :disabled="busy" />
